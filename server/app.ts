@@ -98,6 +98,7 @@ function sanitize(p: Program): Program {
   p.footprint.depth = clamp(p.footprint.depth, 4, 80);
   p.site.width = Math.max(p.site.width || 0, p.footprint.width + 6);
   p.site.depth = Math.max(p.site.depth || 0, p.footprint.depth + 6);
+  p.adjacencies = Array.isArray(p.adjacencies) ? p.adjacencies.slice(0, 12) : [];
   p.floors = p.floors
     .filter((f) => f.rooms.length > 0)
     .map((f) => ({ ...f, level: Math.round(f.level), rooms: f.rooms.map((r) => ({ ...r, area: clamp(r.area, 1, 500) })) }))

@@ -30,6 +30,7 @@ const LAYERS: [string, number][] = [
   ["MN-ARSA", 3],
   ["MN-CEKME", 1],
   ["MN-BASLIK", 7],
+  ["MN-ANTET", 7],
 ];
 
 class Dxf {
@@ -104,36 +105,66 @@ class Dxf {
 
 const SHEET_GAP = 6; // çizimler arası boşluk (m)
 
-export function buildDXF(L: BuildingLayout, program: Program, unit: DxfUnit = "m"): Uint8Array {
+export interface DxfAntet { office: string; architect: string; regNo: string; date: string }
+
+export function buildDXF(L: BuildingLayout, program: Program, unit: DxfUnit = "m", ant?: DxfAntet): Uint8Array {
   const d = new Dxf(UNIT_SCALE[unit]);
-  const title = (x: number, y: number, t: string, sub?: string) => {
-    d.text("MN-BASLIK", x, y, 0.45, t, 0);
-    if (sub) d.text("MN-BASLIK", x, y - 0.55, 0.22, sub, 0);
+  /** Antet kutusu: sol tarafta pafta adı, sağda ofis / tarih / ölçek / pafta no. */
+  const title = (x: number, y: number, t: string, sub?: string, opts: { w?: number; no?: string; scale?: string } = {}) => {
+    const w = Math.max(opts.w ?? 0, 18);
+    const top = y + 0.75, bot = y - 1.45;
+    d.rect("MN-ANTET", x, bot, w, top - bot);
+    d.text("MN-BASLIK", x + 0.3, y, 0.45, t, 0);
+    if (sub) d.text("MN-BASLIK", x + 0.3, y - 0.65, 0.2, sub, 0);
+    // sağ bölüm
+    const cells: [string, string][] = [
+      ["OFİS / MİMAR", [ant?.office, ant?.architect, ant?.regNo && `Sicil ${ant.regNo}`].filter(Boolean).join(" · ") || "—"],
+      ["PROJE", program.projectName + (program.clientName ? ` · ${program.clientName}` : "")],
+      ["TARİH", ant?.date ?? ""],
+      ["ÖLÇEK", opts.scale ?? "1/100"],
+      ["PAFTA NO", opts.no ?? ""],
+    ];
+    const rx = x + w * 0.45, rw = w - w * 0.45;
+    d.line("MN-ANTET", rx, bot, rx, top);
+    const ch = (top - bot) / 2;
+    // üst sıra: ofis, proje; alt sıra: tarih, ölçek, pafta no
+    d.line("MN-ANTET", rx, bot + ch, x + w, bot + ch);
+    const put = (cx: number, cy: number, cw: number, [label, value]: [string, string]) => {
+      d.text("MN-ANTET", cx + 0.15, cy + ch - 0.3, 0.13, label, 0);
+      const max = Math.max(4, Math.floor((cw - 0.3) / 0.15));
+      d.text("MN-ANTET", cx + 0.15, cy + 0.25, 0.22, value.length > max ? value.slice(0, max - 1) + "…" : value, 0);
+    };
+    put(rx, bot + ch, rw / 2, cells[0]);
+    d.line("MN-ANTET", rx + rw / 2, bot + ch, rx + rw / 2, top);
+    put(rx + rw / 2, bot + ch, rw / 2, cells[1]);
+    for (let i = 0; i < 3; i++) {
+      if (i) d.line("MN-ANTET", rx + (rw * i) / 3, bot, rx + (rw * i) / 3, bot + ch);
+      put(rx + (rw * i) / 3, bot, rw / 3, cells[2 + i]);
+    }
   };
 
   // ---------- 1. sıra: kat planları + vaziyet planı
   let ox = 0;
   for (const fl of L.floors) {
     drawPlan(d, L, fl, ox, 0);
-    title(ox, -3.2, fl.name.toUpperCase(), `Kat planı · kot ${fl.z >= 0 ? "+" : ""}${fl.z.toFixed(2)} · ${program.projectName}`);
-    ox += L.W + SHEET_GAP + 4;
+    title(ox, -3.4, fl.name.toUpperCase() + " PLANI", `Kot ${fl.z >= 0 ? "+" : ""}${fl.z.toFixed(2)}`, { w: L.W, no: `A-${100 + fl.level}` });
+    ox += Math.max(L.W, 18) + SHEET_GAP + 4;
   }
   const siteW = drawSite(d, L, program, ox, -4);
-  title(ox, -6.2, "VAZİYET PLANI", `Arsa ${program.site.width} × ${program.site.depth} m`);
-  void siteW;
+  title(ox, -7.6, "VAZİYET PLANI", `Arsa ${program.site.width} × ${program.site.depth} m`, { w: siteW, no: "A-001", scale: "1/200" });
 
   // ---------- 2. sıra: kesit + cepheler
   const rowY = -(Math.max(program.site.depth, L.D) + 22);
   let sx = 0;
   drawSection(d, L, sx, rowY);
-  title(sx, rowY - 3.2, "A-A KESİTİ", `Kesit hattı x = ${L.cutX.toFixed(2)} m`);
-  sx += L.D + SHEET_GAP + 6;
+  title(sx, rowY - 3.4, "A-A KESİTİ", `Kesit hattı x = ${L.cutX.toFixed(2)} m`, { w: L.D, no: "A-300" });
+  sx += Math.max(L.D, 18) + SHEET_GAP + 6;
   const facades: [Facade, string][] = [["front", "ÖN (SOKAK) CEPHESİ"], ["back", "ARKA (BAHÇE) CEPHESİ"], ["left", "SOL YAN CEPHE"], ["right", "SAĞ YAN CEPHE"]];
-  for (const [f, name] of facades) {
+  facades.forEach(([f, name], i) => {
     const len = drawElevation(d, L, f, sx, rowY);
-    title(sx, rowY - 3.2, name);
-    sx += len + SHEET_GAP + 4;
-  }
+    title(sx, rowY - 3.4, name, undefined, { w: len, no: `A-20${i + 1}` });
+    sx += Math.max(len, 18) + SHEET_GAP + 4;
+  });
   return d.toBytes(unit);
 }
 

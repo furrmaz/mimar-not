@@ -52,6 +52,7 @@ const FILTERS: Record<string, Electron.FileFilter[]> = {
   glb: [{ name: "3D model (glTF)", extensions: ["glb"] }],
   json: [{ name: "Bina programı", extensions: ["json"] }],
   pdf: [{ name: "PDF", extensions: ["pdf"] }],
+  ifc: [{ name: "IFC (BIM) modeli", extensions: ["ifc"] }],
 };
 const toBuffer = (data: string | ArrayBuffer | Uint8Array) =>
   typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data);

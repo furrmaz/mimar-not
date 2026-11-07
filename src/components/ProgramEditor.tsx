@@ -1,6 +1,7 @@
 import type { Program, Room } from "../shared/schema";
 import { RoomType, Zone } from "../shared/schema";
 import type { BuildingLayout } from "../geometry/layout";
+import { AdjacencyEditor } from "./Variants";
 
 const TYPE_LABELS: Record<string, string> = {
   salon: "Salon", mutfak: "Mutfak", yemek: "Yemek", yatak: "Yatak", ebeveyn: "Ebeveyn", cocuk: "Çocuk", banyo: "Banyo", wc: "WC",
@@ -125,6 +126,8 @@ export function ProgramEditor({ program, layout, onChange }: { program: Program;
         );
       })}
       <button className="btn ghost" onClick={addFloor}>+ Kat ekle</button>
+      <div style={{ height: 14 }} />
+      <AdjacencyEditor program={program} onChange={onChange} />
 
       <div className="two-col">
         <section className="card">

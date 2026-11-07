@@ -52,6 +52,13 @@ export const SAMPLE_PROGRAM: Program = {
       ],
     },
   ],
+  adjacencies: [
+    { a: "Açık Mutfak", b: "Kiler", relation: "bitisik", reason: "Mutfağın yanında kiler istendi" },
+    { a: "Salon", b: "Açık Mutfak", relation: "bitisik", reason: "Açık mutfak salonla birlikte" },
+    { a: "Çalışma Odası", b: "Salon", relation: "uzak", reason: "Çalışma odası sessiz olmalı" },
+    { a: "Ebeveyn Yatak Odası", b: "Giyinme", relation: "bitisik", reason: "Ebeveyn süiti" },
+    { a: "Ebeveyn Yatak Odası", b: "Ebeveyn Banyosu", relation: "bitisik", reason: "Ebeveyn süiti" },
+  ],
   assumptions: [
     "Toplam kapalı alan yaklaşık 190 m² olarak alındı (kat başına ~95 m²).",
     "Zemin katta kiler ve depo eklendi.",

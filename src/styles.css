@@ -125,7 +125,7 @@ td.warn { color: #a05a00; font-weight: 600; }
 .pill.no { background: #fdecea; color: var(--bad); }
 
 .sheet { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); position: relative; overflow: hidden; margin-bottom: 14px; }
-.sheet-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.sheet-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 2; }
 .sheet-actions .btn { background: rgba(255, 255, 255, 0.9); }
 .sheet-body { overflow: auto; }
 .sheet-body svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
@@ -177,3 +177,21 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--line); border-bott
 .row.end { justify-content: flex-end; }
 .note-ok { background: #e3f2e8; color: var(--ok); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
 .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+
+/* Plan alternatifleri */
+.variants { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.variant { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
+.variant:hover { border-color: #c9c6bf; }
+.variant.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.variant-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 13px; }
+.variant-thumbs { display: flex; gap: 6px; }
+.variant-thumbs .thumb { flex: 1; min-width: 0; }
+.variant-thumbs svg { width: 100%; height: auto; display: block; }
+.variant-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; color: var(--muted); }
+.bad-text { color: var(--bad); }
+.adj-list { margin: 0; padding-left: 0; list-style: none; line-height: 1.9; font-size: 13.5px; }
+@media (max-width: 900px) { .variants { grid-template-columns: 1fr; } }
+.sheet-canvas { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
+.plan-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+.btn.small.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.settings-sub { margin: 6px 0 0; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }

@@ -102,7 +102,7 @@ export function setCurrentProject(name: string) {
 }
 
 const MIME: Record<string, string> = {
-  svg: "image/svg+xml", png: "image/png", dxf: "application/dxf", glb: "model/gltf-binary", json: "application/json", pdf: "application/pdf",
+  svg: "image/svg+xml", png: "image/png", dxf: "application/dxf", glb: "model/gltf-binary", json: "application/json", pdf: "application/pdf", ifc: "application/x-step",
 };
 
 /** Çıktıyı kaydet: masaüstünde "Farklı kaydet" penceresi, tarayıcıda indirme. */

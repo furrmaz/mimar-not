@@ -1,8 +1,8 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { saveOutput } from "../store";
 
 /** Bir SVG çizimini gösterir; SVG ve PNG olarak indirme düğmeleriyle. */
-export function SvgSheet({ svg, name }: { svg: string; name: string }) {
+export function SvgSheet({ svg, name, overlay, actions }: { svg: string; name: string; overlay?: ReactNode; actions?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const toPNG = async () => {
     const img = new Image();
@@ -21,10 +21,16 @@ export function SvgSheet({ svg, name }: { svg: string; name: string }) {
   return (
     <div className="sheet">
       <div className="sheet-actions">
+        {actions}
         <button className="btn ghost small" onClick={() => saveOutput(name, "svg", svg)}>SVG</button>
         <button className="btn ghost small" onClick={toPNG}>PNG</button>
       </div>
-      <div className="sheet-body" ref={ref} dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="sheet-body" ref={ref}>
+        <div className="sheet-canvas">
+          <div dangerouslySetInnerHTML={{ __html: svg }} />
+          {overlay}
+        </div>
+      </div>
     </div>
   );
 }

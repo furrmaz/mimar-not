@@ -3,7 +3,7 @@
 // Her katta üç bant vardır: ön bant (gündüz mekânları), orta bant (hol + merdiven), arka bant (gece mekânları).
 // Orta bant tüm katlarda aynı yerde olduğu için merdiven katlar arasında üst üste gelir.
 
-import type { Program, Room, RoomType, Zone } from "../shared/schema";
+import type { Adjacency, DesignOptions, Program, Room, RoomType, Zone } from "../shared/schema";
 
 export interface Rect {
   x: number;
@@ -56,6 +56,8 @@ export interface FloorLayout {
   walls: WallPiece[]; // açıklıklar düşülmüş duvar parçaları
   wallLines: WallPiece[]; // açıklıksız tam duvar çizgileri
   outdoor: { name: string; area: number; rect: Rect; type: string }[];
+  /** Sürüklenebilir sütun sınırları (iç sınırların x değerleri) */
+  cols: { band: "front" | "back"; key: string; xs: number[] }[];
 }
 
 export interface BuildingLayout {
@@ -72,7 +74,14 @@ export interface BuildingLayout {
   cutX: number; // A-A kesit hattı (x = sabit)
   totalHeight: number; // en üst döşeme üstü + çatı hariç
   roofHeight: number;
+  variant: number;
 }
+
+export const VARIANTS = [
+  { id: 0, name: "A · Gündüz sokak tarafında", short: "A" },
+  { id: 1, name: "B · Gündüz bahçe tarafında", short: "B" },
+  { id: 2, name: "C · Oda sırası ters", short: "C" },
+];
 
 const EXT = 0.25;
 const INT = 0.12;
@@ -92,27 +101,32 @@ const MIN_WIDTH: Partial<Record<RoomType, number>> = {
 const WET: RoomType[] = ["banyo", "wc", "camasir"];
 const SMALL_OK: RoomType[] = ["banyo", "wc", "camasir", "depo", "kiler", "teknik", "giyinme"];
 
-export function buildLayout(program: Program): BuildingLayout {
+export function buildLayout(program: Program, design: DesignOptions = program.design ?? {}): BuildingLayout {
+  const variant = design.variant ?? 0;
   const W = round2(program.footprint.width);
   const D = round2(program.footprint.depth);
   const H = program.floorHeight;
   const multi = program.floors.length > 1;
 
   const hallDepth = multi ? 2.4 : Math.min(1.5, D * 0.18);
-  const assignments = program.floors.map((f) => assignBands(f.rooms));
+  const adj = program.adjacencies ?? [];
+  const assignments = program.floors.map((f) =>
+    assignBands(f.rooms, { flip: variant === 1, reverse: variant === 2, adj: adj.filter((a) => hasRoom(f.rooms, a.a) && hasRoom(f.rooms, a.b)) }),
+  );
   // Ön bant derinliği tüm katlarda ortak (merdiven hizası için); katların alan paylarının ortalamasından
   const shares = assignments
     .map((a) => ({ f: sumArea(a.front), b: sumArea(a.back) }))
     .filter((s) => s.f + s.b > 0)
     .map((s) => s.f / (s.f + s.b));
   const share = shares.length ? shares.reduce((s, v) => s + v, 0) / shares.length : 0.5;
-  const frontDepth = round2((D - hallDepth) * Math.min(0.62, Math.max(0.38, share)));
+  let frontDepth = round2((D - hallDepth) * Math.min(0.62, Math.max(0.38, share)));
+  if (design.frontDepth != null) frontDepth = round2(Math.min(D - hallDepth - 2, Math.max(2, design.frontDepth)));
   const hallBand = { y: frontDepth, h: hallDepth };
   const stairW = multi ? Math.min(3.2, W * 0.32) : 0;
   const stair: Rect | null = multi ? { x: 0, y: hallBand.y, w: stairW, h: hallDepth } : null;
 
   const floors: FloorLayout[] = program.floors.map((f, i) =>
-    layoutFloor(f.level, f.name, assignments[i], { W, D, hallBand, stair, isGround: f.level === program.floors[0].level, H }),
+    layoutFloor(f.level, f.name, assignments[i], { W, D, hallBand, stair, isGround: f.level === program.floors[0].level, H, cols: design.cols ?? {} }),
   );
 
   // Kesit hattı: ön ve arka cephedeki pencerelerden en çoğunu kesen x (merdiven dışında)
@@ -134,7 +148,7 @@ export function buildLayout(program: Program): BuildingLayout {
 
   return {
     W, D, H, slab: SLAB, extWall: EXT, intWall: INT, roof: program.roof, stair, hallBand,
-    floors, cutX, totalHeight, roofHeight,
+    floors, cutX, totalHeight, roofHeight, variant,
   };
 }
 
@@ -145,6 +159,7 @@ interface Ctx {
   hallBand: { y: number; h: number };
   stair: Rect | null;
   isGround: boolean;
+  cols: Record<string, number[]>;
 }
 
 interface Assignment {
@@ -157,7 +172,17 @@ interface Assignment {
 const sumArea = (a: Room[]) => a.reduce((s, r) => s + r.area, 0);
 
 /** Odaları ön/arka banda dağıtır. */
-export function assignBands(rooms: Room[]): Assignment {
+export function hasRoom(rooms: { name: string }[], name: string) {
+  return rooms.some((r) => sameName(r.name, name));
+}
+export function sameName(a: string, b: string) {
+  return a.trim().toLocaleLowerCase("tr") === b.trim().toLocaleLowerCase("tr");
+}
+
+export function assignBands(rooms: Room[], opts: { flip?: boolean; reverse?: boolean; adj?: Adjacency[] } = {}): Assignment {
+  const adj = opts.adj ?? [];
+  const near2 = adj.filter((a) => a.relation === "bitisik");
+  const partners = (r: Room) => near2.flatMap((a) => (sameName(a.a, r.name) ? [a.b] : sameName(a.b, r.name) ? [a.a] : []));
   const indoor = rooms.filter((r) => r.zone !== "dis" && r.type !== "balkon" && r.type !== "teras");
   const outdoorRooms = rooms.filter((r) => !indoor.includes(r));
   const hallRooms = indoor.filter((r) => r.type === "hol" || r.type === "koridor");
@@ -167,26 +192,61 @@ export function assignBands(rooms: Room[]): Assignment {
   let back: Room[] = [];
   const flexible: Room[] = [];
   for (const r of banded) {
-    if (r.zone === "gunduz" || r.type === "antre" || r.type === "garaj" || r.type === "magaza") front.push(r);
-    else if (r.zone === "gece") back.push(r);
+    const street = r.type === "antre" || r.type === "garaj" || r.type === "magaza";
+    if (street) front.push(r);
+    else if (r.zone === "gunduz") (opts.flip ? back : front).push(r);
+    else if (r.zone === "gece") (opts.flip ? front : back).push(r);
     else flexible.push(r);
   }
   flexible.sort((a, b) => b.area - a.area);
-  for (const r of flexible) (sumArea(front) <= sumArea(back) ? front : back).push(r);
+  for (const r of flexible) {
+    const ps = partners(r);
+    if (ps.some((n) => hasRoom(front, n))) front.push(r);
+    else if (ps.some((n) => hasRoom(back, n))) back.push(r);
+    else (sumArea(front) <= sumArea(back) ? front : back).push(r);
+  }
 
   // Bantlar çok dengesizse (biri toplamın %30'undan azsa) alana göre yeniden dengele
   const tot = sumArea(front) + sumArea(back);
   if (banded.length >= 2 && Math.min(sumArea(front), sumArea(back)) < tot * 0.3) {
     // Ebeveyn odası, giyinmesi ve banyosu birlikte kalsın
     const all = [...front, ...back];
+    // Birlikte kalması gereken gruplar: ebeveyn süiti + "bitişik" istenen odalar
     const isSuite = (r: Room) => /ebeveyn/i.test(r.name) || r.type === "ebeveyn" || r.type === "giyinme";
+    const group = new Map<Room, Room[]>();
+    const join = (a: Room, b: Room) => {
+      const ga = group.get(a) ?? [a], gb = group.get(b) ?? [b];
+      if (ga === gb) return;
+      const g = [...ga, ...gb.filter((x) => !ga.includes(x))];
+      for (const x of g) group.set(x, g);
+    };
     const suite = all.filter(isSuite);
-    const units: Room[][] = [...(suite.length ? [suite] : []), ...all.filter((r) => !isSuite(r)).map((r) => [r])];
+    for (let i = 1; i < suite.length; i++) join(suite[0], suite[i]);
+    for (const r of all) for (const n of partners(r)) { const o = all.find((x) => sameName(x.name, n)); if (o) join(r, o); }
+    const half = sumArea(all) * 0.62;
+    const units: Room[][] = [];
+    const seen = new Set<Room>();
+    for (const r of all) {
+      if (seen.has(r)) continue;
+      const g = group.get(r) ?? [r];
+      g.forEach((x) => seen.add(x));
+      if (sumArea(g) > half) units.push(...g.map((x) => [x])); // çok büyük grup bantları bozmasın
+      else units.push(g);
+    }
     units.sort((a, b) => sumArea(b) - sumArea(a));
     front = [];
     back = [];
+    const dayBand = opts.flip ? back : front;
+    const nightBand = opts.flip ? front : back;
+    const cap = tot * 0.6;
     for (const u of units) {
-      const target = sumArea(front) <= sumArea(back) ? front : back;
+      const ps = u.flatMap(partners);
+      const pref = ps.some((n) => hasRoom(front, n)) ? front : ps.some((n) => hasRoom(back, n)) ? back : null;
+      const natural = u.some((r) => r.zone === "gunduz") ? dayBand : u.some((r) => r.zone === "gece") ? nightBand : null;
+      const smaller = sumArea(front) <= sumArea(back) ? front : back;
+      let target = smaller;
+      if (pref && sumArea(pref) + sumArea(u) <= cap) target = pref;
+      else if (natural && sumArea(front) === sumArea(back)) target = natural;
       target.push(...u);
     }
     // antre/garaj sokak tarafında olsun
@@ -195,8 +255,28 @@ export function assignBands(rooms: Room[]): Assignment {
       if (i >= 0) front.push(...back.splice(i, 1));
     }
   }
-  front.sort((a, b) => (FRONT_ORDER[a.type] ?? 9) - (FRONT_ORDER[b.type] ?? 9));
-  back.sort((a, b) => (BACK_ORDER[a.type] ?? 9) - (BACK_ORDER[b.type] ?? 9));
+  const fo = (r: Room) => FRONT_ORDER[r.type] ?? (opts.flip ? BACK_ORDER[r.type] : undefined) ?? 9;
+  const bo = (r: Room) => BACK_ORDER[r.type] ?? (opts.flip ? FRONT_ORDER[r.type] : undefined) ?? 9;
+  front.sort((a, b) => fo(a) - fo(b));
+  back.sort((a, b) => bo(a) - bo(b));
+  if (opts.reverse) { front.reverse(); back.reverse(); }
+  // Komşuluk istekleri: "bitişik" çiftleri yan yana getir, "uzak" çiftleri ayır
+  for (const band of [front, back]) {
+    for (const a of adj) {
+      const i = band.findIndex((r) => sameName(r.name, a.a));
+      const j = band.findIndex((r) => sameName(r.name, a.b));
+      if (i < 0 || j < 0) continue;
+      if (a.relation === "bitisik" && Math.abs(i - j) > 1) {
+        const [b] = band.splice(j, 1);
+        const ni = band.findIndex((r) => sameName(r.name, a.a));
+        band.splice(ni + 1, 0, b);
+      } else if (a.relation === "uzak" && Math.abs(i - j) <= 1 && band.length > 2) {
+        const [b] = band.splice(j, 1);
+        const ni = band.findIndex((r) => sameName(r.name, a.a));
+        if (ni < band.length / 2) band.push(b); else band.unshift(b);
+      }
+    }
+  }
   // Merdivenin önü/arkası holle temas etmez; ilk sütuna küçük oda gelmesin
   for (const band of [front, back]) {
     if (band.length > 1 && SMALL_OK.includes(band[0].type)) {
@@ -214,6 +294,13 @@ function layoutFloor(level: number, name: string, asg: Assignment, ctx: Ctx): Fl
   const sum = sumArea;
 
   const placed: PlacedRoom[] = [];
+  const cols: FloorLayout["cols"] = [];
+  const colSpec = (band: "front" | "back") => {
+    const key = `${level}-${band}`;
+    const entry = { band, key, xs: [] as number[] };
+    cols.push(entry);
+    return { override: ctx.cols[key], report: (xs: number[]) => (entry.xs = xs) };
+  };
   let uid = 0;
   const id = (p: string) => `L${level}-${p}${uid++}`;
 
@@ -222,14 +309,14 @@ function layoutFloor(level: number, name: string, asg: Assignment, ctx: Ctx): Fl
 
   // Tek bant doluysa diğer bantı da kullan (ör. tek odalı garaj katı)
   if (front.length && !back.length) {
-    placeBand(front, { x: 0, y: 0, w: W, h: hallBand.y }, "front", placed, id, hallBand.y);
+    placeBand(front, { x: 0, y: 0, w: W, h: hallBand.y }, "front", placed, id, hallBand.y, colSpec("front"));
     placed.push(fillerRoom("Depo / Boş Alan", backRect, "back", id));
   } else if (!front.length && back.length) {
-    placeBand(back, backRect, "back", placed, id, backRect.y);
+    placeBand(back, backRect, "back", placed, id, backRect.y, colSpec("back"));
     placed.push(fillerRoom("Boş Alan", frontRect, "front", id));
   } else if (front.length && back.length) {
-    placeBand(front, frontRect, "front", placed, id, hallBand.y);
-    placeBand(back, backRect, "back", placed, id, backRect.y);
+    placeBand(front, frontRect, "front", placed, id, hallBand.y, colSpec("front"));
+    placeBand(back, backRect, "back", placed, id, backRect.y, colSpec("back"));
   }
 
   // Hol + merdiven
@@ -288,7 +375,7 @@ function layoutFloor(level: number, name: string, asg: Assignment, ctx: Ctx): Fl
   const wallLines = buildWallLines(wallRooms, W, D);
   const walls = subtractOpenings(wallLines, openings);
 
-  return { level, name, z: level * ctx.H, rooms: placed, openings, walls, wallLines, outdoor };
+  return { level, name, z: level * ctx.H, rooms: placed, openings, walls, wallLines, outdoor, cols };
 }
 
 function fillerRoom(name: string, rect: Rect, band: PlacedRoom["band"], id: (p: string) => string): PlacedRoom {
@@ -307,6 +394,7 @@ function placeBand(
   out: PlacedRoom[],
   id: (p: string) => string,
   hallEdgeY: number,
+  spec?: { override?: number[]; report: (xs: number[]) => void },
 ) {
   const total = rooms.reduce((s, r) => s + r.area, 0);
   const scale = (band.w * band.h) / total;
@@ -338,7 +426,15 @@ function placeBand(
   }
   const wsum = widths.reduce((s, w) => s + w, 0);
   widths = widths.map((w) => (w * band.w) / wsum);
+  // Mimarın sürükleyerek verdiği sınırlar (sütun sayısı tutuyorsa)
+  const ov = spec?.override;
+  if (ov && ov.length === cols.length - 1) {
+    const xs = [band.x, ...ov.map((v) => Math.min(band.x + band.w - 0.8, Math.max(band.x + 0.8, v))), band.x + band.w];
+    const ok = xs.every((v, i) => i === 0 || v - xs[i - 1] >= 0.8);
+    if (ok) widths = xs.slice(1).map((v, i) => v - xs[i]);
+  }
   let x = band.x;
+  const bounds: number[] = [];
   cols.forEach((c, ci) => {
     const w = ci === cols.length - 1 ? round2(band.x + band.w - x) : round2(widths[ci]);
     if (c.rooms.length === 1) {
@@ -358,7 +454,9 @@ function placeBand(
       }
     }
     x = round2(x + w);
+    if (ci < cols.length - 1) bounds.push(x);
   });
+  spec?.report(bounds);
 
   function mk(r: Room, rect: Rect): PlacedRoom {
     return { id: id(r.type), name: r.name, type: r.type, zone: r.zone, requestedArea: r.area, rect, band: bandName };

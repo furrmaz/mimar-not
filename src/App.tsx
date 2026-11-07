@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Program } from "./shared/schema";
 import { buildLayout } from "./geometry/layout";
-import { planSVG, sectionSVG, elevationSVG, sitePlanSVG, FACADE_NAMES, type Facade } from "./geometry/svg";
+import { planSVG, sectionSVG, elevationSVG, sitePlanSVG, setAntet, FACADE_NAMES, type Facade } from "./geometry/svg";
 import { buildDXF, type DxfUnit } from "./geometry/dxf";
 import { desktop } from "./desktop";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -13,6 +13,10 @@ import { download, fromProjectFile, generateProgram, loadProjects, newProject, s
 import { SAMPLE_NOTES, SAMPLE_PROGRAM } from "./sample";
 import { useDictation } from "./useDictation";
 import { AreasPanel, IssueList } from "./components/AreasPanel";
+import { AdjacencyCard, VariantPicker } from "./components/Variants";
+import { PlanEditOverlay } from "./components/PlanEditor";
+import { buildIFC } from "./geometry/ifc";
+import { loadOffice, todayTR, type OfficeInfo } from "./office";
 import { roomChecks } from "./geometry/roomcheck";
 
 /** Demo derlemesi (VITE_DEMO=1): API ve indirmeler olmadan, örnek projeyle açılır. */
@@ -38,6 +42,8 @@ export default function App() {
   });
   const [activeId, setActiveId] = useState(projects[0].id);
   const [tab, setTab] = useState<Tab>(DEMO ? "plan" : "program");
+  const [editPlan, setEditPlan] = useState(false);
+  const [office, setOffice] = useState<OfficeInfo>(loadOffice);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [floorIdx, setFloorIdx] = useState(0);
@@ -77,6 +83,8 @@ export default function App() {
   });
 
   const program = project.program;
+  // Antet bilgileri: çizimler bu render'da üretilmeden önce ayarlanır
+  setAntet(office, { name: program?.projectName ?? "", client: program?.clientName ?? "", date: todayTR() });
   useEffect(() => setCurrentProject(program?.projectName || project.title), [program?.projectName, project.title]);
   const layout = useMemo(() => (program ? buildLayout(program) : null), [program]);
   const issues = useMemo(() => (layout ? roomChecks(layout) : []), [layout]);
@@ -94,7 +102,7 @@ export default function App() {
     setError(null);
     try {
       const p = await generateProgram(project.notes, mode === "update" ? program : null);
-      update({ program: p, title: p.clientName || p.projectName || project.title });
+      update({ program: mode === "update" && program?.design ? { ...p, design: program.design } : p, title: p.clientName || p.projectName || project.title });
       setTab("program");
     } catch (e) {
       setError((e as Error).message);
@@ -175,7 +183,7 @@ export default function App() {
 
   const sendToAutoCAD = async () => {
     if (!program || !layout) return;
-    const dxf = buildDXF(layout, program, dxfUnit);
+    const dxf = buildDXF(layout, program, dxfUnit, { ...office, date: todayTR() });
     const name = `${program.projectName} - cizim seti`;
     if (desktop) {
       const r = await desktop.saveAndOpen(program.projectName, name, "dxf", dxf);
@@ -225,15 +233,11 @@ export default function App() {
             {desktop ? "Claude API anahtarı girilmedi · Ayarlar" : "ANTHROPIC_API_KEY tanımlı değil"}
           </button>
         )}
-        {desktop && (
-          <>
-            <span className="spacer" />
-            <button className="btn ghost small" onClick={() => desktop!.openFolder(program?.projectName || project.title)}>Çıktı klasörü</button>
-            <button className="btn ghost small" onClick={() => setShowSettings(true)}>Ayarlar</button>
-          </>
-        )}
+        <span className="spacer" />
+        {desktop && <button className="btn ghost small" onClick={() => desktop!.openFolder(program?.projectName || project.title)}>Çıktı klasörü</button>}
+        <button className="btn ghost small" onClick={() => setShowSettings(true)}>Ayarlar</button>
       </header>
-      {showSettings && <SettingsDialog onClose={() => { setShowSettings(false); refreshHealth(); }} />}
+      {showSettings && <SettingsDialog onOffice={setOffice} onClose={() => { setShowSettings(false); refreshHealth(); }} />}
       {toast && <div className="toast" role="status">{toast}</div>}
 
       <div className="layout">
@@ -299,6 +303,7 @@ export default function App() {
                   <button className="btn small primary-outline" onClick={sendToAutoCAD} title="Planlar, kesit, 4 cephe ve vaziyet planı tek DXF dosyasında">
                     {desktop ? "AutoCAD'de aç" : "DXF (AutoCAD)"}
                   </button>
+                  <button className="btn ghost small" onClick={() => saveOutput(program.projectName, "ifc", buildIFC(layout, program, office.architect))} title="IFC4 BIM modeli: katlar, duvarlar, kapı/pencere, döşeme ve mahaller (Revit, ArchiCAD, BricsCAD)">IFC (BIM)</button>
                   <button className="btn ghost small" onClick={() => saveOutput(`${program.projectName}-program`, "json", JSON.stringify(program, null, 2))}>JSON</button>
                   <button className="btn small" onClick={savePDF}>Çizim seti (PDF)</button>
                 </div>
@@ -307,12 +312,25 @@ export default function App() {
                 {tab === "program" && <ProgramEditor program={program} layout={layout} onChange={setProgram} />}
                 {tab === "plan" && (
                   <>
+                    <VariantPicker program={program} onChange={setProgram} />
                     <div className="subtabs">
                       {layout.floors.map((f, i) => (
                         <button key={f.level} className={floorIdx === i ? "active" : ""} onClick={() => setFloorIdx(i)}>{f.name}</button>
                       ))}
+                      <span className="spacer" />
+                      <button className={editPlan ? "active" : ""} onClick={() => setEditPlan(!editPlan)} title="Oda sınırlarını ve hol bandını sürükleyerek değiştir">
+                        {editPlan ? "Düzenlemeyi bitir" : "✎ Sınırları düzenle"}
+                      </button>
+                      {(program.design?.cols || program.design?.frontDepth != null) && (
+                        <button onClick={() => setProgram({ ...program, design: { variant: program.design?.variant } })} title="Elle yapılan sınır değişikliklerini geri al">Otomatiğe dön</button>
+                      )}
                     </div>
-                    <SvgSheet svg={planSVG(layout, layout.floors[floorIdx] ?? layout.floors[0], program, { flag: flagged })} name={`${program.projectName}-${layout.floors[floorIdx]?.name}`} />
+                    {editPlan && <div className="muted small" style={{ marginBottom: 8 }}>Turuncu kesikli çizgileri sürükleyin: dikey olanlar yan yana odaların sınırı, yatay olan hol bandının yeri (tüm katlarda birlikte kayar). 5 cm adımla oturur.</div>}
+                    <SvgSheet
+                      svg={planSVG(layout, layout.floors[floorIdx] ?? layout.floors[0], program, { flag: flagged })}
+                      name={`${program.projectName}-${layout.floors[floorIdx]?.name}`}
+                      overlay={editPlan ? <PlanEditOverlay L={layout} floor={layout.floors[floorIdx] ?? layout.floors[0]} program={program} onChange={setProgram} /> : undefined}
+                    />
                     {(() => {
                       const fl = layout.floors[floorIdx] ?? layout.floors[0];
                       const here = issues.filter((i) => !i.soft && i.floor === fl.name);
@@ -324,6 +342,7 @@ export default function App() {
                         </section>
                       ) : null;
                     })()}
+                    <AdjacencyCard program={program} layout={layout} />
                   </>
                 )}
                 {tab === "section" && <SvgSheet svg={sectionSVG(layout, program)} name={`${program.projectName}-kesit-AA`} />}
@@ -341,7 +360,7 @@ export default function App() {
                 {tab === "zoning" && <ZoningPanel program={program} layout={layout} onChange={setProgram} />}
                 {tab === "areas" && <AreasPanel program={program} layout={layout} />}
               </div>
-              <PrintSet program={program} layout={layout} />
+              <PrintSet program={program} layout={layout} office={office} />
             </>
           )}
         </main>
@@ -351,7 +370,7 @@ export default function App() {
 }
 
 /** Yalnızca yazdırırken görünen çizim seti (tarayıcıdan PDF olarak kaydedilir). */
-function PrintSet({ program, layout }: { program: Program; layout: ReturnType<typeof buildLayout> }) {
+function PrintSet({ program, layout, office }: { program: Program; layout: ReturnType<typeof buildLayout>; office: OfficeInfo }) {
   const sheets = [
     ...layout.floors.map((f) => planSVG(layout, f, program)),
     sectionSVG(layout, program),
@@ -364,6 +383,8 @@ function PrintSet({ program, layout }: { program: Program; layout: ReturnType<ty
       <div className="print-cover">
         <h1>{program.projectName}</h1>
         <p>{program.buildingType} · {program.clientName}</p>
+        {(office.office || office.architect) && <p>{[office.office, office.architect, office.regNo && `Sicil ${office.regNo}`, office.contact].filter(Boolean).join(" · ")}</p>}
+        <p className="small">{todayTR()}</p>
         <p>{program.summary}</p>
         <h3>Müşteriye sorulacaklar</h3>
         <ul>{program.openQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul>

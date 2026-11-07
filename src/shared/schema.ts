@@ -79,7 +79,27 @@ export const ProgramSchema = z.object({
   floorHeight: z.number().describe("Döşemeden döşemeye kat yüksekliği (m), tipik 3.0"),
   roof: z.enum(["duz", "besik", "kirma"]).describe("duz: düz çatı/teras, besik: beşik çatı, kırma: kırma çatı"),
   floors: z.array(FloorSchema),
+  adjacencies: z
+    .array(
+      z.object({
+        a: z.string().describe("Birinci odanın adı (floors içindeki name ile birebir aynı)"),
+        b: z.string().describe("İkinci odanın adı (aynı katta)"),
+        relation: z.enum(["bitisik", "uzak"]).describe("bitisik: duvar komşusu olsun; uzak: yan yana gelmesin"),
+        reason: z.string().describe("Kısa gerekçe, ör. 'Mutfaktan kilere doğrudan geçiş'"),
+      }),
+    )
+    .describe("Notlardan çıkan ya da işlev gereği önemli oda komşulukları (aynı kattaki odalar arasında)"),
   assumptions: z.array(z.string()).describe("Notlarda olmayan, senin yaptığın varsayımlar"),
   openQuestions: z.array(z.string()).describe("Mimarın müşteriye sorması gereken netleşmemiş konular"),
 });
-export type Program = z.infer<typeof ProgramSchema>;
+/** Mimarın uygulamada yaptığı yerleşim tercihleri (Claude üretmez, proje dosyasında saklanır). */
+export interface DesignOptions {
+  /** 0: gündüz sokak tarafında, 1: gündüz bahçe tarafında, 2: oda sırası ters */
+  variant?: number;
+  /** Ön bant derinliği (m), sürükleyerek ayarlanır */
+  frontDepth?: number;
+  /** "<kat>-<bant>" → sütun sınırlarının x koordinatları */
+  cols?: Record<string, number[]>;
+}
+export type Program = z.infer<typeof ProgramSchema> & { design?: DesignOptions };
+export type Adjacency = z.infer<typeof ProgramSchema>["adjacencies"][number];

@@ -46,9 +46,12 @@ API anahtarı olmadan da "Örnek görüşmeyi yükle" ile bütün çizimleri ve 
 | Vaziyet planı + imar kontrolü | SVG, PNG |
 | 3D model (çatı aç/kapa, kat seçimi, maket kesiti) | GLB, PNG |
 | Alan tablosu, yaklaşık maliyet, asgari ölçü uyarıları | Alanlar & Maliyet sekmesi |
+| BIM modeli (katlar, duvarlar, kapı/pencere boşlukları, döşemeler, mahaller) | IFC4 |
 | Bina programı | JSON |
 | Proje dosyası (notlar + program) | .mimarnot (Dosya → Kaydet / Aç, Ctrl+S / Ctrl+O) |
 | Çizim seti | Tarayıcıdan PDF (A3 yatay) |
+
+Kat Planları sekmesinde üç plan alternatifi (A: gündüz sokak tarafında, B: gündüz bahçe tarafında, C: oda sırası ters) komşuluk isteklerine ve asgari ölçülere göre puanlanır; biri seçilir. "Sınırları düzenle" ile oda sınırları ve hol bandı sürüklenerek ayarlanır. Ayarlar'a girilen ofis / mimar bilgileri tüm paftaların antetine yazılır.
 
 Kurulum sürümü (NSIS) açılışta GitHub Releases'tan yeni sürümü denetler ve indirir; taşınabilir sürüm güncellenmez.
 

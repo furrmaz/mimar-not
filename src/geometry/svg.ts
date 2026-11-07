@@ -3,6 +3,7 @@ import type { BuildingLayout, FloorLayout, Opening, Rect } from "./layout";
 import { ZONE_COLORS, near } from "./layout";
 import type { Program } from "../shared/schema";
 import { zoningCheck } from "./zoning";
+import type { OfficeInfo } from "../office";
 import { furnishFloor, furnitureSymbol, type Prim } from "./furniture";
 
 const S = 50; // px / m
@@ -14,7 +15,53 @@ const FONT = `font-family="Inter, 'Segoe UI', Arial, sans-serif"`;
 const f2 = (v: number) => v.toFixed(2);
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function svgDoc(w: number, h: number, body: string) {
+// ---------------------------------------------------------------- ANTET
+export interface SheetMeta { title: string; no: string; scale: string }
+let office: OfficeInfo = { office: "", architect: "", regNo: "", contact: "" };
+let antetProject = { name: "", client: "", date: "" };
+/** Antet kutusu bilgileri; çizimler üretilmeden önce uygulama çağırır. */
+export function setAntet(o: OfficeInfo, project: { name: string; client: string; date: string }) {
+  office = o;
+  antetProject = project;
+}
+const ANTET_H = 74;
+
+function antet(w: number, y: number, m: SheetMeta) {
+  const x0 = 12, x1 = w - 12, h = ANTET_H - 14;
+  const cells: [number, string, string, number][] = [
+    // [genişlik payı, etiket, değer, yazı boyu]
+    [3.6, office.office || "Mimarlık ofisi", [office.architect, office.regNo && `Sicil ${office.regNo}`].filter(Boolean).join(" · ") || "Mimar", 12],
+    [3, "Proje", `${antetProject.name}${antetProject.client ? " · " + antetProject.client : ""}`, 12],
+    [2.4, "Pafta", m.title, 12],
+    [1, "Ölçek", m.scale, 11],
+    [1.2, "Tarih", antetProject.date, 11],
+    [0.9, "Pafta no", m.no, 13],
+  ];
+  const tot = cells.reduce((s, c) => s + c[0], 0);
+  const out: string[] = [`<g><rect x="${x0}" y="${y}" width="${x1 - x0}" height="${h}" fill="#fff" stroke="${INK}" stroke-width="1"/>`];
+  let x = x0;
+  cells.forEach(([k, label, value, fs], i) => {
+    const cw = ((x1 - x0) * k) / tot;
+    if (i > 0) out.push(`<line x1="${x.toFixed(1)}" y1="${y}" x2="${x.toFixed(1)}" y2="${y + h}" stroke="${INK}" stroke-width="0.6"/>`);
+    // sığmazsa önce yazıyı küçült (en az 8 px), yine sığmazsa kısalt
+    const fit = Math.max(8, Math.min(fs, (cw - 14) / (Math.max(1, value.length) * 0.56)));
+    const maxChars = Math.max(6, Math.floor((cw - 14) / (fit * 0.56)));
+    const v = value.length > maxChars ? value.slice(0, maxChars - 1) + "…" : value;
+    out.push(text(x + 7, y + 15, label.toLocaleUpperCase("tr"), 8, { anchor: "start", fill: THIN, weight: 600 }));
+    out.push(text(x + 7, y + 36, v, Math.round(fit * 10) / 10, { anchor: "start", weight: i === 0 || i === 5 ? 700 : 500 }));
+    if (i === 0 && office.contact) out.push(text(x + 7, y + 51, office.contact.slice(0, maxChars + 8), 8, { anchor: "start", fill: THIN }));
+    x += cw;
+  });
+  out.push("</g>");
+  return out.join("");
+}
+
+function svgDoc(w: number, h: number, body: string, meta?: SheetMeta) {
+  if (meta) {
+    w = Math.max(w, 760);
+    body += antet(w, h + 4, meta);
+    h += ANTET_H;
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w.toFixed(0)} ${h.toFixed(0)}" width="${w.toFixed(0)}" height="${h.toFixed(0)}" ${FONT}><rect width="100%" height="100%" fill="#ffffff"/>${body}</svg>`;
 }
 
@@ -36,7 +83,8 @@ function dimLine(x1: number, y1: number, x2: number, y2: number, label: string, 
 
 // ---------------------------------------------------------------- KAT PLANI
 
-export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program, opts: { flag?: Set<string> } = {}): string {
+/** Kat planı çizim çerçevesi: dünya (m) ↔ SVG px dönüşümü. Plan düzenleyici de bunu kullanır. */
+export function planFrame(L: BuildingLayout, floor: FloorLayout) {
   const M = 2.2; // kenar boşluğu (m)
   const outDepth = floor.outdoor.reduce((s, o) => Math.max(s, o.rect.y + o.rect.h - L.D), 0);
   const Wm = L.W + 2 * M;
@@ -45,6 +93,13 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
   // dünya → px (ön cephe altta)
   const X = (x: number) => (x + M) * S;
   const Y = (y: number) => (L.D + outDepth - y + M) * S + titleH;
+  const invX = (px: number) => px / S - M;
+  const invY = (py: number) => L.D + outDepth + M - (py - titleH) / S;
+  return { M, S, Wm, Dm, titleH, outDepth, X, Y, invX, invY, width: Wm * S, height: Dm * S + titleH };
+}
+
+export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program, opts: { flag?: Set<string>; thumb?: boolean } = {}): string {
+  const { Wm, Dm, titleH, X, Y, outDepth } = planFrame(L, floor);
   const parts: string[] = [];
 
   parts.push(text(16, 26, `${program.projectName} — ${floor.name}`, 18, { anchor: "start", weight: 600 }));
@@ -65,7 +120,7 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
   }
 
   // Mobilya
-  for (const f of furnishFloor(floor)) parts.push(primsSVG(furnitureSymbol(f), X, Y));
+  if (!opts.thumb) for (const f of furnishFloor(floor)) parts.push(primsSVG(furnitureSymbol(f), X, Y));
 
   // Merdiven (U dönüşlü)
   if (L.stair) parts.push(stairPlan(L.stair, X, Y, floor.level === L.floors[L.floors.length - 1].level));
@@ -100,6 +155,11 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
     if (!small) parts.push(text(cx, cy + 24, `${f2(r.rect.w)} × ${f2(r.rect.h)}`, 9, { fill: "#8c8c90", halo }));
   }
 
+  if (opts.thumb) {
+    // küçük önizleme: başlık, ölçü ve kesit hattı yok, yalnız bina
+    const x0 = X(0) - 10, y0 = Y(L.D + outDepth) - 10;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${L.W * S + 20} ${(L.D + outDepth) * S + 20}" ${FONT}>${parts.slice(2).join("")}</svg>`;
+  }
   // Ölçüler: alt toplam + ön bant zinciri, sağ toplam + bant zinciri
   const yb = Y(0) + 1.5 * S;
   parts.push(dimLine(X(0), yb, X(L.W), yb, `${f2(L.W)}`, -1));
@@ -121,7 +181,7 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
   // Sokak / bahçe etiketi
   parts.push(text(X(L.W / 2), Y(0) + 2.0 * S, "SOKAK CEPHESİ", 10, { fill: THIN, weight: 600 }));
 
-  return svgDoc(Wm * S, Dm * S + titleH, parts.join(""));
+  return svgDoc(Wm * S, Dm * S + titleH, parts.join(""), { title: `${floor.name} planı`, no: `A-${100 + floor.level}`, scale: "1/100" });
 }
 
 function primsSVG(ps: Prim[], X: (x: number) => number, Y: (y: number) => number) {
@@ -313,7 +373,7 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
   p.push(text(X(0), Z(groundZ) + 16, "ÖN", 10, { fill: THIN, weight: 700 }));
   p.push(text(X(L.D), Z(groundZ) + 16, "ARKA", 10, { fill: THIN, weight: 700 }));
 
-  return svgDoc(widthM * S, heightM * S + titleH, p.join(""));
+  return svgDoc(widthM * S, heightM * S + titleH, p.join(""), { title: "A-A kesiti", no: "A-300", scale: "1/100" });
 }
 
 function levelMark(x: number, y: number, z: number) {
@@ -437,7 +497,7 @@ export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade
   // yükseklik ölçüsü
   p.push(dimLine(U(-1.2), Z(groundZ), U(-1.2), Z(zt + rise), `${f2(zt + rise - groundZ)}`, -1));
   p.push(dimLine(U(0), Z(groundZ) + 0.6 * S, U(len), Z(groundZ) + 0.6 * S, f2(len), -1));
-  return svgDoc(widthM * S, heightM * S + titleH, p.join(""));
+  return svgDoc(widthM * S, heightM * S + titleH, p.join(""), { title: FACADE_NAMES[facade], no: `A-20${(["front", "back", "left", "right"] as Facade[]).indexOf(facade) + 1}`, scale: "1/100" });
 }
 
 function person(x: number, yGround: number) {
@@ -482,5 +542,5 @@ export function sitePlanSVG(L: BuildingLayout, program: Program): string {
   // kuzey oku
   const nx = X(sw) + 50, ny = Y(sd) + 20;
   p.push(`<polygon points="${nx},${ny} ${nx - 8},${ny + 26} ${nx},${ny + 20} ${nx + 8},${ny + 26}" fill="${INK}"/>${text(nx, ny - 4, "K", 11, { weight: 700 })}`);
-  return svgDoc(sw * sc + 2 * M + 80, sd * sc + 2 * M + titleH + 30, p.join(""));
+  return svgDoc(Math.max(sw * sc + 2 * M + 80, 760), sd * sc + 2 * M + titleH + 30, p.join(""), { title: "Vaziyet planı", no: "A-001", scale: `1/${Math.round((100 * 50) / sc / 50) * 50}` });
 }
