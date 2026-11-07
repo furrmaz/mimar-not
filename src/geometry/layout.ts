@@ -75,6 +75,14 @@ export interface BuildingLayout {
   totalHeight: number; // en üst döşeme üstü + çatı hariç
   roofHeight: number;
   variant: number;
+  /** Açık otopark: binaya bağlanmaz, vaziyet planında ön bahçede gösterilir */
+  parking: { name: string; area: number; cars: number }[];
+}
+
+/** Açık otopark / araç park yeri (bina oturumuna ve kat planına girmez). */
+export function isParking(r: Room) {
+  return (r.zone === "dis" || r.type === "balkon" || r.type === "teras" || r.type === "diger") && /otopark|park yeri|araç park|carport/i.test(`${r.name} ${r.note}`)
+    || (r.type === "garaj" && r.zone === "dis");
 }
 
 export const VARIANTS = [
@@ -110,8 +118,12 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
 
   const hallDepth = multi ? 2.4 : Math.min(1.5, D * 0.18);
   const adj = program.adjacencies ?? [];
+  const parking = program.floors.flatMap((f) => f.rooms.filter(isParking)).map((r) => {
+    const m = /(\d+)\s*(araç|araba|otomobil)/i.exec(`${r.name} ${r.note}`);
+    return { name: r.name, area: r.area, cars: Math.max(1, Math.min(6, m ? +m[1] : Math.round(r.area / 12.5))) };
+  });
   const assignments = program.floors.map((f) =>
-    assignBands(f.rooms, { flip: variant === 1, reverse: variant === 2, adj: adj.filter((a) => hasRoom(f.rooms, a.a) && hasRoom(f.rooms, a.b)) }),
+    assignBands(f.rooms.filter((r) => !isParking(r)), { flip: variant === 1, reverse: variant === 2, adj: adj.filter((a) => hasRoom(f.rooms, a.a) && hasRoom(f.rooms, a.b)) }),
   );
   // Ön bant derinliği tüm katlarda ortak (merdiven hizası için); katların alan paylarının ortalamasından
   const shares = assignments
@@ -148,7 +160,7 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
 
   return {
     W, D, H, slab: SLAB, extWall: EXT, intWall: INT, roof: program.roof, stair, hallBand,
-    floors, cutX, totalHeight, roofHeight, variant,
+    floors, cutX, totalHeight, roofHeight, variant, parking,
   };
 }
 
@@ -345,12 +357,24 @@ function layoutFloor(level: number, name: string, asg: Assignment, ctx: Ctx): Fl
     .filter((p) => p.band === "back" && near(p.rect.y + p.rect.h, D))
     .sort((a, b) => hostPref(a) - hostPref(b) || b.rect.w - a.rect.w);
   const host = outdoorRooms.length ? hosts[0] : undefined;
-  const outdoor = outdoorRooms.map((r, i) => {
-    const depth = r.type === "teras" ? Math.min(3, Math.max(2, r.area / W)) : 1.6;
+  // Arka cephe boyunca yan yana; sığmayan bir sonraki sıraya
+  let rowY = D, rowX = 0, rowDepth = 0;
+  const sized = outdoorRooms.map((r) => {
+    const big = r.type === "teras" || r.area > 12;
+    const depth = big ? Math.min(3.5, Math.max(2, r.area / W)) : 1.6;
     const w = Math.min(W, Math.max(2, r.area / depth));
-    const cx = host ? host.rect.x + host.rect.w / 2 : W / 2;
-    const x = Math.min(W - w, Math.max(0, cx - w / 2));
-    return { name: r.name, area: r.area, type: r.type, rect: { x, y: D + i * depth, w, h: depth } };
+    return { r, depth, w: round2(w) };
+  });
+  const totalW = sized.reduce((s, o) => s + o.w, 0);
+  const cx = host ? host.rect.x + host.rect.w / 2 : W / 2;
+  const startX = sized.length === 1 ? Math.min(W - sized[0].w, Math.max(0, cx - sized[0].w / 2)) : totalW <= W ? Math.min(W - totalW, Math.max(0, cx - totalW / 2)) : 0;
+  rowX = startX;
+  const outdoor = sized.map(({ r, depth, w }) => {
+    if (rowX + w > W + 0.01) { rowY += rowDepth; rowX = 0; rowDepth = 0; }
+    const rect = { x: round2(rowX), y: rowY, w, h: round2(depth) };
+    rowX += w;
+    rowDepth = Math.max(rowDepth, depth);
+    return { name: r.name, area: r.area, type: r.type, rect };
   });
   // Balkona açılan kapı
   if (outdoor.length) {
@@ -441,7 +465,9 @@ function placeBand(
       const r = c.rooms[0];
       out.push(mk(r, { x, y: band.y, w, h: band.h }));
     } else {
-      const [a, b] = c.rooms;
+      // Hole bakan tarafa kendi kapısı holden açılacak oda gelsin; süit odaları (ebeveyn banyosu, giyinme) içeride kalır
+      const ensuite = (r: Room) => r.type === "giyinme" || (r.type === "banyo" && /ebeveyn/i.test(r.name));
+      const [a, b] = ensuite(c.rooms[0]) && !ensuite(c.rooms[1]) ? [c.rooms[1], c.rooms[0]] : c.rooms;
       const ha = round2((band.h * a.area) / c.area);
       // a hole bakan tarafta
       const hallSideTop = near(hallEdgeY, band.y); // arka bant: hol kenarı üstte (y küçük)

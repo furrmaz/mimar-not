@@ -2,7 +2,7 @@
 import type { BuildingLayout, FloorLayout, Opening, Rect } from "./layout";
 import { ZONE_COLORS, near } from "./layout";
 import type { Program } from "../shared/schema";
-import { zoningCheck } from "./zoning";
+import { parkingStalls, zoningCheck } from "./zoning";
 import type { OfficeInfo } from "../office";
 import { furnishFloor, furnitureSymbol, type Prim } from "./furniture";
 
@@ -147,10 +147,24 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
     const cy = Y(r.rect.y + r.rect.h / 2);
     const area = r.rect.w * r.rect.h;
     const small = r.rect.w < 2.2 || r.rect.h < 1.6;
-    const fs = small ? 9 : 12;
-    const label = small && r.name.length > 12 ? r.name.split(" ")[0] : r.name;
+    // Ad sığmazsa iki satıra böl; yine sığmazsa küçült
+    const avail = r.rect.w * S - 10;
+    const fitFs = (t: string) => avail / (Math.max(1, t.length) * 0.56);
+    const maxFs = small ? 9 : 12;
+    let lines = [r.name];
+    if (fitFs(r.name) < 8 && r.name.includes(" ")) {
+      const words = r.name.split(" ");
+      let best = 1, bestLen = Infinity;
+      for (let k = 1; k < words.length; k++) {
+        const l = Math.max(words.slice(0, k).join(" ").length, words.slice(k).join(" ").length);
+        if (l < bestLen) { bestLen = l; best = k; }
+      }
+      lines = [words.slice(0, best).join(" "), words.slice(best).join(" ")];
+    }
+    const fs = Math.max(7, Math.round(Math.min(maxFs, ...lines.map(fitFs)) * 10) / 10);
     const halo = ZONE_COLORS[r.zone] ?? "#f5f5f5";
-    parts.push(text(cx, cy - (small ? 2 : 6), label, fs, { weight: 600, halo }));
+    const shift = (lines.length - 1) * fs * 1.1;
+    lines.forEach((ln, k) => parts.push(text(cx, cy - (small ? 2 : 6) - shift + k * fs * 1.1, ln, fs, { weight: 600, halo })));
     parts.push(text(cx, cy + (small ? 9 : 10), `${area.toFixed(1)} m²`, small ? 8 : 11, { fill: THIN, halo }));
     if (!small) parts.push(text(cx, cy + 24, `${f2(r.rect.w)} × ${f2(r.rect.h)}`, 9, { fill: "#8c8c90", halo }));
   }
@@ -529,7 +543,17 @@ export function sitePlanSVG(L: BuildingLayout, program: Program): string {
   // bina
   const b = z.building;
   p.push(`<rect x="${X(b.x)}" y="${Y(b.y + L.D)}" width="${L.W * sc}" height="${L.D * sc}" fill="#d9d3c7" stroke="${INK}" stroke-width="2"/>`);
-  for (const f of L.floors.slice(-1)) for (const o of f.outdoor) {
+  // açık otopark
+  for (const st of parkingStalls(program, L, z)) {
+    p.push(`<rect x="${X(st.x)}" y="${Y(st.y + st.h)}" width="${st.w * sc}" height="${st.h * sc}" fill="#f1f1ef" stroke="${THIN}" stroke-width="1"/>`);
+    p.push(`<rect x="${X(st.x + 0.35)}" y="${Y(st.y + st.h - 0.6)}" width="${(st.w - 0.7) * sc}" height="${(st.h - 1.4) * sc}" rx="${0.4 * sc}" fill="none" stroke="#9a9aa0" stroke-width="0.8"/>`);
+  }
+  if (L.parking.length) {
+    const st = parkingStalls(program, L, z);
+    const cx = (st[0].x + st[st.length - 1].x + st[0].w) / 2;
+    p.push(text(X(cx), Y(st[0].y) + 12, `Otopark · ${st.length} araç`, 9, { fill: THIN }));
+  }
+  for (const f of L.floors) for (const o of f.outdoor) {
     p.push(`<rect x="${X(b.x + o.rect.x)}" y="${Y(b.y + o.rect.y + o.rect.h)}" width="${o.rect.w * sc}" height="${o.rect.h * sc}" fill="none" stroke="${THIN}" stroke-dasharray="4 2"/>`);
   }
   p.push(text(X(b.x + L.W / 2), Y(b.y + L.D / 2) + 4, `${L.floors.filter((f) => f.z >= 0).length} kat · ${(L.W * L.D).toFixed(0)} m²`, 11, { weight: 600 }));

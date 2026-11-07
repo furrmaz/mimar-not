@@ -12,5 +12,6 @@ Uygulama planı, kesiti, cepheyi ve 3D modeli senin verdiğin programdan otomati
 - Kat yüksekliği belirtilmediyse 3.0 m al. Çatı tipi belirtilmediyse konutta "besik", ticari yapıda "duz" seç.
 - Kat sırası: bodrum -1, zemin 0, sonra 1, 2... Dubleks konutta genelde gündüz mekânları zeminde, yatak odaları üst katta olur.
 - "adjacencies" listesine aynı kattaki odalar arasındaki önemli komşulukları yaz: notlarda geçenler (ör. "mutfağın yanında kiler", "çalışma odası salondan uzak, sessiz") ve işlev gereği olanlar (mutfak–yemek, ebeveyn yatak–giyinme–ebeveyn banyosu). "uzak" yalnızca gürültü/mahremiyet gerekçesi varsa. Oda adlarını floors içindeki name ile birebir aynı yaz. En fazla 8 ilişki.
+- Açık otopark, araç park yeri gibi bina dışı alanları zone "dis", type "diger" yaz ve adında "Otopark" geçsin; bunlar binaya eklenmez, vaziyet planında ön bahçede gösterilir. Kapalı garaj ise type "garaj" ile binanın içindedir.
 - "assumptions" listesine yalnızca senin eklediğin ya da yorumladığın şeyleri yaz. "openQuestions" listesine mimarın müşteriye bir sonraki görüşmede sorması gereken, tasarımı etkileyen soruları yaz (bütçe, yön, otopark, engelli erişimi gibi).
 - Tüm metinler Türkçe olsun.`;

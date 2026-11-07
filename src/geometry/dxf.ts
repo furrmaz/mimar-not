@@ -4,7 +4,7 @@
 import type { BuildingLayout, Opening } from "./layout";
 import { near } from "./layout";
 import type { Program } from "../shared/schema";
-import { zoningCheck } from "./zoning";
+import { parkingStalls, zoningCheck } from "./zoning";
 import { furnishFloor, furnitureSymbol } from "./furniture";
 
 export type DxfUnit = "m" | "cm" | "mm";
@@ -219,7 +219,9 @@ function drawPlan(d: Dxf, L: BuildingLayout, fl: BuildingLayout["floors"][number
     if (r.type === "merdiven") continue;
     const [cx, cy] = P(r.rect.x + r.rect.w / 2, r.rect.y + r.rect.h / 2);
     const small = r.rect.w < 2.2 || r.rect.h < 1.6;
-    d.text("MN-MAHAL", cx, cy + 0.1, small ? 0.16 : 0.25, r.name);
+    // yazı yüksekliği oda genişliğine sığacak şekilde küçülür
+    const th = Math.max(0.1, Math.min(small ? 0.16 : 0.25, (r.rect.w - 0.3) / (r.name.length * 0.62)));
+    d.text("MN-MAHAL", cx, cy + 0.1, th, r.name);
     d.text("MN-MAHAL", cx, cy - 0.3, small ? 0.13 : 0.18, `${(r.rect.w * r.rect.h).toFixed(2)} m²`);
   }
   for (const o of fl.outdoor) {
@@ -401,8 +403,10 @@ function drawSite(d: Dxf, L: BuildingLayout, p: Program, ox: number, oy: number)
   d.rect("MN-CEKME", ox + s.side, oy + s.front, Math.max(0, sw - 2 * s.side), Math.max(0, sd - s.front - s.rear));
   // bina (sokak y=0 altta)
   d.rect("MN-DUVAR", ox + z.building.x, oy + z.building.y, L.W, L.D);
-  const top = L.floors[L.floors.length - 1];
-  for (const o of top.outdoor) d.rect("MN-BALKON", ox + z.building.x + o.rect.x, oy + z.building.y + o.rect.y, o.rect.w, o.rect.h);
+  for (const f of L.floors) for (const o of f.outdoor) d.rect("MN-BALKON", ox + z.building.x + o.rect.x, oy + z.building.y + o.rect.y, o.rect.w, o.rect.h);
+  const stalls = parkingStalls(p, L, z);
+  for (const st of stalls) d.rect("MN-ARSA", ox + st.x, oy + st.y, st.w, st.h);
+  if (stalls.length) d.text("MN-MAHAL", ox + (stalls[0].x + stalls[stalls.length - 1].x + stalls[0].w) / 2, oy + stalls[0].y + stalls[0].h / 2, 0.25, `OTOPARK ${stalls.length} ARAÇ`);
   d.text("MN-MAHAL", ox + z.building.x + L.W / 2, oy + z.building.y + L.D / 2, 0.35, `${L.floors.filter((f) => f.z >= 0).length} KAT  ${(L.W * L.D).toFixed(0)} m²`);
   d.dim(ox, oy, ox + sw, oy, -1.2);
   d.dim(ox + sw, oy, ox + sw, oy + sd, 1.2);

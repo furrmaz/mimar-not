@@ -65,3 +65,15 @@ export function zoningCheck(p: Program, L: BuildingLayout): ZoningResult {
   ];
   return { siteArea, footprintArea, grossTotal, taks, kaks, setbacks, building: { x, y }, actual, height, checks };
 }
+
+/** Açık otopark yerleri: ön bahçede, binanın sağ kenarına hizalı 2.5 × 5 m park yerleri (arsa koordinatı, sokak y=0). */
+export function parkingStalls(p: Program, L: BuildingLayout, z = zoningCheck(p, L)) {
+  const n = L.parking.reduce((s, k) => s + k.cars, 0);
+  if (!n) return [];
+  const sw = p.site.width;
+  const W = 2.5, Dp = 5;
+  const total = n * W;
+  const x0 = Math.max(0.5, Math.min(sw - total - 0.5, z.building.x + L.W - total));
+  const y0 = z.building.y >= Dp + 1 ? Math.max(0.3, (z.building.y - Dp) / 2) : 0.3;
+  return Array.from({ length: n }, (_, i) => ({ x: x0 + i * W, y: y0, w: W, h: Dp }));
+}
