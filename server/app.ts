@@ -5,8 +5,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { ProgramWireSchema, normalizeProgram, type Program, type ProgramWire } from "../src/shared/schema";
+import { repairProgram } from "../src/geometry/blocks";
 
-const WIRE_JSON_SCHEMA = JSON.stringify(z.toJSONSchema(ProgramWireSchema));
+const TOOL_NAME = "bina_programi";
+const { $schema: _s, ...WIRE_JSON_SCHEMA } = z.toJSONSchema(ProgramWireSchema) as Record<string, unknown> & { type: "object" };
 /** API yapılandırılmış çıktı gramerini bir kez reddederse sonraki isteklerde doğrudan talimatlı moda geçilir */
 let strictRejected = false;
 import { SYSTEM_PROMPT } from "./prompt";
@@ -76,6 +78,8 @@ app.post("/api/generate", async (req, res) => {
     if (!res.writableEnded) { aborted = true; current?.abort(); }
   });
   /** strict: yapılandırılmış çıktı (gramer); değilse şema talimatla verilir, yanıt zod ile doğrulanır */
+  /** strict: yapılandırılmış çıktı (gramer). Değilse şema bir aracın girdi şeması olarak verilir; yanıt zod ile doğrulanır. */
+  let forceTool = true;
   const call = async (strict: boolean) => {
     const stream = client.beta.messages.stream({
       model: MODEL,
@@ -83,7 +87,13 @@ app.post("/api/generate", async (req, res) => {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       output_config: strict ? { effort: "medium", format: betaZodOutputFormat(ProgramWireSchema) } : { effort: "medium" },
-      system: strict ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n\nYanıtın yalnızca aşağıdaki JSON şemasına birebir uyan tek bir JSON nesnesi olsun; öncesinde ya da sonrasında açıklama, kod bloğu işareti yazma. Tüm alanlar zorunlu.\n${WIRE_JSON_SCHEMA}`,
+      system: strict ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n\nProgramı ${TOOL_NAME} aracını çağırarak ver; ayrıca metin yazma.`,
+      ...(strict
+        ? {}
+        : {
+            tools: [{ name: TOOL_NAME, description: "Çıkardığın bina programını bu araçla ver. Şemadaki tüm alanları doldur.", input_schema: WIRE_JSON_SCHEMA }],
+            tool_choice: forceTool ? { type: "tool" as const, name: TOOL_NAME } : { type: "auto" as const },
+          }),
       messages: [{ role: "user", content: userContent }],
     });
     current = stream;
@@ -95,8 +105,12 @@ app.post("/api/generate", async (req, res) => {
   try {
     let strict = !strictRejected;
     const msg = await call(strict).catch((e) => {
-      // Gramer sınırı aşılırsa şemasız (talimatlı) moda geç
+      // Gramer sınırı aşılırsa araç şemalı moda geç
       if (strict && e instanceof Anthropic.BadRequestError && /grammar|schema/i.test(e.message)) { strict = false; strictRejected = true; return call(false); }
+      throw e;
+    }).catch((e) => {
+      // Zorunlu araç seçimi kabul edilmezse serbest seçimle tekrar dene
+      if (!strict && forceTool && e instanceof Anthropic.BadRequestError && /tool_choice|thinking/i.test(e.message)) { forceTool = false; return call(false); }
       throw e;
     });
     if (!msg) return;
@@ -110,24 +124,32 @@ app.post("/api/generate", async (req, res) => {
       return;
     }
     let wire: ProgramWire | null = null;
-    if (strict) wire = (msg.parsed_output as ProgramWire | null) ?? null;
-    else {
-      const txt = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("");
-      const i = txt.indexOf("{"), j = txt.lastIndexOf("}");
-      try {
-        const r = ProgramWireSchema.safeParse(fillDefaults(JSON.parse(txt.slice(i, j + 1))));
+    let raw: unknown = null;
+    let parseError = "";
+    if (strict) {
+      wire = (msg.parsed_output as ProgramWire | null) ?? null;
+      raw = wire;
+    } else {
+      const tu = msg.content.find((c) => c.type === "tool_use");
+      raw = tu && "input" in tu ? tu.input : msg.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+      if (raw && typeof raw === "object") {
+        const r = ProgramWireSchema.safeParse(fillDefaults(structuredClone(raw)));
         if (r.success) wire = r.data;
-        else console.error(r.error.issues.slice(0, 5));
-      } catch (e) {
-        console.error(e);
+        else parseError = r.error.issues.slice(0, 4).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
       }
+    }
+    if (!wire && parseError) {
+      res.status(502).json({ error: `Claude'un yanıtı bina programı şemasına uymadı (${parseError}). Tekrar deneyin.`, raw });
+      return;
     }
     const program = wire ? normalizeProgram(wire) : null;
     if (!program) {
       res.status(502).json({ error: "Modelden geçerli bir bina programı alınamadı." });
       return;
     }
-    res.json({ program: sanitize(program), usage: msg.usage, model: msg.model });
+    const fixed = sanitize(program);
+    const warnings = repairProgram(fixed);
+    res.json({ program: fixed, warnings, raw, usage: msg.usage, model: msg.model });
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError || (err instanceof Anthropic.AnthropicError && /authentication/i.test(err.message))) {
       res.status(401).json({ error: "Claude API anahtarı geçersiz. Anahtarı kontrol edin." });
@@ -153,18 +175,16 @@ app.post("/api/generate", async (req, res) => {
 /** Talimatlı modda eksik bırakılabilecek alanları doldurur (şema doğrulamasından önce). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fillDefaults(o: any) {
-  const room = (r: any) => ({ note: "", ...r, upper: r?.upper ?? false });
-  const roomU = (r: any) => ({ note: "", ...r });
-  o.clientName ??= ""; o.style ??= "Belirtilmedi"; o.summary ??= ""; o.buildingType ??= "";
-  o.zoning = { taks: null, kaks: null, maxFloors: null, hmax: null, frontSetback: null, sideSetback: null, rearSetback: null, ...(o.zoning ?? {}) };
-  o.materials ??= { wall: "siva_krem", accent: "tas", roof: "kiremit", glazing: "orta" };
-  o.floorHeight ??= 3; o.roof ??= "duz"; o.blockSpacing ??= null;
-  for (const k of ["floors", "adjacencies", "unitTypes", "blocks", "assumptions", "openQuestions"]) o[k] ??= [];
-  o.floors = o.floors.map((f: any) => ({ ...f, rooms: (f.rooms ?? []).map(roomU) }));
-  o.unitTypes = o.unitTypes.map((u: any) => ({ duplex: false, ...u, rooms: (u.rooms ?? []).map(room) }));
-  o.blocks = o.blocks.map((b: any) => ({ sameAs: "", ...b, footprint: b.footprint ?? o.footprint, floors: (b.floors ?? []).map((f: any) => ({ units: [], ...f, rooms: (f.rooms ?? []).map(roomU) })) }));
-  o.footprint ??= o.blocks[0]?.footprint ?? { width: 12, depth: 10 };
-  o.adjacencies = o.adjacencies.map((a: any) => ({ reason: "", ...a }));
+  if (!o || typeof o !== "object") return o;
+  const room = (r: any) => ({ note: "", ...r });
+  o.blockSpacing ??= null;
+  o.adjacencies ??= [];
+  o.assumptions ??= [];
+  o.openQuestions ??= [];
+  if (Array.isArray(o.floors)) o.floors = o.floors.map((f: any) => ({ ...f, rooms: (f?.rooms ?? []).map(room) }));
+  if (Array.isArray(o.unitTypes)) o.unitTypes = o.unitTypes.map((u: any) => ({ duplex: false, ...u, rooms: (u?.rooms ?? []).map((r: any) => ({ upper: false, ...room(r) })) }));
+  if (Array.isArray(o.blocks)) o.blocks = o.blocks.map((b: any) => ({ sameAs: "", ...b, floors: (b?.floors ?? []).map((f: any) => ({ units: [], ...f, rooms: (f?.rooms ?? []).map(room) })) }));
+  if (Array.isArray(o.adjacencies)) o.adjacencies = o.adjacencies.map((a: any) => ({ reason: "", ...a }));
   return o;
 }
 

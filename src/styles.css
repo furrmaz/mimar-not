@@ -226,3 +226,5 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--line); border-bott
 .block-tabs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 10px; }
 .block-tabs button { border: 1px solid #d8d4cc; background: #fff; border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
 .block-tabs button.active { background: #b5651d; border-color: #b5651d; color: #fff; }
+.warn-box { background: #fff7e6; border: 1px solid #f0d49c; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin: 8px 0; }
+.warn-box ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.5; }

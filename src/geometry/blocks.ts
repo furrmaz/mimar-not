@@ -132,3 +132,53 @@ export function unitCounts(p: Program) {
   });
   return [...rows.values()];
 }
+
+/** "3+1", "4+1 Dubleks" gibi bir addan varsayılan daire tipi üretir (Claude tipi tanımlamayı unutursa). */
+export function synthUnitType(name: string): UnitType | null {
+  const m = /(\d)\s*\+\s*(\d)/.exec(name);
+  if (!m) return null;
+  const k = Math.max(1, Math.min(6, +m[1]));
+  const duplex = /dubleks|duplex/i.test(name);
+  const R = (n: string, type: Room["type"], zone: Room["zone"], area: number, upper = false) => ({ name: n, type, zone, area, note: "", upper });
+  const rooms = [
+    R("Antre", "antre", "sirkulasyon", 4 + k), R("Salon", "salon", "gunduz", 20 + 3 * k), R("Mutfak", "mutfak", "gunduz", 7 + k),
+    R("Hol", "hol", "sirkulasyon", 3 + 2 * k),
+    R("Ebeveyn Yatak Odası", "ebeveyn", "gece", 13, duplex),
+    ...(k >= 3 ? [R("Ebeveyn Banyosu", "banyo", "gece", 4, duplex)] : []),
+    ...Array.from({ length: k - 1 }, (_, i) => R(k > 2 ? `Yatak Odası ${i + 1}` : "Yatak Odası", "yatak", "gece", 10.5, duplex)),
+    R("Banyo", "banyo", "gece", 5, duplex),
+    ...(k >= 2 ? [R("WC", "wc", "servis", 2)] : []),
+    ...(duplex ? [R("Üst Hol", "hol", "sirkulasyon", 6, true)] : []),
+    R("Balkon", "balkon", "dis", 5 + k),
+  ];
+  return { name, duplex, rooms };
+}
+
+/** Claude'un çok bloklu yanıtındaki tutarsızlıkları onarır; mimara gösterilecek uyarıları döndürür. */
+export function repairProgram(p: Program): string[] {
+  const w: string[] = [];
+  const blocks = p.blocks ?? [];
+  if (!blocks.length) return w;
+  p.unitTypes ??= [];
+  const missing = new Set<string>();
+  blocks.forEach((b) => b.floors.forEach((f) => f.units.forEach((u) => { if (!findUnitType(p, u)) missing.add(u); })));
+  for (const name of missing) {
+    const t = synthUnitType(name);
+    if (t) {
+      p.unitTypes.push(t);
+      w.push(`"${name}" daire tipinin odaları yanıtta yoktu; standart ${t.duplex ? "dubleks " : ""}oda listesiyle eklendi. Program sekmesinden düzenleyebilirsiniz.`);
+    } else w.push(`"${name}" daire tipi tanımlı değil; bu daireler çizilmedi.`);
+  }
+  blocks.forEach((b, i) => {
+    if (!b.floors.length && !(b.sameAs && blocks.some((x) => x !== b && norm(x.name) === norm(b.sameAs)))) {
+      // aynı olduğu blok bulunamazsa ilk tanımlı bloğu kullan
+      const src = blocks.find((x) => x.floors.length);
+      if (src) { b.sameAs = src.name; w.push(`${b.name} için kat düzeni yoktu; ${src.name} ile aynı kabul edildi.`); }
+      else w.push(`${b.name} için kat düzeni yok.`);
+    }
+    const empty = b.floors.filter((f) => !f.units.length && !f.rooms.length);
+    if (empty.length) w.push(`${b.name}: ${empty.map((f) => f.name).join(", ")} boş geldi (daire ya da mekân yok).`);
+    void i;
+  });
+  return w;
+}

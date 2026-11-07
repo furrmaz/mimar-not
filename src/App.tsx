@@ -9,7 +9,7 @@ import { ProgramEditor } from "./components/ProgramEditor";
 import { ZoningPanel } from "./components/ZoningPanel";
 import { ThreeView } from "./components/ThreeView";
 import { SvgSheet } from "./components/SvgSheet";
-import { download, fromProjectFile, generateProgram, loadProjects, newProject, saveOutput, saveProjects, setCurrentProject, slug, toProjectFile, type Project } from "./store";
+import { download, fromProjectFile, generateProgram, lastGen, loadProjects, newProject, saveOutput, saveProjects, setCurrentProject, slug, toProjectFile, type Project } from "./store";
 import { SAMPLE_NOTES, SAMPLE_PROGRAM } from "./sample";
 import { useDictation } from "./useDictation";
 import { AreasPanel, IssueList } from "./components/AreasPanel";
@@ -22,7 +22,7 @@ import { RevisionBox } from "./components/RevisionBox";
 import { applyBrief, briefForPrompt, dataUrlToImage } from "./brief";
 import { loadOffice, todayTR, type OfficeInfo } from "./office";
 import { roomChecks } from "./geometry/roomcheck";
-import { blockView, isMultiBlock } from "./geometry/blocks";
+import { blockTypeKey, blockView, isMultiBlock, unitCounts } from "./geometry/blocks";
 import { BlocksEditor } from "./components/BlocksEditor";
 import { SITE_NOTES, SITE_PROGRAM } from "./sample-site";
 
@@ -53,6 +53,8 @@ export default function App() {
   const [office, setOffice] = useState<OfficeInfo>(loadOffice);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [genInfo, setGenInfo] = useState<{ warnings: string[]; hasRaw: boolean } | null>(null);
+  const syncGen = () => setGenInfo({ warnings: lastGen.warnings, hasRaw: lastGen.raw != null });
   const [floorIdx, setFloorIdx] = useState(0);
   const [blockIdx, setBlockIdx] = useState(0);
   const [facade, setFacade] = useState<Facade>("front");
@@ -124,8 +126,9 @@ export default function App() {
         history: pushHistory(project, mode === "update" ? "Notlarla güncellemeden önce" : "Yeniden üretimden önce"),
       });
       setTab(mode === "update" ? tab : "program");
+      syncGen();
     } catch (e) {
-      if (!isAbort(e)) setError((e as Error).message);
+      if (!isAbort(e)) { setError((e as Error).message); syncGen(); }
     } finally {
       setBusy(false);
     }
@@ -161,9 +164,10 @@ export default function App() {
       const p = { ...raw, design: program.design };
       update({ program: p, history: [...(project.history ?? []), { program, label: `Düzeltme: ${text.slice(0, 80)}`, at: Date.now() }].slice(-10) });
       setToast("Düzeltme uygulandı. Beğenmezseniz 'Geri al'.");
+      syncGen();
       return true;
     } catch (e) {
-      if (!isAbort(e)) setError((e as Error).message);
+      if (!isAbort(e)) { setError((e as Error).message); syncGen(); }
       return false;
     } finally {
       setBusy(false);
@@ -359,6 +363,17 @@ export default function App() {
             </div>
           )}
           {error && <div className="error">{error}</div>}
+          {genInfo && genInfo.warnings.length > 0 && (
+            <div className="warn-box">
+              <b>Claude yanıtında onarılanlar</b>
+              <ul>{genInfo.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+            </div>
+          )}
+          {genInfo?.hasRaw && (error || genInfo.warnings.length > 0) && (
+            <button className="link small" onClick={() => download(`claude-yaniti-${new Date(lastGen.at).toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`, JSON.stringify(lastGen.raw, null, 2), "application/json")}>
+              Claude'un ham yanıtını indir (hata bildirimi için)
+            </button>
+          )}
           {program && <RevisionBox busy={busy} history={project.history ?? []} onRevise={revise} onUndo={undo} />}
           <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
             <button className="link" onClick={loadSample}>Örnek görüşme: villa</button>
@@ -466,7 +481,7 @@ export default function App() {
                 {tab === "zoning" && <ZoningPanel program={view} layout={layout} onChange={setView} />}
                 {tab === "areas" && <AreasPanel program={view} layout={layout} />}
               </div>
-              <PrintSet program={view} layout={layout} office={office} />
+              <PrintSet program={view} root={program!} layout={layout} office={office} />
             </>
           )}
         </main>
@@ -476,24 +491,46 @@ export default function App() {
 }
 
 /** Yalnızca yazdırırken görünen çizim seti (tarayıcıdan PDF olarak kaydedilir). */
-function PrintSet({ program, layout, office }: { program: Program; layout: ReturnType<typeof buildLayout>; office: OfficeInfo }) {
-  const sheets = [
-    ...layout.floors.map((f) => planSVG(layout, f, program)),
-    sectionSVG(layout, program),
-    ...(Object.keys(FACADE_NAMES) as Facade[]).map((f) => elevationSVG(layout, program, f)),
-    sitePlanSVG(layout, program),
-  ];
+function PrintSet({ program, root, layout, office }: { program: Program; root: Program; layout: ReturnType<typeof buildLayout>; office: OfficeInfo }) {
+  const sheets = useMemo(() => {
+    const one = (v: Program, L: ReturnType<typeof buildLayout>) => [
+      ...L.floors.map((f) => planSVG(L, f, v)),
+      sectionSVG(L, v),
+      ...(Object.keys(FACADE_NAMES) as Facade[]).map((f) => elevationSVG(L, v, f)),
+    ];
+    if (!isMultiBlock(root)) return [...one(program, layout), sitePlanSVG(layout, program)];
+    // çok bloklu: vaziyet planı + her blok tipi bir kez (aynı bloklar tekrar edilmez)
+    const seen = new Set<string>();
+    const out = [sitePlanSVG(layout, program)];
+    root.blocks!.forEach((_, i) => {
+      const key = blockTypeKey(root, i);
+      if (seen.has(key)) return;
+      seen.add(key);
+      const v = blockView(root, i);
+      const same = root.blocks!.filter((_, k) => blockTypeKey(root, k) === key).map((b) => b.name);
+      const vv = same.length > 1 ? { ...v, projectName: `${root.projectName} · ${same.join(", ")}` } : v;
+      out.push(...one(vv, buildLayout(vv)));
+    });
+    return out;
+  }, [program, root, layout]);
+  const units = isMultiBlock(root) ? unitCounts(root) : [];
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div className="print-set" ref={ref}>
       <div className="print-cover">
-        <h1>{program.projectName}</h1>
-        <p>{program.buildingType} · {program.clientName}</p>
+        <h1>{root.projectName}</h1>
+        <p>{root.buildingType} · {root.clientName}</p>
         {(office.office || office.architect) && <p>{[office.office, office.architect, office.regNo && `Sicil ${office.regNo}`, office.contact].filter(Boolean).join(" · ")}</p>}
         <p className="small">{todayTR()}</p>
-        <p>{program.summary}</p>
-        <h3>Müşteriye sorulacaklar</h3>
-        <ul>{program.openQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul>
+        <p>{root.summary}</p>
+        {units.length > 0 && (
+          <>
+            <h3>Daire listesi ({units.reduce((s, u) => s + u.count, 0)} daire, {root.blocks!.length} blok)</h3>
+            <ul>{units.map((u) => <li key={u.type}>{u.type}: {u.count} adet · {u.area.toFixed(0)} m² net · {[...u.blocks].join(", ")}</li>)}</ul>
+          </>
+        )}
+        {root.assumptions.length > 0 && (<><h3>Varsayımlar</h3><ul>{root.assumptions.map((q, i) => <li key={i}>{q}</li>)}</ul></>)}
+        {root.openQuestions.length > 0 && (<><h3>Müşteriye sorulacaklar</h3><ul>{root.openQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul></>)}
         <p className="small">Ön tasarım eskizidir; ölçüler program alanlarından otomatik türetilmiştir.</p>
       </div>
       {sheets.map((s, i) => (

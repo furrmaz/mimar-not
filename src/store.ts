@@ -73,6 +73,9 @@ export function newProject(title = "Yeni görüşme"): Project {
   return { id: Math.random().toString(36).slice(2, 10), title, notes: "", program: null, updatedAt: Date.now() };
 }
 
+/** Son Claude yanıtı: uyarılar ve ham çıktı (hata bildirimi için indirilebilir) */
+export const lastGen: { raw: unknown; warnings: string[]; at: number } = { raw: null, warnings: [], at: 0 };
+
 export async function generateProgram(
   notes: string,
   previous: Program | null,
@@ -92,6 +95,9 @@ export async function generateProgram(
     throw new Error("Sunucuya ulaşılamadı. 'npm run dev' ile API sunucusunun çalıştığından emin olun.");
   }
   const data = await res.json().catch(() => ({}));
+  lastGen.raw = data.raw ?? null;
+  lastGen.warnings = Array.isArray(data.warnings) ? data.warnings : [];
+  lastGen.at = Date.now();
   if (!res.ok) throw new Error(data.error ?? `Sunucu hatası (${res.status})`);
   return data.program as Program;
 }
