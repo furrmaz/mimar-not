@@ -157,3 +157,39 @@ export type Program = Omit<z.infer<typeof ProgramSchema>, "floors" | "unitTypes"
 export type Materials = z.infer<typeof ProgramSchema>["materials"];
 export const DEFAULT_MATERIALS: Materials = { wall: "siva_krem", accent: "tas", roof: "kiremit", glazing: "orta" };
 export type Adjacency = z.infer<typeof ProgramSchema>["adjacencies"][number];
+
+// ---------------------------------------------------------------- API ŞEMASI
+// Yapılandırılmış çıktı grameri büyük enum'larla (oda tipi × 3 oda listesi) API sınırını aşıyor.
+// Claude'a giden şemada oda tipi ve bölgesi serbest metindir; yanıt normalizeProgram ile doğrulanır.
+const ROOM_TYPE_TEXT = `Oda tipi; yalnız şunlardan biri: ${RoomType.options.join(", ")}`;
+const ZONE_TEXT = "Bölge; yalnız şunlardan biri: gunduz (salon/mutfak/yemek/çalışma), gece (yatak odaları ve banyoları), servis (wc, depo, kiler, çamaşır, teknik, garaj), sirkulasyon (hol/koridor/antre), dis (balkon/teras)";
+const RoomWire = RoomSchema.extend({ type: z.string().describe(ROOM_TYPE_TEXT), zone: z.string().describe(ZONE_TEXT) });
+const blockFloor = BlockSchema.shape.floors.element;
+export const ProgramWireSchema = ProgramSchema.extend({
+  floors: z.array(FloorSchema.extend({ rooms: z.array(RoomWire) })),
+  unitTypes: z.array(UnitTypeSchema.extend({ rooms: z.array(RoomWire.extend({ upper: z.boolean().describe("Dubleks dairede üst kattaki oda ise true; aksi halde false") })) })).describe(ProgramSchema.shape.unitTypes.description ?? ""),
+  blocks: z.array(BlockSchema.extend({ floors: z.array(blockFloor.extend({ rooms: z.array(RoomWire).describe(blockFloor.shape.rooms.description ?? "") })) })).describe(ProgramSchema.shape.blocks.description ?? ""),
+});
+export type ProgramWire = z.infer<typeof ProgramWireSchema>;
+
+const TYPE_ZONE: Partial<Record<RoomType, Zone>> = {
+  salon: "gunduz", mutfak: "gunduz", yemek: "gunduz", calisma: "gunduz", ofis: "gunduz", magaza: "gunduz",
+  yatak: "gece", ebeveyn: "gece", cocuk: "gece", misafir: "gece", banyo: "gece", giyinme: "gece",
+  wc: "servis", depo: "servis", kiler: "servis", camasir: "servis", garaj: "servis", teknik: "servis", diger: "servis",
+  hol: "sirkulasyon", antre: "sirkulasyon", koridor: "sirkulasyon", balkon: "dis", teras: "dis",
+};
+function fixRoom<T extends { name: string; type: string; zone: string }>(r: T): T & { type: RoomType; zone: Zone } {
+  const t = String(r.type ?? "").toLocaleLowerCase("tr").replace(/ı/g, "i").replace(/ç/g, "c").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ö/g, "o").trim();
+  const type = (RoomType.options as string[]).includes(t) ? (t as RoomType) : "diger";
+  const zone = (Zone.options as string[]).includes(String(r.zone)) ? (r.zone as Zone) : TYPE_ZONE[type] ?? "servis";
+  return { ...r, type, zone };
+}
+/** Claude'un serbest metin oda tiplerini şemadaki değerlere çevirir. */
+export function normalizeProgram(w: ProgramWire): Program {
+  return {
+    ...w,
+    floors: w.floors.map((f) => ({ ...f, rooms: f.rooms.map(fixRoom) })),
+    unitTypes: w.unitTypes.map((u) => ({ ...u, rooms: u.rooms.map(fixRoom) })),
+    blocks: w.blocks.map((b) => ({ ...b, floors: b.floors.map((f) => ({ ...f, rooms: f.rooms.map(fixRoom) })) })),
+  };
+}

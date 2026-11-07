@@ -3,7 +3,12 @@ import path from "node:path";
 import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { ProgramSchema, type Program } from "../src/shared/schema";
+import { z } from "zod";
+import { ProgramWireSchema, normalizeProgram, type Program, type ProgramWire } from "../src/shared/schema";
+
+const WIRE_JSON_SCHEMA = JSON.stringify(z.toJSONSchema(ProgramWireSchema));
+/** API yapılandırılmış çıktı gramerini bir kez reddederse sonraki isteklerde doğrudan talimatlı moda geçilir */
+let strictRejected = false;
 import { SYSTEM_PROMPT } from "./prompt";
 
 export interface AppOptions {
@@ -64,23 +69,34 @@ app.post("/api/generate", async (req, res) => {
     return;
   }
   const client = new Anthropic({ apiKey });
-  try {
+  // Kullanıcı "Durdur"a basarsa (bağlantı kapanırsa) Claude çağrısını da kes
+  let aborted = false;
+  let current: { abort: () => void } | null = null;
+  res.on("close", () => {
+    if (!res.writableEnded) { aborted = true; current?.abort(); }
+  });
+  /** strict: yapılandırılmış çıktı (gramer); değilse şema talimatla verilir, yanıt zod ile doğrulanır */
+  const call = async (strict: boolean) => {
     const stream = client.beta.messages.stream({
       model: MODEL,
       max_tokens: 64000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-      output_config: { effort: "medium", format: betaZodOutputFormat(ProgramSchema) },
-      system: SYSTEM_PROMPT,
+      output_config: strict ? { effort: "medium", format: betaZodOutputFormat(ProgramWireSchema) } : { effort: "medium" },
+      system: strict ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n\nYanıtın yalnızca aşağıdaki JSON şemasına birebir uyan tek bir JSON nesnesi olsun; öncesinde ya da sonrasında açıklama, kod bloğu işareti yazma. Tüm alanlar zorunlu.\n${WIRE_JSON_SCHEMA}`,
       messages: [{ role: "user", content: userContent }],
     });
-    // Kullanıcı "Durdur"a basarsa (bağlantı kapanırsa) Claude çağrısını da kes
-    let aborted = false;
-    res.on("close", () => {
-      if (!res.writableEnded) { aborted = true; stream.abort(); }
-    });
-    const msg = await stream.finalMessage().catch((e) => {
+    current = stream;
+    return stream.finalMessage().catch((e) => {
       if (aborted) return null;
+      throw e;
+    });
+  };
+  try {
+    let strict = !strictRejected;
+    const msg = await call(strict).catch((e) => {
+      // Gramer sınırı aşılırsa şemasız (talimatlı) moda geç
+      if (strict && e instanceof Anthropic.BadRequestError && /grammar|schema/i.test(e.message)) { strict = false; strictRejected = true; return call(false); }
       throw e;
     });
     if (!msg) return;
@@ -93,7 +109,20 @@ app.post("/api/generate", async (req, res) => {
       res.status(502).json({ error: "Yanıt yarıda kesildi. Notları kısaltıp tekrar deneyin." });
       return;
     }
-    const program = msg.parsed_output;
+    let wire: ProgramWire | null = null;
+    if (strict) wire = (msg.parsed_output as ProgramWire | null) ?? null;
+    else {
+      const txt = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+      const i = txt.indexOf("{"), j = txt.lastIndexOf("}");
+      try {
+        const r = ProgramWireSchema.safeParse(fillDefaults(JSON.parse(txt.slice(i, j + 1))));
+        if (r.success) wire = r.data;
+        else console.error(r.error.issues.slice(0, 5));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    const program = wire ? normalizeProgram(wire) : null;
     if (!program) {
       res.status(502).json({ error: "Modelden geçerli bir bina programı alınamadı." });
       return;
@@ -119,6 +148,24 @@ app.post("/api/generate", async (req, res) => {
     app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(opts.staticDir!, "index.html")));
   }
   return app;
+}
+
+/** Talimatlı modda eksik bırakılabilecek alanları doldurur (şema doğrulamasından önce). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fillDefaults(o: any) {
+  const room = (r: any) => ({ note: "", ...r, upper: r?.upper ?? false });
+  const roomU = (r: any) => ({ note: "", ...r });
+  o.clientName ??= ""; o.style ??= "Belirtilmedi"; o.summary ??= ""; o.buildingType ??= "";
+  o.zoning = { taks: null, kaks: null, maxFloors: null, hmax: null, frontSetback: null, sideSetback: null, rearSetback: null, ...(o.zoning ?? {}) };
+  o.materials ??= { wall: "siva_krem", accent: "tas", roof: "kiremit", glazing: "orta" };
+  o.floorHeight ??= 3; o.roof ??= "duz"; o.blockSpacing ??= null;
+  for (const k of ["floors", "adjacencies", "unitTypes", "blocks", "assumptions", "openQuestions"]) o[k] ??= [];
+  o.floors = o.floors.map((f: any) => ({ ...f, rooms: (f.rooms ?? []).map(roomU) }));
+  o.unitTypes = o.unitTypes.map((u: any) => ({ duplex: false, ...u, rooms: (u.rooms ?? []).map(room) }));
+  o.blocks = o.blocks.map((b: any) => ({ sameAs: "", ...b, footprint: b.footprint ?? o.footprint, floors: (b.floors ?? []).map((f: any) => ({ units: [], ...f, rooms: (f.rooms ?? []).map(roomU) })) }));
+  o.footprint ??= o.blocks[0]?.footprint ?? { width: 12, depth: 10 };
+  o.adjacencies = o.adjacencies.map((a: any) => ({ reason: "", ...a }));
+  return o;
 }
 
 // Modelden gelen sayıları makul aralıklara çeker.
