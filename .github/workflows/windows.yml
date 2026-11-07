@@ -3,7 +3,7 @@ name: Windows sürümü
 on:
   workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
   contents: write
@@ -25,8 +25,19 @@ jobs:
           name: MimarNot-Windows
           path: |
             release/*.exe
-      - name: Sürüm sayfasına ekle
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Sürüm numarasını oku
+        id: ver
+        shell: bash
+        run: echo "v=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Sürüm sayfasına ekle (Releases)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.ver.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          name: Mimar Not ${{ steps.ver.outputs.v }}
+          body: |
+            Windows için Mimar Not.
+            - **MimarNot-Kurulum-*.exe**: kurulum dosyası (masaüstü ve Başlat menüsü kısayolu)
+            - **MimarNot-Tasinabilir-*.exe**: kurulum gerektirmeden çalışır
+            İlk açılışta Ayarlar'dan Claude API anahtarını girin. Uygulama imzasız olduğu için Windows uyarı verirse "Ek bilgi" → "Yine de çalıştır".
           files: release/*.exe
