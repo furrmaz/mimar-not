@@ -7,6 +7,32 @@ export interface Project {
   notes: string;
   program: Program | null;
   updatedAt: number;
+  /** Masaüstünde kaydedildiği .mimarnot dosyası */
+  filePath?: string;
+}
+
+export interface ProjectFile {
+  format: "mimarnot";
+  version: 1;
+  title: string;
+  notes: string;
+  program: Program | null;
+  savedAt: string;
+}
+
+export function toProjectFile(p: Project): string {
+  const f: ProjectFile = { format: "mimarnot", version: 1, title: p.title, notes: p.notes, program: p.program, savedAt: new Date().toISOString() };
+  return JSON.stringify(f, null, 2);
+}
+
+export function fromProjectFile(text: string): Project {
+  const data = JSON.parse(text);
+  // Düz bina programı JSON'u da kabul et
+  if (data && data.floors && data.footprint) {
+    return { ...newProject(data.clientName || data.projectName || "İçe aktarılan"), program: data as Program };
+  }
+  if (!data || data.format !== "mimarnot") throw new Error("Bu dosya bir Mimar Not projesi değil.");
+  return { ...newProject(data.title || "Proje"), notes: data.notes ?? "", program: data.program ?? null };
 }
 
 const KEY = "mimar-not.projects.v1";

@@ -5,6 +5,7 @@ import type { BuildingLayout, Opening } from "./layout";
 import { near } from "./layout";
 import type { Program } from "../shared/schema";
 import { zoningCheck } from "./zoning";
+import { furnishFloor, furnitureSymbol } from "./furniture";
 
 export type DxfUnit = "m" | "cm" | "mm";
 const UNIT_SCALE: Record<DxfUnit, number> = { m: 1, cm: 100, mm: 1000 };
@@ -19,6 +20,7 @@ const LAYERS: [string, number][] = [
   ["MN-MERDIVEN", 8],
   ["MN-BALKON", 6],
   ["MN-MAHAL", 2],
+  ["MN-MOBILYA", 9],
   ["MN-OLCU", 1],
   ["MN-KESIT-HATTI", 1],
   ["MN-DOSEME", 7],
@@ -163,6 +165,12 @@ function drawPlan(d: Dxf, L: BuildingLayout, fl: BuildingLayout["floors"][number
     d.solid("MN-DUVAR-DOLGU", x, y, ww, hh);
   }
   for (const o of fl.openings) drawOpeningPlan(d, L, o, P);
+  for (const f of furnishFloor(fl))
+      for (const p of furnitureSymbol(f)) {
+        if (p.t === "rect") { const [x, y] = P(p.x, p.y); d.rect("MN-MOBILYA", x, y, p.w, p.h); }
+        else if (p.t === "line") { const [x1, y1] = P(p.x1, p.y1); const [x2, y2] = P(p.x2, p.y2); d.line("MN-MOBILYA", x1, y1, x2, y2); }
+        else { const [cx, cy] = P(p.cx, p.cy); d.circle("MN-MOBILYA", cx, cy, p.r); }
+      }
   if (L.stair) {
     const st = L.stair;
     const [x, y] = P(st.x, st.y);

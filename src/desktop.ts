@@ -6,6 +6,9 @@ export interface DesktopBridge {
   saveFile(project: string, name: string, ext: string, data: Data): Promise<{ saved: boolean; path?: string }>;
   saveAndOpen(project: string, name: string, ext: string, data: Data): Promise<{ ok: boolean; path: string; error?: string }>;
   openFolder(project: string): Promise<string>;
+  saveProject(name: string, content: string, path?: string): Promise<{ saved: boolean; path?: string }>;
+  openProject(): Promise<{ path: string; content: string } | null>;
+  onMenu(cb: (cmd: string) => void): () => void;
   savePDF(project: string, name: string): Promise<{ saved: boolean; path?: string }>;
 }
 export const desktop: DesktopBridge | undefined = (window as unknown as { desktop?: DesktopBridge }).desktop;

@@ -9,14 +9,16 @@ import { ProgramEditor } from "./components/ProgramEditor";
 import { ZoningPanel } from "./components/ZoningPanel";
 import { ThreeView } from "./components/ThreeView";
 import { SvgSheet } from "./components/SvgSheet";
-import { generateProgram, loadProjects, newProject, saveOutput, saveProjects, setCurrentProject, type Project } from "./store";
+import { download, fromProjectFile, generateProgram, loadProjects, newProject, saveOutput, saveProjects, setCurrentProject, slug, toProjectFile, type Project } from "./store";
 import { SAMPLE_NOTES, SAMPLE_PROGRAM } from "./sample";
 import { useDictation } from "./useDictation";
+import { AreasPanel, IssueList } from "./components/AreasPanel";
+import { roomChecks } from "./geometry/roomcheck";
 
 /** Demo derlemesi (VITE_DEMO=1): API ve indirmeler olmadan, örnek projeyle açılır. */
 const DEMO = import.meta.env.VITE_DEMO === "1";
 
-type Tab = "program" | "plan" | "section" | "elevation" | "3d" | "zoning";
+type Tab = "program" | "plan" | "section" | "elevation" | "3d" | "zoning" | "areas";
 const TABS: { id: Tab; label: string }[] = [
   { id: "program", label: "Program" },
   { id: "plan", label: "Kat Planları" },
@@ -24,6 +26,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "elevation", label: "Cepheler" },
   { id: "3d", label: "3D Model" },
   { id: "zoning", label: "İmar & Vaziyet" },
+  { id: "areas", label: "Alanlar & Maliyet" },
 ];
 
 export default function App() {
@@ -76,6 +79,8 @@ export default function App() {
   const program = project.program;
   useEffect(() => setCurrentProject(program?.projectName || project.title), [program?.projectName, project.title]);
   const layout = useMemo(() => (program ? buildLayout(program) : null), [program]);
+  const issues = useMemo(() => (layout ? roomChecks(layout) : []), [layout]);
+  const flagged = useMemo(() => new Set(issues.filter((i) => !i.soft).map((i) => i.roomId)), [issues]);
   useEffect(() => {
     if (layout && floorIdx >= layout.floors.length) setFloorIdx(0);
   }, [layout, floorIdx]);
@@ -109,6 +114,55 @@ export default function App() {
     setActiveId(p.id);
     setTab("program");
   };
+  const fileInput = useRef<HTMLInputElement>(null);
+  const saveProjectFile = async (saveAs = false) => {
+    const content = toProjectFile(project);
+    const name = program?.projectName || project.title;
+    if (desktop) {
+      const r = await desktop.saveProject(name, content, saveAs ? undefined : project.filePath);
+      if (r.saved) {
+        update({ filePath: r.path });
+        setToast(`Proje kaydedildi: ${r.path}`);
+      }
+    } else {
+      download(`${slug(name)}.mimarnot`, content, "application/json");
+    }
+  };
+  const importProject = (text: string, filePath?: string) => {
+    try {
+      const p = { ...fromProjectFile(text), filePath };
+      setProjects((list) => [p, ...list]);
+      setActiveId(p.id);
+      setTab(p.program ? "plan" : "program");
+      setToast(`Açıldı: ${p.title}`);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const openProjectFile = async () => {
+    if (desktop) {
+      const r = await desktop.openProject();
+      if (r) importProject(r.content, r.path);
+    } else fileInput.current?.click();
+  };
+  // Menü ve klavye kısayolları (Ctrl+S, Ctrl+O)
+  const handlers = useRef({ saveProjectFile, openProjectFile });
+  handlers.current = { saveProjectFile, openProjectFile };
+  useEffect(() => {
+    const off = desktop?.onMenu((cmd) => {
+      if (cmd === "save") handlers.current.saveProjectFile();
+      if (cmd === "saveAs") handlers.current.saveProjectFile(true);
+      if (cmd === "open") handlers.current.openProjectFile();
+    });
+    const onKey = (e: KeyboardEvent) => {
+      if (desktop || !(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "s") { e.preventDefault(); handlers.current.saveProjectFile(); }
+      if (e.key === "o") { e.preventDefault(); handlers.current.openProjectFile(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { off?.(); window.removeEventListener("keydown", onKey); };
+  }, []);
+
   const deleteProject = () => {
     if (!confirm(`"${project.title}" silinsin mi?`)) return;
     const rest = projects.filter((p) => p.id !== project.id);
@@ -155,6 +209,14 @@ export default function App() {
           </select>
           <button className="btn ghost small" onClick={addProject}>+ Yeni görüşme</button>
           <button className="btn ghost small" onClick={deleteProject}>Sil</button>
+          <span className="sep" />
+          <button className="btn ghost small" onClick={openProjectFile} title="Ctrl+O">Aç…</button>
+          <button className="btn ghost small" onClick={() => saveProjectFile()} title="Ctrl+S">Kaydet</button>
+          <input ref={fileInput} type="file" accept=".mimarnot,.json" hidden onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (f) importProject(await f.text());
+            e.target.value = "";
+          }} />
         </div>
         {DEMO && <span className="badge">Demo · örnek proje, indirme ve sesli dikte tam sürümde</span>}
         {apiInfo && !apiInfo.ok && <span className="badge warn">API sunucusu yok · örnek proje ve elle düzenleme çalışır</span>}
@@ -250,7 +312,18 @@ export default function App() {
                         <button key={f.level} className={floorIdx === i ? "active" : ""} onClick={() => setFloorIdx(i)}>{f.name}</button>
                       ))}
                     </div>
-                    <SvgSheet svg={planSVG(layout, layout.floors[floorIdx] ?? layout.floors[0], program)} name={`${program.projectName}-${layout.floors[floorIdx]?.name}`} />
+                    <SvgSheet svg={planSVG(layout, layout.floors[floorIdx] ?? layout.floors[0], program, { flag: flagged })} name={`${program.projectName}-${layout.floors[floorIdx]?.name}`} />
+                    {(() => {
+                      const fl = layout.floors[floorIdx] ?? layout.floors[0];
+                      const here = issues.filter((i) => !i.soft && i.floor === fl.name);
+                      return here.length > 0 ? (
+                        <section className="card bad">
+                          <h3>Bu katta asgari ölçü uyarısı ({here.length})</h3>
+                          <IssueList items={here} />
+                          <button className="link" onClick={() => setTab("areas")}>Tüm uyarılar ve alan tablosu →</button>
+                        </section>
+                      ) : null;
+                    })()}
                   </>
                 )}
                 {tab === "section" && <SvgSheet svg={sectionSVG(layout, program)} name={`${program.projectName}-kesit-AA`} />}
@@ -266,6 +339,7 @@ export default function App() {
                 )}
                 {tab === "3d" && <ThreeView layout={layout} program={program} />}
                 {tab === "zoning" && <ZoningPanel program={program} layout={layout} onChange={setProgram} />}
+                {tab === "areas" && <AreasPanel program={program} layout={layout} />}
               </div>
               <PrintSet program={program} layout={layout} />
             </>

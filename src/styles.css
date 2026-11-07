@@ -176,3 +176,4 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--line); border-bott
 .modal a { color: var(--accent); }
 .row.end { justify-content: flex-end; }
 .note-ok { background: #e3f2e8; color: var(--ok); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+.sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }

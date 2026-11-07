@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import type { BuildingLayout, FloorLayout, Opening } from "./layout";
 import { ZONE_COLORS, near } from "./layout";
+import { furnishFloor, type FurnitureKind } from "./furniture";
 
 export interface ModelOptions {
   showRoof: boolean;
@@ -23,7 +24,19 @@ const mats = {
   roof: new THREE.MeshStandardMaterial({ color: 0x7b4a36, roughness: 0.85, side: THREE.DoubleSide }),
   ground: new THREE.MeshStandardMaterial({ color: 0xc9d8b6, roughness: 1 }),
   stair: new THREE.MeshStandardMaterial({ color: 0xd6d1c8, roughness: 0.8 }),
+  furn: new THREE.MeshStandardMaterial({ color: 0xb08a63, roughness: 0.8 }),
   rail: new THREE.MeshStandardMaterial({ color: 0x2f3033, roughness: 0.4, metalness: 0.6 }),
+};
+
+const FURN_MATS: Partial<Record<FurnitureKind, THREE.Material>> = {
+  bed: new THREE.MeshStandardMaterial({ color: 0xe9e4f2, roughness: 0.9 }),
+  sofa: new THREE.MeshStandardMaterial({ color: 0x8a9aa8, roughness: 0.9 }),
+  armchair: new THREE.MeshStandardMaterial({ color: 0x8a9aa8, roughness: 0.9 }),
+  wc: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }),
+  basin: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }),
+  bathtub: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }),
+  shower: new THREE.MeshStandardMaterial({ color: 0xcfdde6, roughness: 0.3 }),
+  car: new THREE.MeshStandardMaterial({ color: 0x5d6b7a, roughness: 0.4, metalness: 0.4 }),
 };
 
 function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, name?: string) {
@@ -94,6 +107,14 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
     m.receiveShadow = true;
     m.name = r.name;
     grp.add(m);
+  }
+  // Mobilya (yalnızca kesik görünümde iç mekân görünür)
+  if (cut) {
+    for (const fu of furnishFloor(f)) {
+      const mat = FURN_MATS[fu.kind] ?? mats.furn;
+      const hh = Math.min(fu.height, 1.1); // kesik duvar yüksekliğini aşmasın
+      grp.add(box(fu.w, hh, fu.h, mat, fu.x + fu.w / 2, z0 + hh / 2, fu.y + fu.h / 2, fu.kind));
+    }
   }
   // Duvarlar
   const outerMat = f.z <= 0 ? mats.wallStone : mats.wall;

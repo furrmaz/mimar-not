@@ -40,13 +40,17 @@ API anahtarı olmadan da "Örnek görüşmeyi yükle" ile bütün çizimleri ve 
 
 | Çıktı | Biçim |
 |---|---|
-| Kat planları (ölçülü, kapı/pencere, merdiven, kesit hattı) | SVG, PNG, DXF (tüm katlar, katmanlı) |
+| Kat planları (ölçülü, kapı/pencere, merdiven, mobilya, kesit hattı) | SVG, PNG, DXF (tüm katlar, katmanlı; mobilya MN-MOBILYA katmanında) |
 | A-A kesiti (kotlar, döşemeler, çatı) | SVG, PNG |
 | Ön / arka / yan cepheler | SVG, PNG |
 | Vaziyet planı + imar kontrolü | SVG, PNG |
 | 3D model (çatı aç/kapa, kat seçimi, maket kesiti) | GLB, PNG |
+| Alan tablosu, yaklaşık maliyet, asgari ölçü uyarıları | Alanlar & Maliyet sekmesi |
 | Bina programı | JSON |
+| Proje dosyası (notlar + program) | .mimarnot (Dosya → Kaydet / Aç, Ctrl+S / Ctrl+O) |
 | Çizim seti | Tarayıcıdan PDF (A3 yatay) |
+
+Kurulum sürümü (NSIS) açılışta GitHub Releases'tan yeni sürümü denetler ve indirir; taşınabilir sürüm güncellenmez.
 
 ## Yapı
 

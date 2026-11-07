@@ -40,4 +40,7 @@ jobs:
             - **MimarNot-Kurulum-*.exe**: kurulum dosyası (masaüstü ve Başlat menüsü kısayolu)
             - **MimarNot-Tasinabilir-*.exe**: kurulum gerektirmeden çalışır
             İlk açılışta Ayarlar'dan Claude API anahtarını girin. Uygulama imzasız olduğu için Windows uyarı verirse "Ek bilgi" → "Yine de çalıştır".
-          files: release/*.exe
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml

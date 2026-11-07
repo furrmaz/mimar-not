@@ -3,6 +3,7 @@ import type { BuildingLayout, FloorLayout, Opening, Rect } from "./layout";
 import { ZONE_COLORS, near } from "./layout";
 import type { Program } from "../shared/schema";
 import { zoningCheck } from "./zoning";
+import { furnishFloor, furnitureSymbol, type Prim } from "./furniture";
 
 const S = 50; // px / m
 const INK = "#1d1d1f";
@@ -17,9 +18,10 @@ function svgDoc(w: number, h: number, body: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w.toFixed(0)} ${h.toFixed(0)}" width="${w.toFixed(0)}" height="${h.toFixed(0)}" ${FONT}><rect width="100%" height="100%" fill="#ffffff"/>${body}</svg>`;
 }
 
-function text(x: number, y: number, t: string, size = 12, opts: { anchor?: string; weight?: number; fill?: string; rotate?: number } = {}) {
+function text(x: number, y: number, t: string, size = 12, opts: { anchor?: string; weight?: number; fill?: string; rotate?: number; halo?: string } = {}) {
+  const halo = opts.halo ? ` stroke="${opts.halo}" stroke-width="3" stroke-linejoin="round" paint-order="stroke"` : "";
   const rot = opts.rotate ? ` transform="rotate(${opts.rotate} ${x.toFixed(1)} ${y.toFixed(1)})"` : "";
-  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${size}" text-anchor="${opts.anchor ?? "middle"}" font-weight="${opts.weight ?? 400}" fill="${opts.fill ?? INK}"${rot}>${esc(t)}</text>`;
+  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${size}" text-anchor="${opts.anchor ?? "middle"}" font-weight="${opts.weight ?? 400}" fill="${opts.fill ?? INK}"${halo}${rot}>${esc(t)}</text>`;
 }
 
 /** Ölçü çizgisi (px koordinatlarında). */
@@ -34,7 +36,7 @@ function dimLine(x1: number, y1: number, x2: number, y2: number, label: string, 
 
 // ---------------------------------------------------------------- KAT PLANI
 
-export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program): string {
+export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program, opts: { flag?: Set<string> } = {}): string {
   const M = 2.2; // kenar boşluğu (m)
   const outDepth = floor.outdoor.reduce((s, o) => Math.max(s, o.rect.y + o.rect.h - L.D), 0);
   const Wm = L.W + 2 * M;
@@ -62,6 +64,9 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program)
     parts.push(`<rect x="${X(r.rect.x)}" y="${Y(r.rect.y + r.rect.h)}" width="${r.rect.w * S}" height="${r.rect.h * S}" fill="${fill}"/>`);
   }
 
+  // Mobilya
+  for (const f of furnishFloor(floor)) parts.push(primsSVG(furnitureSymbol(f), X, Y));
+
   // Merdiven (U dönüşlü)
   if (L.stair) parts.push(stairPlan(L.stair, X, Y, floor.level === L.floors[L.floors.length - 1].level));
 
@@ -70,6 +75,15 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program)
 
   // Açıklıklar
   for (const o of floor.openings) parts.push(openingPlan(o, L, X, Y));
+
+  // Asgari ölçü uyarısı olan mahaller
+  for (const r of floor.rooms) {
+    if (!opts.flag?.has(r.id)) continue;
+    const i = 0.12;
+    parts.push(`<rect x="${X(r.rect.x + i)}" y="${Y(r.rect.y + r.rect.h - i)}" width="${(r.rect.w - 2 * i) * S}" height="${(r.rect.h - 2 * i) * S}" fill="none" stroke="#c0392b" stroke-width="1.6" stroke-dasharray="7 4"/>`);
+    const tx = X(r.rect.x + r.rect.w - 0.35), ty = Y(r.rect.y + r.rect.h - 0.35);
+    parts.push(`<circle cx="${tx}" cy="${ty}" r="8" fill="#c0392b"/>` + text(tx, ty + 4, "!", 11, { fill: "#fff", weight: 700 }));
+  }
 
   // Oda etiketleri
   for (const r of floor.rooms) {
@@ -80,9 +94,10 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program)
     const small = r.rect.w < 2.2 || r.rect.h < 1.6;
     const fs = small ? 9 : 12;
     const label = small && r.name.length > 12 ? r.name.split(" ")[0] : r.name;
-    parts.push(text(cx, cy - (small ? 2 : 6), label, fs, { weight: 600 }));
-    parts.push(text(cx, cy + (small ? 9 : 10), `${area.toFixed(1)} m²`, small ? 8 : 11, { fill: THIN }));
-    if (!small) parts.push(text(cx, cy + 24, `${f2(r.rect.w)} × ${f2(r.rect.h)}`, 9, { fill: "#8c8c90" }));
+    const halo = ZONE_COLORS[r.zone] ?? "#f5f5f5";
+    parts.push(text(cx, cy - (small ? 2 : 6), label, fs, { weight: 600, halo }));
+    parts.push(text(cx, cy + (small ? 9 : 10), `${area.toFixed(1)} m²`, small ? 8 : 11, { fill: THIN, halo }));
+    if (!small) parts.push(text(cx, cy + 24, `${f2(r.rect.w)} × ${f2(r.rect.h)}`, 9, { fill: "#8c8c90", halo }));
   }
 
   // Ölçüler: alt toplam + ön bant zinciri, sağ toplam + bant zinciri
@@ -107,6 +122,15 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program)
   parts.push(text(X(L.W / 2), Y(0) + 2.0 * S, "SOKAK CEPHESİ", 10, { fill: THIN, weight: 600 }));
 
   return svgDoc(Wm * S, Dm * S + titleH, parts.join(""));
+}
+
+function primsSVG(ps: Prim[], X: (x: number) => number, Y: (y: number) => number) {
+  const st = `fill="none" stroke="#9a9aa0" stroke-width="0.8"`;
+  const b = ps.map((p) =>
+    p.t === "rect" ? `<rect x="${X(p.x).toFixed(1)}" y="${Y(p.y + p.h).toFixed(1)}" width="${(p.w * S).toFixed(1)}" height="${(p.h * S).toFixed(1)}"/>`
+    : p.t === "line" ? `<line x1="${X(p.x1).toFixed(1)}" y1="${Y(p.y1).toFixed(1)}" x2="${X(p.x2).toFixed(1)}" y2="${Y(p.y2).toFixed(1)}"/>`
+    : `<circle cx="${X(p.cx).toFixed(1)}" cy="${Y(p.cy).toFixed(1)}" r="${(p.r * S).toFixed(1)}"/>`);
+  return `<g ${st}>${b.join("")}</g>`;
 }
 
 function wallRect(orient: "h" | "v", line: number, a: number, b: number, t: number, X: (x: number) => number, Y: (y: number) => number, fill: string) {
