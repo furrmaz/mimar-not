@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { Program } from "../shared/schema";
 import type { BuildingLayout } from "../geometry/layout";
 import { areaTable, roomChecks } from "../geometry/roomcheck";
+import { isMultiBlock, unitCounts } from "../geometry/blocks";
+import { zoningCheck } from "../geometry/zoning";
 
 const COST_KEY = "mimar-not.unitCost";
 const tl = (v: number) => v.toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " ₺";
@@ -22,15 +24,41 @@ export function AreasPanel({ program, layout }: { program: Program; layout: Buil
   const issues = roomChecks(layout);
   const hard = issues.filter((i) => !i.soft);
   const soft = issues.filter((i) => i.soft);
-  const costArea = total.gross + total.outdoor * 0.5;
+  const multi = isMultiBlock(program);
+  const units = multi ? unitCounts(program) : [];
+  const site = multi ? (zoningCheck(program, layout).blocks ?? []).map((b) => ({ name: b.name, ...areaTable(b.L).total })) : [];
+  const siteTotal = site.reduce((t, b) => ({ gross: t.gross + b.gross, outdoor: t.outdoor + b.outdoor, net: t.net + b.net }), { gross: 0, outdoor: 0, net: 0 });
+  const costArea = multi ? siteTotal.gross + siteTotal.outdoor * 0.5 : total.gross + total.outdoor * 0.5;
   const setU = (v: number) => {
     setUnit(v);
     try { localStorage.setItem(COST_KEY, String(v)); } catch { /* yok say */ }
   };
   return (
     <div>
+      {multi && (
+        <section className="card">
+          <h3>Daire listesi · {units.reduce((s, u) => s + u.count, 0)} daire</h3>
+          <table>
+            <thead><tr><th>Daire tipi</th><th className="num">Adet</th><th className="num">Net alan (m²)</th><th className="num">Balkon / teras (m²)</th><th>Bloklar</th></tr></thead>
+            <tbody>
+              {units.map((u) => (
+                <tr key={u.type}><td>{u.type}</td><td className="num">{u.count}</td><td className="num">{m2(u.area)}</td><td className="num">{m2(u.outdoor)}</td><td>{[...u.blocks].join(", ")}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <h3 style={{ marginTop: 16 }}>Site toplamı</h3>
+          <table>
+            <thead><tr><th>Blok</th><th className="num">Net alan (m²)</th><th className="num">Brüt alan (m²)</th><th className="num">Balkon / teras (m²)</th></tr></thead>
+            <tbody>
+              {site.map((b) => <tr key={b.name}><td>{b.name}</td><td className="num">{m2(b.net)}</td><td className="num">{m2(b.gross)}</td><td className="num">{m2(b.outdoor)}</td></tr>)}
+              <tr style={{ fontWeight: 600 }}><td>Toplam</td><td className="num">{m2(siteTotal.net)}</td><td className="num">{m2(siteTotal.gross)}</td><td className="num">{m2(siteTotal.outdoor)}</td></tr>
+            </tbody>
+          </table>
+          <div className="muted small">Daire net alanı, daire tipindeki odaların program alanlarının toplamıdır. Aşağıdaki kat tablosu seçili bloğa aittir; maliyet tüm siteyi kapsar.</div>
+        </section>
+      )}
       <section className="card">
-        <h3>Alan tablosu</h3>
+        <h3>Alan tablosu{multi ? ` · ${program.blocks![program.blockIndex ?? 0]?.name}` : ""}</h3>
         <table>
           <thead><tr><th>Kat</th><th className="num">Mahal</th><th className="num">Net alan (m²)</th><th className="num">Brüt alan (m²)</th><th className="num">Balkon / teras (m²)</th></tr></thead>
           <tbody>
@@ -41,7 +69,7 @@ export function AreasPanel({ program, layout }: { program: Program; layout: Buil
             ))}
           </tbody>
         </table>
-        <div className="muted small">Net alan duvar akslarından ölçülen mahal alanlarının toplamıdır (hol ve merdiven dahil). Brüt alan dış duvar dış yüzünden ölçülür. Müşterinin istediği toplam: {m2(program.floors.reduce((s, f) => s + f.rooms.reduce((t, r) => t + r.area, 0), 0))} m² net.</div>
+        <div className="muted small">Net alan duvar akslarından ölçülen mahal alanlarının toplamıdır (hol ve merdiven dahil). Brüt alan dış duvar dış yüzünden ölçülür. {multi ? "" : "Müşterinin istediği toplam: "}{multi ? "" : m2(program.floors.reduce((s, f) => s + f.rooms.reduce((t, r) => t + r.area, 0), 0)) + " m² net."}</div>
       </section>
 
       <section className="card">

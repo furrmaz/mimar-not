@@ -53,6 +53,14 @@ API anahtarı olmadan da "Örnek görüşmeyi yükle" ile bütün çizimleri ve 
 
 Kat Planları sekmesinde üç plan alternatifi (A: gündüz sokak tarafında, B: gündüz bahçe tarafında, C: oda sırası ters) komşuluk isteklerine ve asgari ölçülere göre puanlanır; biri seçilir. "Sınırları düzenle" ile oda sınırları ve hol bandı sürüklenerek ayarlanır. Ayarlar'a girilen ofis / mimar bilgileri tüm paftaların antetine yazılır.
 
+### Apartman ve çok bloklu siteler (v0.4)
+
+Müteahhit projelerinde Claude programı blok ve daire tipi olarak çıkarır (ör. A-B-C-D blokları; 2+1, 3+1, 4+1 dubleks). Her blokta katın ortasında merdiven + asansör + kat holünden oluşan çekirdek bulunur; daireler ön ve arka cepheye dizilir, yaşam mekânları ve yatak odaları cepheye, antre ve ıslak hacimler çekirdeğe bakar. Dubleks dairelerin üst katı ve iç merdiveni otomatik eklenir. Vaziyet planı blokları arsaya, çekme ve bloklar arası mesafeye göre yerleştirir; TAKS/KAKS tüm site için hesaplanır. 3D görünüm tüm siteyi, Alanlar sekmesi daire listesini (tip, adet, net alan) ve site toplamını gösterir. Planlar, kesit, cepheler, DXF ve IFC seçili blok içindir. "Örnek görüşme: 4 bloklu site" API anahtarı olmadan denenebilir.
+
+### Notlar ekranı
+
+"Proje bilgileri ve üslup" bölümünde arsa ve bina ölçüleri, kat ve blok sayısı, TAKS/KAKS, Hmax, çekmeler, üslup ve çatı seçilebilir; en çok 3 referans görsel eklenebilir ("bu tarz olsun"). "Düzeltme iste" kutusu üretilen projeyi yalnız istenen yerde değiştirir (geri alınabilir); üretim "Durdur" ile kesilebilir.
+
 Kurulum sürümü (NSIS) açılışta GitHub Releases'tan yeni sürümü denetler ve indirir; taşınabilir sürüm güncellenmez.
 
 ## Yapı
@@ -61,7 +69,8 @@ Kurulum sürümü (NSIS) açılışta GitHub Releases'tan yeni sürümü denetle
 server/index.ts          Express API: POST /api/generate → Claude (structured outputs, zod şeması)
 server/prompt.ts         Claude sistem talimatı (Türk imar yönetmeliği varsayılanları dahil)
 src/shared/schema.ts     Bina programı şeması (sunucu ve arayüz ortak)
-src/geometry/layout.ts   Programdan deterministik yerleşim (bantlar, odalar, kapı/pencere, duvarlar)
+src/geometry/layout.ts   Programdan deterministik yerleşim (bantlar, odalar, kapı/pencere, duvarlar; apartman çekirdeği ve daireler)
+src/geometry/blocks.ts   Blok / daire tiplerini katlara açar, blok görünümleri
 src/geometry/svg.ts      Plan, kesit, cephe, vaziyet SVG üreticileri
 src/geometry/model3d.ts  Three.js modeli
 src/geometry/dxf.ts      DXF (R12) dışa aktarma

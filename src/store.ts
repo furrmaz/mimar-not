@@ -1,5 +1,6 @@
 import type { Program } from "./shared/schema";
 import { desktop } from "./desktop";
+import type { Brief } from "./brief";
 
 export interface Project {
   id: string;
@@ -9,6 +10,12 @@ export interface Project {
   updatedAt: number;
   /** Masaüstünde kaydedildiği .mimarnot dosyası */
   filePath?: string;
+  /** Proje bilgileri formu */
+  brief?: Brief;
+  /** "Bu tarz olsun" referans görselleri (küçültülmüş JPEG data URL) */
+  refImages?: string[];
+  /** Geri almak için önceki programlar (en yeni sonda) */
+  history?: { program: Program; label: string; at: number }[];
 }
 
 export interface ProjectFile {
@@ -17,11 +24,14 @@ export interface ProjectFile {
   title: string;
   notes: string;
   program: Program | null;
+  brief?: Brief;
+  refImages?: string[];
+  history?: Project["history"];
   savedAt: string;
 }
 
 export function toProjectFile(p: Project): string {
-  const f: ProjectFile = { format: "mimarnot", version: 1, title: p.title, notes: p.notes, program: p.program, savedAt: new Date().toISOString() };
+  const f: ProjectFile = { format: "mimarnot", version: 1, title: p.title, notes: p.notes, program: p.program, brief: p.brief, refImages: p.refImages, history: p.history, savedAt: new Date().toISOString() };
   return JSON.stringify(f, null, 2);
 }
 
@@ -32,7 +42,7 @@ export function fromProjectFile(text: string): Project {
     return { ...newProject(data.clientName || data.projectName || "İçe aktarılan"), program: data as Program };
   }
   if (!data || data.format !== "mimarnot") throw new Error("Bu dosya bir Mimar Not projesi değil.");
-  return { ...newProject(data.title || "Proje"), notes: data.notes ?? "", program: data.program ?? null };
+  return { ...newProject(data.title || "Proje"), notes: data.notes ?? "", program: data.program ?? null, brief: data.brief, refImages: data.refImages, history: data.history };
 }
 
 const KEY = "mimar-not.projects.v1";
@@ -52,7 +62,10 @@ export function saveProjects(list: Project[]) {
   try {
     localStorage.setItem(KEY, JSON.stringify(list));
   } catch {
-    /* depolama yoksa sessizce geç */
+    // Depolama doluysa önce geçmişi kısalt, olmazsa sessizce geç
+    try {
+      localStorage.setItem(KEY, JSON.stringify(list.map((p) => ({ ...p, history: (p.history ?? []).slice(-3) }))));
+    } catch { /* yok say */ }
   }
 }
 
@@ -60,15 +73,22 @@ export function newProject(title = "Yeni görüşme"): Project {
   return { id: Math.random().toString(36).slice(2, 10), title, notes: "", program: null, updatedAt: Date.now() };
 }
 
-export async function generateProgram(notes: string, previous: Program | null): Promise<Program> {
+export async function generateProgram(
+  notes: string,
+  previous: Program | null,
+  extra: { revision?: string; brief?: Record<string, string>; images?: { mediaType: string; data: string }[] } = {},
+  signal?: AbortSignal,
+): Promise<Program> {
   let res: Response;
   try {
     res = await fetch("api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes, previous: previous ?? undefined }),
+      body: JSON.stringify({ notes, previous: previous ?? undefined, ...extra }),
+      signal,
     });
-  } catch {
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
     throw new Error("Sunucuya ulaşılamadı. 'npm run dev' ile API sunucusunun çalıştığından emin olun.");
   }
   const data = await res.json().catch(() => ({}));

@@ -195,3 +195,34 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--line); border-bott
 .plan-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 .btn.small.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .settings-sub { margin: 6px 0 0; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+/* Notlar paneli: seçim alanları, referans görseller, düzeltme */
+.notes { overflow-y: auto; }
+.notes textarea { flex: 1 0 200px; }
+.brief { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; background: #fcfcfb; }
+.brief summary { cursor: pointer; font-weight: 600; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.brief[open] summary { margin-bottom: 10px; }
+.brief-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin-bottom: 10px; }
+.brief-grid .wide { grid-column: 1 / -1; }
+.brief-grid .field input, .brief-grid .field select { padding: 5px 7px; font-size: 13px; width: 100%; }
+.refs { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.ref-list { display: flex; gap: 8px; flex-wrap: wrap; }
+.ref { position: relative; width: 84px; height: 64px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.ref img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ref.add { cursor: pointer; color: var(--accent); font-size: 13px; border-style: dashed; }
+.ref-x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; line-height: 1; }
+.revision { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.revision textarea { resize: vertical; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 14px; line-height: 1.45; background: #fcfcfb; min-height: 70px; flex: none; }
+.rev-list { margin: 0; padding-left: 16px; font-size: 12.5px; line-height: 1.6; color: #3a3a3d; }
+.busy-row { display: flex; align-items: center; gap: 10px; }
+.busy-row .progress { flex: 1; }
+.btn.stop { border-color: var(--bad); color: var(--bad); }
+.brief-grid input::placeholder { color: #b0afb5; }
+
+/* çok bloklu */
+.unit-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.unit-chip { display: inline-flex; align-items: center; gap: 2px; background: #f6efe6; border: 1px solid #e3d3bd; border-radius: 999px; padding: 2px 4px 2px 8px; }
+.unit-chip select { border: 0; background: transparent; font-size: 13px; padding: 2px 0; }
+.block-tabs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 10px; }
+.block-tabs button { border: 1px solid #d8d4cc; background: #fff; border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
+.block-tabs button.active { background: #b5651d; border-color: #b5651d; color: #fff; }

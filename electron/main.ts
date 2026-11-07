@@ -89,6 +89,9 @@ async function start() {
   setTimeout(() => checkUpdates(win), 5000);
   await win.loadURL(isDev && process.env.VITE_DEV_URL ? process.env.VITE_DEV_URL : `http://127.0.0.1:${port}/`);
 
+  ipcMain.handle("update:check", () => { checkUpdates(win, true); return { version: app.getVersion() }; });
+  ipcMain.handle("update:install", () => { if (lastUpdate.state === "ready") autoUpdater.quitAndInstall(); });
+  ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("settings:get", () => ({ hasKey: Boolean(getApiKey()), keyHint: (getApiKey() ?? "").slice(-4), outputRoot: path.join(app.getPath("documents"), "Mimar Not") }));
   ipcMain.handle("settings:setKey", (_e, key: string) => { setApiKey(String(key ?? "").trim()); return { hasKey: Boolean(getApiKey()) }; });
 
@@ -158,7 +161,7 @@ async function start() {
         { label: "Projeyi kaydet", accelerator: "CmdOrCtrl+S", click: () => win.webContents.send("menu", "save") },
         { label: "Farklı kaydet…", accelerator: "CmdOrCtrl+Shift+S", click: () => win.webContents.send("menu", "saveAs") },
         { type: "separator" },
-        { label: "Güncellemeleri denetle", click: () => checkUpdates(win, true) },
+        { label: "Güncellemeleri denetle", click: () => { win.webContents.send("menu", "update"); checkUpdates(win, true); } },
         { type: "separator" },
         { label: "Çıktı klasörünü aç", click: () => shell.openPath(path.join(app.getPath("documents"), "Mimar Not")) }, { type: "separator" }, { role: "quit", label: "Çıkış" }] },
       { label: "Düzen", submenu: [{ role: "undo", label: "Geri al" }, { role: "redo", label: "Yinele" }, { type: "separator" }, { role: "cut", label: "Kes" }, { role: "copy", label: "Kopyala" }, { role: "paste", label: "Yapıştır" }, { role: "selectAll", label: "Tümünü seç" }] },
@@ -167,30 +170,35 @@ async function start() {
   );
 }
 
-// Otomatik güncelleme: GitHub Releases (yalnızca kurulum dosyasıyla kurulan sürümde)
+// Otomatik güncelleme: GitHub Releases (yalnızca kurulum dosyasıyla kurulan sürümde).
+// Durum arayüze "update" kanalıyla gönderilir; arayüz düğme/rozet olarak gösterir.
+type UpdateState = { state: "unsupported" | "checking" | "available" | "none" | "downloading" | "ready" | "error"; version?: string; percent?: number; message?: string };
 let updateWired = false;
+let lastUpdate: UpdateState = { state: "none" };
+function sendUpdate(win: BrowserWindow, st: UpdateState) {
+  lastUpdate = st;
+  if (!win.isDestroyed()) win.webContents.send("update", st);
+}
 function checkUpdates(win: BrowserWindow, manual = false) {
   if (isDev || process.env.PORTABLE_EXECUTABLE_DIR) {
-    if (manual) dialog.showMessageBox(win, { message: "Otomatik güncelleme yalnızca kurulum dosyasıyla kurulan sürümde çalışır. Yeni sürümü Releases sayfasından indirebilirsiniz." });
+    if (manual) sendUpdate(win, { state: "unsupported", message: "Otomatik güncelleme yalnızca kurulum dosyasıyla (MimarNot-Kurulum) kurulan sürümde çalışır. Yeni sürümü Releases sayfasından indirebilirsiniz." });
+    return;
+  }
+  if (lastUpdate.state === "downloading" || lastUpdate.state === "ready") {
+    sendUpdate(win, lastUpdate);
     return;
   }
   if (!updateWired) {
     updateWired = true;
     autoUpdater.autoDownload = true;
-    autoUpdater.on("update-downloaded", async (info) => {
-      const r = await dialog.showMessageBox(win, {
-        type: "info",
-        buttons: ["Şimdi yeniden başlat", "Sonra"],
-        defaultId: 0,
-        message: `Mimar Not ${info.version} indirildi.`,
-        detail: "Güncellemeyi uygulamak için uygulama yeniden başlatılacak. 'Sonra' derseniz kapatırken kurulur.",
-      });
-      if (r.response === 0) autoUpdater.quitAndInstall();
-    });
-    autoUpdater.on("update-not-available", () => { if (manual) dialog.showMessageBox(win, { message: `En güncel sürümü kullanıyorsunuz (${app.getVersion()}).` }); });
-    autoUpdater.on("error", (e) => { if (manual) dialog.showMessageBox(win, { type: "warning", message: "Güncelleme denetlenemedi.", detail: String(e?.message ?? e) }); });
+    autoUpdater.on("checking-for-update", () => sendUpdate(win, { state: "checking" }));
+    autoUpdater.on("update-available", (info) => sendUpdate(win, { state: "available", version: info.version }));
+    autoUpdater.on("update-not-available", () => sendUpdate(win, { state: "none", version: app.getVersion() }));
+    autoUpdater.on("download-progress", (p) => sendUpdate(win, { state: "downloading", percent: Math.round(p.percent), version: lastUpdate.version }));
+    autoUpdater.on("update-downloaded", (info) => sendUpdate(win, { state: "ready", version: info.version }));
+    autoUpdater.on("error", (e) => sendUpdate(win, { state: "error", message: String(e?.message ?? e) }));
   }
-  autoUpdater.checkForUpdates().catch(() => {});
+  autoUpdater.checkForUpdates().catch((e) => sendUpdate(win, { state: "error", message: String(e?.message ?? e) }));
 }
 
 app.whenReady().then(start).catch((err) => {

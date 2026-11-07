@@ -87,19 +87,21 @@ function dimLine(x1: number, y1: number, x2: number, y2: number, label: string, 
 export function planFrame(L: BuildingLayout, floor: FloorLayout) {
   const M = 2.2; // kenar boşluğu (m)
   const outDepth = floor.outdoor.reduce((s, o) => Math.max(s, o.rect.y + o.rect.h - L.D), 0);
+  const outFront = floor.outdoor.reduce((s, o) => Math.max(s, -o.rect.y), 0);
   const Wm = L.W + 2 * M;
-  const Dm = L.D + 2 * M + outDepth;
+  const Dm = L.D + 2 * M + outDepth + outFront;
   const titleH = 56;
   // dünya → px (ön cephe altta)
   const X = (x: number) => (x + M) * S;
   const Y = (y: number) => (L.D + outDepth - y + M) * S + titleH;
   const invX = (px: number) => px / S - M;
   const invY = (py: number) => L.D + outDepth + M - (py - titleH) / S;
-  return { M, S, Wm, Dm, titleH, outDepth, X, Y, invX, invY, width: Wm * S, height: Dm * S + titleH };
+  return { M, S, Wm, Dm, titleH, outDepth, outFront, X, Y, invX, invY, width: Wm * S, height: Dm * S + titleH };
 }
 
 export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program, opts: { flag?: Set<string>; thumb?: boolean } = {}): string {
-  const { Wm, Dm, titleH, X, Y, outDepth } = planFrame(L, floor);
+  const { Wm, Dm, titleH, X, Y, outDepth, outFront } = planFrame(L, floor);
+  const Y0 = Y(-outFront); // ön çıkmaların altı
   const parts: string[] = [];
 
   parts.push(text(16, 26, `${program.projectName} — ${floor.name}`, 18, { anchor: "start", weight: 600 }));
@@ -124,6 +126,12 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
 
   // Merdiven (U dönüşlü)
   if (L.stair) parts.push(stairPlan(L.stair, X, Y, floor.level === L.floors[L.floors.length - 1].level));
+  for (const st of floor.stairs ?? []) parts.push(stairPlan(st, X, Y, !!floor.units?.some((u) => u.part === "upper")));
+  // Asansör kuyusu
+  for (const r of floor.rooms.filter((r) => r.name === "Asansör")) {
+    const a = r.rect, i = 0.25;
+    parts.push(`<path d="M${X(a.x + i)} ${Y(a.y + i)} L${X(a.x + a.w - i)} ${Y(a.y + a.h - i)} M${X(a.x + i)} ${Y(a.y + a.h - i)} L${X(a.x + a.w - i)} ${Y(a.y + i)}" stroke="${THIN}" stroke-width="0.8"/>`);
+  }
 
   // Duvarlar
   for (const w of floor.walls) parts.push(wallRect(w.orient, w.line, w.a, w.b, w.thickness, X, Y, w.exterior ? INK : "#3b3b3e"));
@@ -169,17 +177,29 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
     if (!small) parts.push(text(cx, cy + 24, `${f2(r.rect.w)} × ${f2(r.rect.h)}`, 9, { fill: "#8c8c90", halo }));
   }
 
+  // Daireler: sınır ve etiket (kat holünde)
+  for (const u of floor.units ?? []) {
+    const r = u.rect, i = 0.18;
+    parts.push(`<rect x="${X(r.x + i)}" y="${Y(r.y + r.h - i)}" width="${(r.w - 2 * i) * S}" height="${(r.h - 2 * i) * S}" fill="none" stroke="#b5651d" stroke-width="1.2" stroke-dasharray="10 5" opacity="0.7"/>`);
+    const front = r.y < L.hallBand.y;
+    const ty = front ? Y(L.hallBand.y) - 10 : Y(L.hallBand.y + L.hallBand.h) + 20;
+    const label = `${u.label} · ${u.type}${u.part === "upper" ? " (üst kat)" : ""} · ${u.area.toFixed(0)} m²`;
+    const tw = label.length * 6.4 + 16;
+    const cx = Math.min(X(L.W) - tw / 2 - 4, Math.max(X(L.stair ? L.stair.w + (L.elevator?.w ?? 0) : 0) + tw / 2 + 4, X(r.x + r.w / 2)));
+    parts.push(`<rect x="${cx - tw / 2}" y="${ty - 13}" width="${tw}" height="18" rx="9" fill="#b5651d"/>` + text(cx, ty, label, 11, { fill: "#fff", weight: 600 }));
+  }
+
   if (opts.thumb) {
     // küçük önizleme: başlık, ölçü ve kesit hattı yok, yalnız bina
     const x0 = X(0) - 10, y0 = Y(L.D + outDepth) - 10;
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${L.W * S + 20} ${(L.D + outDepth) * S + 20}" ${FONT}>${parts.slice(2).join("")}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${L.W * S + 20} ${(L.D + outDepth + outFront) * S + 20}" ${FONT}>${parts.slice(2).join("")}</svg>`;
   }
   // Ölçüler: alt toplam + ön bant zinciri, sağ toplam + bant zinciri
-  const yb = Y(0) + 1.5 * S;
+  const yb = Y0 + 1.5 * S;
   parts.push(dimLine(X(0), yb, X(L.W), yb, `${f2(L.W)}`, -1));
   const front = floor.rooms.filter((r) => near(r.rect.y, 0)).sort((a, b) => a.rect.x - b.rect.x);
   const xs = Array.from(new Set([0, ...front.map((r) => r.rect.x + r.rect.w)])).sort((a, b) => a - b);
-  for (let i = 0; i < xs.length - 1; i++) parts.push(dimLine(X(xs[i]), Y(0) + 0.8 * S, X(xs[i + 1]), Y(0) + 0.8 * S, f2(xs[i + 1] - xs[i]), -1));
+  for (let i = 0; i < xs.length - 1; i++) parts.push(dimLine(X(xs[i]), Y0 + 0.8 * S, X(xs[i + 1]), Y0 + 0.8 * S, f2(xs[i + 1] - xs[i]), -1));
   const xr = X(L.W) + 1.5 * S;
   parts.push(dimLine(xr, Y(0), xr, Y(L.D), `${f2(L.D)}`, -1));
   const ys = [0, L.hallBand.y, L.hallBand.y + L.hallBand.h, L.D];
@@ -187,13 +207,13 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
 
   // Kesit hattı A-A
   const ax = X(L.cutX);
-  parts.push(`<line x1="${ax}" y1="${Y(L.D + outDepth) - 0.9 * S}" x2="${ax}" y2="${Y(0) + 0.4 * S}" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="14 4 2 4"/>`);
-  for (const yy of [Y(L.D + outDepth) - 0.9 * S, Y(0) + 0.4 * S]) {
+  parts.push(`<line x1="${ax}" y1="${Y(L.D + outDepth) - 0.9 * S}" x2="${ax}" y2="${Y0 + 0.4 * S}" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="14 4 2 4"/>`);
+  for (const yy of [Y(L.D + outDepth) - 0.9 * S, Y0 + 0.4 * S]) {
     parts.push(`<circle cx="${ax}" cy="${yy}" r="10" fill="#fff" stroke="#c0392b" stroke-width="1.2"/>`);
     parts.push(text(ax, yy + 4, "A", 11, { fill: "#c0392b", weight: 700 }));
   }
   // Sokak / bahçe etiketi
-  parts.push(text(X(L.W / 2), Y(0) + 2.0 * S, "SOKAK CEPHESİ", 10, { fill: THIN, weight: 600 }));
+  parts.push(text(X(L.W / 2), Y0 + 2.0 * S, "SOKAK CEPHESİ", 10, { fill: THIN, weight: 600 }));
 
   return svgDoc(Wm * S, Dm * S + titleH, parts.join(""), { title: `${floor.name} planı`, no: `A-${100 + floor.level}`, scale: "1/100" });
 }
@@ -298,10 +318,11 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
   const bottomZ = Math.min(0, ...L.floors.map((f) => f.z)) - 1.2;
   const topZ = L.totalHeight + L.roofHeight + 0.6;
   const outMax = Math.max(0, ...L.floors.flatMap((f) => f.outdoor.map((o) => o.rect.y + o.rect.h - L.D)));
-  const widthM = L.D + outMax + 2 * M + 1.6;
+  const outFront = Math.max(0, ...L.floors.flatMap((f) => f.outdoor.map((o) => -o.rect.y)));
+  const widthM = L.D + outMax + outFront + 2 * M + 1.6;
   const heightM = topZ - bottomZ + 1.2;
   const titleH = 56;
-  const X = (y: number) => (y + M) * S;
+  const X = (y: number) => (y + M + outFront) * S;
   const Z = (z: number) => (topZ - z) * S + titleH;
   const p: string[] = [];
   p.push(text(16, 26, `${program.projectName} — A-A Kesiti`, 18, { anchor: "start", weight: 600 }));
@@ -350,10 +371,11 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
     }
     // balkon çıkması
     for (const o of f.outdoor) {
-      p.push(`<rect x="${X(L.D)}" y="${Z(z0)}" width="${(o.rect.y + o.rect.h - L.D) * S}" height="${0.18 * S}" fill="${o.rect.x <= L.cutX && o.rect.x + o.rect.w >= L.cutX ? INK : "#888"}"/>`);
-      const ey = o.rect.y + o.rect.h;
+      const front = o.rect.y < 0;
+      const base = front ? 0 : L.D, ey = front ? o.rect.y : o.rect.y + o.rect.h;
+      p.push(`<rect x="${X(Math.min(base, ey))}" y="${Z(z0)}" width="${Math.abs(ey - base) * S}" height="${0.18 * S}" fill="${o.rect.x <= L.cutX && o.rect.x + o.rect.w >= L.cutX ? INK : "#888"}"/>`);
       p.push(`<line x1="${X(ey)}" y1="${Z(z0)}" x2="${X(ey)}" y2="${Z(z0 + 1.1)}" stroke="${INK}" stroke-width="1.4"/>`);
-      p.push(`<line x1="${X(L.D)}" y1="${Z(z0 + 1.1)}" x2="${X(ey)}" y2="${Z(z0 + 1.1)}" stroke="${INK}" stroke-width="1.4"/>`);
+      p.push(`<line x1="${X(base)}" y1="${Z(z0 + 1.1)}" x2="${X(ey)}" y2="${Z(z0 + 1.1)}" stroke="${INK}" stroke-width="1.4"/>`);
     }
     // kot işareti
     p.push(levelMark(X(L.D + outMax) + 1.0 * S, Z(z0), z0));
@@ -457,8 +479,9 @@ export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade
     }
     // balkonlar
     for (const o of f.outdoor) {
-      if (facade === "back") {
-        const u0 = toU(o.rect.x + o.rect.w, 0), u1 = toU(o.rect.x, 0);
+      if ((facade === "back" && o.rect.y >= 0) || (facade === "front" && o.rect.y < 0)) {
+        const ua = toU(o.rect.x + o.rect.w, 0), ub = toU(o.rect.x, 0);
+        const u0 = Math.min(ua, ub), u1 = Math.max(ua, ub);
         p.push(`<rect x="${U(u0)}" y="${Z(f.z)}" width="${(u1 - u0) * S}" height="${0.18 * S}" fill="#6d6d70"/>`);
         p.push(`<rect x="${U(u0)}" y="${Z(f.z + 1.1)}" width="${(u1 - u0) * S}" height="${1.1 * S}" fill="rgba(160,190,210,0.35)" stroke="${INK}" stroke-width="1.2"/>`);
       } else if (facade === "left" || facade === "right") {
@@ -524,6 +547,8 @@ function tree(x: number, yGround: number) {
 
 // ---------------------------------------------------------------- VAZİYET PLANI
 
+const p0 = (bs: { x: number; L: { W: number } }[]) => (Math.min(...bs.map((q) => q.x)) + Math.max(...bs.map((q) => q.x + q.L.W))) / 2;
+
 export function sitePlanSVG(L: BuildingLayout, program: Program): string {
   const z = zoningCheck(program, L);
   const sw = program.site.width, sd = program.site.depth;
@@ -533,7 +558,7 @@ export function sitePlanSVG(L: BuildingLayout, program: Program): string {
   const X = (x: number) => M + x * sc;
   const Y = (y: number) => titleH + M + (sd - y) * sc; // sokak altta
   const p: string[] = [];
-  p.push(text(16, 26, `${program.projectName} — Vaziyet Planı`, 18, { anchor: "start", weight: 600 }));
+  p.push(text(16, 26, `${z.blocks ? program.projectName.split(" · ")[0] : program.projectName} — Vaziyet Planı`, 18, { anchor: "start", weight: 600 }));
   p.push(text(16, 44, `Arsa ${f2(sw)} × ${f2(sd)} m = ${(sw * sd).toFixed(0)} m²`, 11, { anchor: "start", fill: THIN }));
   p.push(`<rect x="${X(0)}" y="${Y(sd)}" width="${sw * sc}" height="${sd * sc}" fill="#eef4e8" stroke="${INK}" stroke-width="1.6" stroke-dasharray="10 4"/>`);
   // çekme hattı
@@ -542,6 +567,32 @@ export function sitePlanSVG(L: BuildingLayout, program: Program): string {
   p.push(text(X(side) + 4, Y(sd - rear) + 12, "yapı yaklaşma sınırı", 9, { anchor: "start", fill: "#c0392b" }));
   // bina
   const b = z.building;
+  if (z.blocks) {
+    // çok bloklu: tüm bloklar, seçili olan vurgulu
+    for (const bl of z.blocks) {
+      const sel = bl.index === (program.blockIndex ?? 0);
+      for (const f of bl.L.floors) for (const o of f.outdoor)
+        p.push(`<rect x="${X(bl.x + o.rect.x)}" y="${Y(bl.y + o.rect.y + o.rect.h)}" width="${o.rect.w * sc}" height="${o.rect.h * sc}" fill="none" stroke="${THIN}" stroke-dasharray="4 2"/>`);
+      p.push(`<rect x="${X(bl.x)}" y="${Y(bl.y + bl.L.D)}" width="${bl.L.W * sc}" height="${bl.L.D * sc}" fill="${sel ? "#e8c9a6" : "#d9d3c7"}" stroke="${INK}" stroke-width="2"/>`);
+      const nf = bl.L.floors.filter((f) => f.z >= 0).length;
+      p.push(text(X(bl.x + bl.L.W / 2), Y(bl.y + bl.L.D / 2) - 2, bl.name, 13, { weight: 700 }));
+      p.push(text(X(bl.x + bl.L.W / 2), Y(bl.y + bl.L.D / 2) + 13, `${nf} kat · ${(bl.L.W * bl.L.D).toFixed(0)} m² · ${f2(bl.L.W)}×${f2(bl.L.D)}`, 9, { fill: THIN }));
+    }
+    const bs = z.blocks;
+    const minX = Math.min(...bs.map((q) => q.x)), maxX = Math.max(...bs.map((q) => q.x + q.L.W));
+    const minY = Math.min(...bs.map((q) => q.y));
+    p.push(dimLine(X((minX + maxX) / 2) + 10, Y(0), X((minX + maxX) / 2) + 10, Y(minY), `ön ${f2(minY)}`, -1));
+    p.push(dimLine(X(0), Y(minY + bs[0].L.D / 2), X(minX), Y(minY + bs[0].L.D / 2), `${f2(minX)}`, 1));
+    // bloklar arası (ilk iki komşu)
+    const a = bs[0], c = bs.find((q) => q !== a && Math.abs(q.y - a.y) < 0.5);
+    if (c) p.push(dimLine(X(a.x + a.L.W), Y(a.y + a.L.D / 2), X(c.x), Y(a.y + a.L.D / 2), f2(c.x - a.x - a.L.W), 1));
+    const d2 = bs.find((q) => q.y > a.y + a.L.D);
+    if (d2) {
+      const xx = Math.max(a.x, d2.x) + 2;
+      p.push(dimLine(X(xx), Y(a.y + a.L.D), X(xx), Y(d2.y), f2(d2.y - a.y - a.L.D), -1));
+      p.push(text(X(p0(bs)), Y((a.y + a.L.D + d2.y) / 2) + 4, "ortak yeşil alan / çocuk parkı", 10, { fill: "#4f7a3a", weight: 600 }));
+    }
+  } else
   p.push(`<rect x="${X(b.x)}" y="${Y(b.y + L.D)}" width="${L.W * sc}" height="${L.D * sc}" fill="#d9d3c7" stroke="${INK}" stroke-width="2"/>`);
   // açık otopark
   for (const st of parkingStalls(program, L, z)) {
@@ -553,15 +604,19 @@ export function sitePlanSVG(L: BuildingLayout, program: Program): string {
     const cx = (st[0].x + st[st.length - 1].x + st[0].w) / 2;
     p.push(text(X(cx), Y(st[0].y) + 12, `Otopark · ${st.length} araç`, 9, { fill: THIN }));
   }
-  for (const f of L.floors) for (const o of f.outdoor) {
+  if (!z.blocks) for (const f of L.floors) for (const o of f.outdoor) {
     p.push(`<rect x="${X(b.x + o.rect.x)}" y="${Y(b.y + o.rect.y + o.rect.h)}" width="${o.rect.w * sc}" height="${o.rect.h * sc}" fill="none" stroke="${THIN}" stroke-dasharray="4 2"/>`);
   }
-  p.push(text(X(b.x + L.W / 2), Y(b.y + L.D / 2) + 4, `${L.floors.filter((f) => f.z >= 0).length} kat · ${(L.W * L.D).toFixed(0)} m²`, 11, { weight: 600 }));
+  if (!z.blocks) {
+    p.push(text(X(b.x + L.W / 2), Y(b.y + L.D / 2) + 4, `${L.floors.filter((f) => f.z >= 0).length} kat · ${(L.W * L.D).toFixed(0)} m²`, 11, { weight: 600 }));
+    p.push(dimLine(X(b.x + L.W / 2) + 10, Y(0), X(b.x + L.W / 2) + 10, Y(b.y), `ön ${f2(b.y)}`, -1));
+    p.push(dimLine(X(0), Y(b.y + L.D / 2), X(b.x), Y(b.y + L.D / 2), `${f2(b.x)}`, 1));
+  } else {
+    p.push(text(X(sw) - 6, Y(sd) + 16, `TAKS ${z.taks.toFixed(2)} · KAKS ${z.kaks.toFixed(2)} · ${z.blocks.length} blok`, 10, { anchor: "end", fill: THIN, weight: 600 }));
+  }
   // ölçüler
   p.push(dimLine(X(0), Y(0) + 18, X(sw), Y(0) + 18, f2(sw), -1));
   p.push(dimLine(X(sw) + 18, Y(0), X(sw) + 18, Y(sd), f2(sd), -1));
-  p.push(dimLine(X(b.x + L.W / 2) + 10, Y(0), X(b.x + L.W / 2) + 10, Y(b.y), `ön ${f2(b.y)}`, -1));
-  p.push(dimLine(X(0), Y(b.y + L.D / 2), X(b.x), Y(b.y + L.D / 2), `${f2(b.x)}`, 1));
   p.push(text(X(sw / 2), Y(0) + 40, "SOKAK", 11, { weight: 700, fill: THIN }));
   // kuzey oku
   const nx = X(sw) + 50, ny = Y(sd) + 20;

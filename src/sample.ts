@@ -52,6 +52,7 @@ export const SAMPLE_PROGRAM: Program = {
       ],
     },
   ],
+  materials: { wall: "siva_beyaz", accent: "tas", roof: "kiremit", glazing: "genis" },
   adjacencies: [
     { a: "Açık Mutfak", b: "Kiler", relation: "bitisik", reason: "Mutfağın yanında kiler istendi" },
     { a: "Salon", b: "Açık Mutfak", relation: "bitisik", reason: "Açık mutfak salonla birlikte" },

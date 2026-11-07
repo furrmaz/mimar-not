@@ -15,5 +15,13 @@ contextBridge.exposeInMainWorld("desktop", {
     ipcRenderer.on("menu", h);
     return () => ipcRenderer.removeListener("menu", h);
   },
+  checkUpdate: () => ipcRenderer.invoke("update:check"),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
+  version: () => ipcRenderer.invoke("app:version"),
+  onUpdate: (cb: (st: unknown) => void) => {
+    const h = (_e: unknown, st: unknown) => cb(st);
+    ipcRenderer.on("update", h);
+    return () => ipcRenderer.removeListener("update", h);
+  },
   savePDF: (project: string, name: string) => ipcRenderer.invoke("pdf:save", { project, name }),
 });

@@ -3,7 +3,7 @@ import { RoomType, Zone } from "../shared/schema";
 import type { BuildingLayout } from "../geometry/layout";
 import { AdjacencyEditor } from "./Variants";
 
-const TYPE_LABELS: Record<string, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   salon: "Salon", mutfak: "Mutfak", yemek: "Yemek", yatak: "Yatak", ebeveyn: "Ebeveyn", cocuk: "Çocuk", banyo: "Banyo", wc: "WC",
   hol: "Hol", antre: "Antre", koridor: "Koridor", calisma: "Çalışma", misafir: "Misafir", depo: "Depo", kiler: "Kiler",
   camasir: "Çamaşır", giyinme: "Giyinme", garaj: "Garaj", teknik: "Teknik", ofis: "Ofis", magaza: "Mağaza", balkon: "Balkon",
@@ -143,7 +143,7 @@ export function ProgramEditor({ program, layout, onChange }: { program: Program;
   );
 }
 
-function NumField({ label, value, onChange, step = 0.1 }: { label: string; value: number; onChange: (v: number) => void; step?: number }) {
+export function NumField({ label, value, onChange, step = 0.1 }: { label: string; value: number; onChange: (v: number) => void; step?: number }) {
   return (
     <label className="field">
       <span>{label}</span>

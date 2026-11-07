@@ -215,6 +215,22 @@ function drawPlan(d: Dxf, L: BuildingLayout, fl: BuildingLayout["floors"][number
     }
     d.poly("MN-MERDIVEN", [[x + st.w - 0.2, y + fw / 2], [x + 0.55, y + fw / 2], [x + 0.55, y + fw * 1.5 + 0.15], [x + st.w - 0.4, y + fw * 1.5 + 0.15]]);
   }
+  for (const st of fl.stairs ?? []) {
+    const [x, y] = P(st.x, st.y);
+    d.rect("MN-MERDIVEN", x, y, st.w, st.h);
+    const n = Math.max(3, Math.floor(st.w / 0.28));
+    for (let i = 1; i < n; i++) d.line("MN-MERDIVEN", x + (st.w * i) / n, y, x + (st.w * i) / n, y + st.h);
+  }
+  for (const r of fl.rooms.filter((q) => q.name === "Asansör")) {
+    const [x, y] = P(r.rect.x, r.rect.y);
+    d.line("MN-MERDIVEN", x + 0.2, y + 0.2, x + r.rect.w - 0.2, y + r.rect.h - 0.2);
+    d.line("MN-MERDIVEN", x + 0.2, y + r.rect.h - 0.2, x + r.rect.w - 0.2, y + 0.2);
+  }
+  for (const u of fl.units ?? []) {
+    const front = u.rect.y < L.hallBand.y;
+    const [cx, cy] = P(Math.min(L.W - 2.5, Math.max(L.stair ? L.stair.w + 3 : 2.5, u.rect.x + u.rect.w / 2)), front ? L.hallBand.y + 0.35 : L.hallBand.y + L.hallBand.h - 0.55);
+    d.text("MN-MAHAL", cx, cy, 0.22, `${u.label} ${u.type}${u.part === "upper" ? " ÜST KAT" : ""} ${u.area.toFixed(0)} m²`);
+  }
   for (const r of fl.rooms) {
     if (r.type === "merdiven") continue;
     const [cx, cy] = P(r.rect.x + r.rect.w / 2, r.rect.y + r.rect.h / 2);
@@ -308,9 +324,10 @@ function drawSection(d: Dxf, L: BuildingLayout, ox: number, oy: number) {
       d.text("MN-MAHAL", X(r.rect.y + r.rect.h / 2), Z(f.z + 1.3), 0.2, r.name);
     }
     for (const o of f.outdoor) {
-      const ey = o.rect.y + o.rect.h;
-      d.rect("MN-BALKON", X(L.D), Z(f.z - 0.18), ey - L.D, 0.18);
-      d.poly("MN-BALKON", [[X(ey), Z(f.z)], [X(ey), Z(f.z + 1.1)], [X(L.D), Z(f.z + 1.1)]]);
+      const front = o.rect.y < 0;
+      const base = front ? 0 : L.D, ey = front ? o.rect.y : o.rect.y + o.rect.h;
+      d.rect("MN-BALKON", X(Math.min(base, ey)), Z(f.z - 0.18), Math.abs(ey - base), 0.18);
+      d.poly("MN-BALKON", [[X(ey), Z(f.z)], [X(ey), Z(f.z + 1.1)], [X(base), Z(f.z + 1.1)]]);
     }
     levelMark(d, X(L.D + 3), Z(f.z), f.z);
     d.dim(X(0), Z(f.z), X(0), Z(f.z + L.H), -1.2);
@@ -369,7 +386,7 @@ function drawElevation(d: Dxf, L: BuildingLayout, facade: Facade, ox: number, oy
     for (const o of f.outdoor) {
       if (f.z <= 0) continue;
       let u0: number, w: number;
-      if (facade === "back") { u0 = toU(o.rect.x + o.rect.w, 0); w = o.rect.w; }
+      if ((facade === "back" && o.rect.y >= 0) || (facade === "front" && o.rect.y < 0)) { u0 = Math.min(toU(o.rect.x + o.rect.w, 0), toU(o.rect.x, 0)); w = o.rect.w; }
       else if (facade === "left") { u0 = L.D - (o.rect.y + o.rect.h); w = o.rect.h; }
       else if (facade === "right") { u0 = o.rect.y; w = o.rect.h; }
       else continue;
@@ -402,8 +419,12 @@ function drawSite(d: Dxf, L: BuildingLayout, p: Program, ox: number, oy: number)
   const s = z.setbacks;
   d.rect("MN-CEKME", ox + s.side, oy + s.front, Math.max(0, sw - 2 * s.side), Math.max(0, sd - s.front - s.rear));
   // bina (sokak y=0 altta)
-  d.rect("MN-DUVAR", ox + z.building.x, oy + z.building.y, L.W, L.D);
-  for (const f of L.floors) for (const o of f.outdoor) d.rect("MN-BALKON", ox + z.building.x + o.rect.x, oy + z.building.y + o.rect.y, o.rect.w, o.rect.h);
+  const bl = z.blocks ?? [{ name: "", index: 0, L, x: z.building.x, y: z.building.y }];
+  for (const b of bl) {
+    d.rect("MN-DUVAR", ox + b.x, oy + b.y, b.L.W, b.L.D);
+    for (const f of b.L.floors) for (const o of f.outdoor) d.rect("MN-BALKON", ox + b.x + o.rect.x, oy + b.y + o.rect.y, o.rect.w, o.rect.h);
+    if (z.blocks) d.text("MN-MAHAL", ox + b.x + b.L.W / 2, oy + b.y + b.L.D / 2 - 0.8, 0.5, b.name.toUpperCase());
+  }
   const stalls = parkingStalls(p, L, z);
   for (const st of stalls) d.rect("MN-ARSA", ox + st.x, oy + st.y, st.w, st.h);
   if (stalls.length) d.text("MN-MAHAL", ox + (stalls[0].x + stalls[stalls.length - 1].x + stalls[0].w) / 2, oy + stalls[0].y + stalls[0].h / 2, 0.25, `OTOPARK ${stalls.length} ARAÇ`);

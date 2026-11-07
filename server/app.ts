@@ -17,7 +17,7 @@ export interface AppOptions {
 export function createApp(opts: AppOptions) {
   const MODEL = opts.model ?? process.env.CLAUDE_MODEL ?? "claude-opus-5-5";
   const app = express();
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "25mb" }));
 
 
 app.get("/api/health", (_req, res) => {
@@ -27,14 +27,36 @@ app.get("/api/health", (_req, res) => {
 app.post("/api/generate", async (req, res) => {
   const notes: string = String(req.body?.notes ?? "").trim();
   const previous: Program | undefined = req.body?.previous;
-  if (notes.length < 10) {
+  const revision: string = String(req.body?.revision ?? "").trim();
+  const brief: Record<string, unknown> | undefined = req.body?.brief;
+  const images: { mediaType: string; data: string }[] = Array.isArray(req.body?.images) ? req.body.images.slice(0, 4) : [];
+  if (revision && !previous) {
+    res.status(400).json({ error: "Düzeltme için önce bir proje üretilmiş olmalı." });
+    return;
+  }
+  if (!revision && notes.length < 10 && !brief) {
     res.status(400).json({ error: "Not çok kısa. Müşterinin isteklerini biraz daha detaylı yazın." });
     return;
   }
+  const briefText = brief && Object.keys(brief).length
+    ? `\n\nMimarın formda seçtiği kesin değerler (notlarla çelişirse bunlar geçerlidir):\n${Object.entries(brief).map(([k, v]) => `- ${k}: ${v}`).join("\n")}`
+    : "";
+  const imgText = images.length ? `\n\nEkteki ${images.length} görsel mimarın "bu tarz olsun" dediği referanslar. Cephe dili, malzeme, renk, pencere oranı ve çatı biçimini bunlardan çıkar; style ve materials alanlarına yansıt.` : "";
 
-  const userContent = previous
-    ? `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın yeni/ek notları — programı bunlara göre güncelle:\n<notlar>\n${notes}\n</notlar>`
-    : `Müşteri görüşmesinde alınan mimar notları:\n<notlar>\n${notes}\n</notlar>`;
+  let text: string;
+  if (revision) {
+    text = `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın düzeltme isteği:\n<duzeltme>\n${revision}\n</duzeltme>\n\nYalnızca istenen değişikliği uygula. İstekle ilgisi olmayan her şeyi (oda adları, alanlar, katlar, imar değerleri, varsayımlar) aynen koru. Değişikliğin yan etkisi varsa (ör. oturum alanı büyümeli) onu da düzelt ve "assumptions" listesine kısa bir not ekle.`;
+  } else if (previous) {
+    text = `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın yeni/ek notları — programı bunlara göre güncelle:\n<notlar>\n${notes}\n</notlar>${briefText}${imgText}`;
+  } else {
+    text = `Müşteri görüşmesinde alınan mimar notları:\n<notlar>\n${notes}\n</notlar>${briefText}${imgText}`;
+  }
+  const userContent: Anthropic.Beta.BetaContentBlockParam[] = [
+    ...images
+      .filter((im) => /^image\/(jpeg|png|webp|gif)$/.test(im.mediaType) && typeof im.data === "string")
+      .map((im) => ({ type: "image" as const, source: { type: "base64" as const, media_type: im.mediaType as "image/jpeg", data: im.data } })),
+    { type: "text", text },
+  ];
 
   const apiKey = opts.getApiKey();
   if (!apiKey) {
@@ -45,14 +67,23 @@ app.post("/api/generate", async (req, res) => {
   try {
     const stream = client.beta.messages.stream({
       model: MODEL,
-      max_tokens: 32000,
+      max_tokens: 64000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       output_config: { effort: "medium", format: betaZodOutputFormat(ProgramSchema) },
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userContent }],
     });
-    const msg = await stream.finalMessage();
+    // Kullanıcı "Durdur"a basarsa (bağlantı kapanırsa) Claude çağrısını da kes
+    let aborted = false;
+    res.on("close", () => {
+      if (!res.writableEnded) { aborted = true; stream.abort(); }
+    });
+    const msg = await stream.finalMessage().catch((e) => {
+      if (aborted) return null;
+      throw e;
+    });
+    if (!msg) return;
 
     if (msg.stop_reason === "refusal") {
       res.status(422).json({ error: "Model bu isteği işlemedi. Notları gözden geçirip tekrar deneyin." });
@@ -94,11 +125,21 @@ app.post("/api/generate", async (req, res) => {
 function sanitize(p: Program): Program {
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Number.isFinite(v) ? v : lo));
   p.floorHeight = clamp(p.floorHeight, 2.6, 6);
-  p.footprint.width = clamp(p.footprint.width, 4, 80);
+  p.footprint.width = clamp(p.footprint.width, 4, 120);
   p.footprint.depth = clamp(p.footprint.depth, 4, 80);
   p.site.width = Math.max(p.site.width || 0, p.footprint.width + 6);
   p.site.depth = Math.max(p.site.depth || 0, p.footprint.depth + 6);
   p.adjacencies = Array.isArray(p.adjacencies) ? p.adjacencies.slice(0, 12) : [];
+  p.unitTypes = Array.isArray(p.unitTypes) ? p.unitTypes.map((u) => ({ ...u, rooms: u.rooms.map((r) => ({ ...r, area: clamp(r.area, 1, 300) })) })) : [];
+  p.blocks = Array.isArray(p.blocks) ? p.blocks.slice(0, 12).map((b) => ({
+    ...b,
+    footprint: { width: clamp(b.footprint.width, 6, 120), depth: clamp(b.footprint.depth, 6, 80) },
+    floors: b.floors.map((f) => ({ ...f, level: Math.round(f.level), units: (f.units ?? []).slice(0, 12) })).sort((a, c) => a.level - c.level),
+  })) : [];
+  if (p.blocks.length) {
+    p.footprint = { ...p.blocks[0].footprint };
+    p.adjacencies = [];
+  }
   p.floors = p.floors
     .filter((f) => f.rooms.length > 0)
     .map((f) => ({ ...f, level: Math.round(f.level), rooms: f.rooms.map((r) => ({ ...r, area: clamp(r.area, 1, 500) })) }))

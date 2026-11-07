@@ -33,14 +33,15 @@ export function roomChecks(L: BuildingLayout): RoomIssue[] {
   for (const fl of L.floors)
     for (const r of fl.rooms) {
       const rule = RULES[r.type];
+      const room = r.unit ? `${r.unit} · ${r.name}` : r.name;
       const area = r.rect.w * r.rect.h;
       const side = Math.min(r.rect.w, r.rect.h);
       if (rule?.area && area < rule.area - 0.05)
-        out.push({ floor: fl.name, roomId: r.id, room: r.name, message: `${rule.label} en az ${f(rule.area)} m² olmalı; planda ${f(area)} m².` });
+        out.push({ floor: fl.name, roomId: r.id, room, message: `${rule.label} en az ${f(rule.area)} m² olmalı; planda ${f(area)} m².` });
       if (rule?.side && side < rule.side - 0.01)
-        out.push({ floor: fl.name, roomId: r.id, room: r.name, message: `${rule.label} dar kenarı en az ${f(rule.side)} m olmalı; planda ${f(side)} m.` });
+        out.push({ floor: fl.name, roomId: r.id, room, message: `${rule.label} dar kenarı en az ${f(rule.side)} m olmalı; planda ${f(side)} m.` });
       if (r.type !== "merdiven" && r.requestedArea > 0 && area < r.requestedArea * 0.8)
-        out.push({ floor: fl.name, roomId: r.id, room: r.name, soft: true, message: `Müşterinin istediği ${f(r.requestedArea)} m², planda ${f(area)} m² kaldı.` });
+        out.push({ floor: fl.name, roomId: r.id, room, soft: true, message: `Müşterinin istediği ${f(r.requestedArea)} m², planda ${f(area)} m² kaldı.` });
     }
   return out;
 }

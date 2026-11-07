@@ -4,6 +4,7 @@
 // Orta bant tüm katlarda aynı yerde olduğu için merdiven katlar arasında üst üste gelir.
 
 import type { Adjacency, DesignOptions, Program, Room, RoomType, Zone } from "../shared/schema";
+import type { ApFloor, UnitSlot } from "./blocks";
 
 export interface Rect {
   x: number;
@@ -20,6 +21,8 @@ export interface PlacedRoom {
   requestedArea: number;
   rect: Rect;
   band: "front" | "hall" | "back";
+  /** Apartmanda ait olduğu daire */
+  unit?: string;
 }
 
 export type OpeningKind = "door" | "window" | "entrance" | "balconyDoor";
@@ -58,6 +61,10 @@ export interface FloorLayout {
   outdoor: { name: string; area: number; rect: Rect; type: string }[];
   /** Sürüklenebilir sütun sınırları (iç sınırların x değerleri) */
   cols: { band: "front" | "back"; key: string; xs: number[] }[];
+  /** Dubleks dairelerin iç merdivenleri */
+  stairs?: Rect[];
+  /** Apartman katında daireler */
+  units?: { label: string; type: string; part: UnitSlot["part"]; rect: Rect; area: number }[];
 }
 
 export interface BuildingLayout {
@@ -77,6 +84,9 @@ export interface BuildingLayout {
   variant: number;
   /** Açık otopark: binaya bağlanmaz, vaziyet planında ön bahçede gösterilir */
   parking: { name: string; area: number; cars: number }[];
+  /** Apartman bloğunda asansör kuyusu */
+  elevator?: Rect | null;
+  apartment?: boolean;
 }
 
 /** Açık otopark / araç park yeri (bina oturumuna ve kat planına girmez). */
@@ -100,7 +110,7 @@ const FRONT_ORDER: Partial<Record<RoomType, number>> = {
   antre: 10, salon: 1, yemek: 2, mutfak: 3, kiler: 4, calisma: 5, ofis: 5, misafir: 6, magaza: 1, garaj: 7,
 };
 const BACK_ORDER: Partial<Record<RoomType, number>> = {
-  ebeveyn: 0, giyinme: 1, banyo: 2, yatak: 3, cocuk: 4, wc: 5, camasir: 6, depo: 7, teknik: 8,
+  ebeveyn: 0, giyinme: 1, banyo: 2, wc: 2.5, yatak: 3, cocuk: 4, camasir: 6, depo: 7, teknik: 8,
 };
 const MIN_WIDTH: Partial<Record<RoomType, number>> = {
   wc: 1.3, banyo: 1.9, camasir: 1.6, depo: 1.4, kiler: 1.3, teknik: 1.5, giyinme: 1.8, antre: 2.0,
@@ -110,20 +120,24 @@ const WET: RoomType[] = ["banyo", "wc", "camasir"];
 const SMALL_OK: RoomType[] = ["banyo", "wc", "camasir", "depo", "kiler", "teknik", "giyinme"];
 
 export function buildLayout(program: Program, design: DesignOptions = program.design ?? {}): BuildingLayout {
+  if (program.floors.some((f) => (f as ApFloor).units?.length)) return apartmentLayout(program, design);
   const variant = design.variant ?? 0;
   const W = round2(program.footprint.width);
   const D = round2(program.footprint.depth);
   const H = program.floorHeight;
   const multi = program.floors.length > 1;
 
-  const hallDepth = multi ? 2.4 : Math.min(1.5, D * 0.18);
+  const unitMode = !!(design as UnitDesign).unitMode;
+  const hallDepth = multi ? 2.4 : unitMode ? 1.2 : Math.min(1.5, D * 0.18);
   const adj = program.adjacencies ?? [];
   const parking = program.floors.flatMap((f) => f.rooms.filter(isParking)).map((r) => {
     const m = /(\d+)\s*(araç|araba|otomobil)/i.exec(`${r.name} ${r.note}`);
     return { name: r.name, area: r.area, cars: Math.max(1, Math.min(6, m ? +m[1] : Math.round(r.area / 12.5))) };
   });
-  const assignments = program.floors.map((f) =>
-    assignBands(f.rooms.filter((r) => !isParking(r)), { flip: variant === 1, reverse: variant === 2, adj: adj.filter((a) => hasRoom(f.rooms, a.a) && hasRoom(f.rooms, a.b)) }),
+  const assignments = program.floors.map((f, i) =>
+    unitMode
+      ? assignUnitBands(f.rooms.filter((r) => !isParking(r)), { reverse: variant === 2, entry: i === 0 })
+      : assignBands(f.rooms.filter((r) => !isParking(r)), { flip: variant === 1, reverse: variant === 2, adj: adj.filter((a) => hasRoom(f.rooms, a.a) && hasRoom(f.rooms, a.b)) }),
   );
   // Ön bant derinliği tüm katlarda ortak (merdiven hizası için); katların alan paylarının ortalamasından
   const shares = assignments
@@ -131,7 +145,22 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
     .filter((s) => s.f + s.b > 0)
     .map((s) => s.f / (s.f + s.b));
   const share = shares.length ? shares.reduce((s, v) => s + v, 0) / shares.length : 0.5;
-  let frontDepth = round2((D - hallDepth) * Math.min(0.62, Math.max(0.38, share)));
+  let frontDepth = round2((D - hallDepth) * (unitMode ? Math.min(0.75, Math.max(0.5, share)) : Math.min(0.62, Math.max(0.38, share))));
+  if (unitMode) {
+    // cephe sırası sığmıyorsa mutfak/yemek/çalışma iç sıraya geçer
+    for (const a of assignments) {
+      const need = () => a.front.reduce((t, r) => t + (MIN_WIDTH[r.type] ?? 2.6), 0);
+      for (const t of ["calisma", "yemek", "mutfak", "misafir"] as RoomType[]) {
+        if (need() <= W * 0.98) break;
+        const i = a.front.findIndex((r) => r.type === t);
+        if (i >= 0 && a.front.length > 1) a.back.unshift(...a.front.splice(i, 1));
+      }
+    }
+    // daire: iç sıra (antre, ıslak hacim) yalnız gerektiği kadar derin, kalanı cepheye bakan odalara
+    const inner = Math.max(...assignments.map((a) => sumArea(a.back)), 0);
+    const innerDepth = Math.min((D - hallDepth) * 0.45, Math.max(2.1, (inner * 1.15) / W));
+    frontDepth = round2(D - hallDepth - innerDepth);
+  }
   if (design.frontDepth != null) frontDepth = round2(Math.min(D - hallDepth - 2, Math.max(2, design.frontDepth)));
   const hallBand = { y: frontDepth, h: hallDepth };
   const stairW = multi ? Math.min(3.2, W * 0.32) : 0;
@@ -429,7 +458,7 @@ function placeBand(
     const r = rooms[i];
     const w = (r.area * scale) / band.h;
     const next = rooms[i + 1];
-    if (w < minW && SMALL_OK.includes(r.type) && next && SMALL_OK.includes(next.type) && (next.area * scale) / band.h < minW * 1.4) {
+    if (w < minW && band.h >= 3.2 && SMALL_OK.includes(r.type) && next && SMALL_OK.includes(next.type) && (next.area * scale) / band.h < minW * 1.4) {
       cols.push({ rooms: [r, next], area: r.area + next.area });
       i++;
     } else {
@@ -440,13 +469,16 @@ function placeBand(
   const minFor = (c: Col) =>
     c.rooms.length > 1 ? 1.6 : (MIN_WIDTH[c.rooms[0].type] ?? 2.6);
   let widths = cols.map((c) => (c.area * scale) / band.h);
-  for (let iter = 0; iter < 5; iter++) {
-    const fixed = widths.map((w, i) => w < minFor(cols[i]));
-    const fixedSum = widths.reduce((s, w, i) => s + (fixed[i] ? minFor(cols[i]) : 0), 0);
-    const freeSum = widths.reduce((s, w, i) => s + (fixed[i] ? 0 : w), 0);
-    if (!fixed.some(Boolean) || freeSum <= 0 || fixedSum >= band.w) break;
-    const k = (band.w - fixedSum) / freeSum;
-    widths = widths.map((w, i) => (fixed[i] ? minFor(cols[i]) : w * k));
+  // Asgari genişliğin altında kalan sütunlar, payı olan sütunlardan payları oranında alır
+  const mins = cols.map(minFor);
+  for (let iter = 0; iter < 8; iter++) {
+    const deficit = widths.reduce((s, w, i) => s + Math.max(0, mins[i] - w), 0);
+    if (deficit < 1e-3) break;
+    const slack = widths.map((w, i) => Math.max(0, w - mins[i]));
+    const slackSum = slack.reduce((s, v) => s + v, 0);
+    if (slackSum < 1e-3) break;
+    const take = Math.min(deficit, slackSum);
+    widths = widths.map((w, i) => (w < mins[i] ? w + (mins[i] - w) * (take / deficit) : w - (slack[i] * take) / slackSum));
   }
   const wsum = widths.reduce((s, w) => s + w, 0);
   widths = widths.map((w) => (w * band.w) / wsum);
@@ -674,3 +706,287 @@ export const ZONE_COLORS: Record<string, string> = {
   sirkulasyon: "#efefef",
   dis: "#e8f3e8",
 };
+
+// ---------------------------------------------------------------- APARTMAN BLOĞU
+type UnitDesign = DesignOptions & { unitMode?: boolean };
+
+/** Daire içi: cephe sırası (yaşam + yatak odaları, ebeveyn süiti), daire holü, iç sıra (antre, ıslak hacimler). */
+function assignUnitBands(rooms: Room[], opts: { reverse?: boolean; entry?: boolean }): Assignment {
+  const indoor = rooms.filter((r) => !isOutdoorRoom(r));
+  const outdoorRooms = rooms.filter((r) => isOutdoorRoom(r));
+  const hallRooms = indoor.filter((r) => r.type === "hol" || r.type === "koridor");
+  const banded = indoor.filter((r) => !hallRooms.includes(r));
+  const ensuite = (r: Room) => r.type === "giyinme" || (r.type === "banyo" && /ebeveyn/i.test(r.name));
+  const OUTER: Partial<Record<RoomType, number>> = { salon: 0, yemek: 1, mutfak: 2, calisma: 3, ofis: 3, magaza: 3, misafir: 4, cocuk: 5, yatak: 6, ebeveyn: 7, giyinme: 8, banyo: 9 };
+  const INNER: Partial<Record<RoomType, number>> = { kiler: 0, camasir: 1, depo: 2, teknik: 3, garaj: 3, wc: 4, banyo: 5, antre: 9 };
+  const front = banded.filter((r) => (OUTER[r.type] != null && r.type !== "banyo") || ensuite(r));
+  const back = banded.filter((r) => !front.includes(r));
+  if (opts.entry && !back.some((r) => r.type === "antre")) back.push({ name: "Antre", type: "antre", zone: "sirkulasyon", area: 4, note: "" });
+  if (!front.length && back.length > 1) front.push(...back.splice(0, 1));
+  front.sort((a, b) => (OUTER[a.type] ?? 5) - (OUTER[b.type] ?? 5));
+  back.sort((a, b) => (INNER[a.type] ?? 4) - (INNER[b.type] ?? 4));
+  if (opts.reverse) front.reverse();
+  return { front, back, hallRooms, outdoorRooms };
+}
+
+// Kat ortasında çekirdek bandı (merdiven + asansör + kat holü) boydan boya uzanır.
+// Daireler ön ve arka bantlara dizilir; her daire tek konut yerleşimiyle (90° döndürülmüş) çözülür:
+// dairenin kendi holü çekirdeğe dik uzanır, daire kapısı kat holüne açılır, yaşam mekânları cepheye bakar.
+const CORE_H = 2.6;
+const ELEV_W = 1.9;
+
+interface SlotXf { bx: number; by: number; bw: number; bh: number; side: "front" | "back"; mirror: boolean }
+interface SlotInfo { unit: UnitSlot; xf: SlotXf; local: FloorLayout[]; localStair: Rect | null; localHall: { y: number; h: number } }
+
+const isOutdoorRoom = (r: Room) => r.zone === "dis" || r.type === "balkon" || r.type === "teras";
+
+function apartmentLayout(program: Program, design: DesignOptions): BuildingLayout {
+  const variant = design.variant ?? 0;
+  const W = round2(program.footprint.width);
+  const D = round2(program.footprint.depth);
+  const H = program.floorHeight;
+  const floorsIn = program.floors as ApFloor[];
+  const parking = floorsIn.flatMap((f) => f.rooms.filter(isParking)).map((r) => {
+    const m = /(\d+)\s*(araç|araba|otomobil)/i.exec(`${r.name} ${r.note}`);
+    return { name: r.name, area: r.area, cars: Math.max(1, Math.min(6, m ? +m[1] : Math.round(r.area / 12.5))) };
+  });
+  const stairW = round2(Math.min(4.2, Math.max(3.2, W * 0.16)));
+  const elevW = floorsIn.length > 2 ? ELEV_W : 0;
+  const coreStart = stairW + elevW;
+
+  // Daireleri ön/arka banda böl (sayı farkı en çok 1, alan dengeli); ortak mekânlar ayrı bir "daire" gibi
+  const slotsOf = (f: ApFloor): UnitSlot[] => {
+    const units = (f.units ?? []).filter((u) => u.part !== "upper");
+    const common = f.rooms.filter((r) => !r.unit && !isParking(r));
+    if (units.length && common.filter((r) => !isOutdoorRoom(r) && r.type !== "hol" && r.type !== "koridor").length) {
+      units.push({ label: "", type: "Ortak alan", part: "single", rooms: common, area: sumArea(common.filter((r) => !isOutdoorRoom(r))) });
+    }
+    return units;
+  };
+  const split = (units: UnitSlot[]) => {
+    const f: UnitSlot[] = [], b: UnitSlot[] = [];
+    const ar = (a: UnitSlot[]) => a.reduce((s, u) => s + u.area, 0);
+    for (const u of [...units].sort((x, y) => y.area - x.area)) {
+      if (f.length - b.length >= 1) b.push(u);
+      else if (b.length - f.length >= 1) f.push(u);
+      else (ar(f) <= ar(b) ? f : b).push(u);
+    }
+    const order = (a: UnitSlot[]) => units.filter((u) => a.includes(u));
+    return { front: order(f), back: order(b), share: ar(f) / Math.max(1, ar(f) + ar(b)) };
+  };
+  const splits = new Map<number, ReturnType<typeof split>>();
+  for (const f of floorsIn) { const s = slotsOf(f); if (s.length) splits.set(f.level, split(s)); }
+  const shares = [...splits.values()].filter((s) => s.front.length && s.back.length).map((s) => s.share);
+  const share = shares.length ? shares.reduce((a, v) => a + v, 0) / shares.length : 0.5;
+  let frontDepth = round2((D - CORE_H) * Math.min(0.6, Math.max(0.4, share)));
+  if (design.frontDepth != null) frontDepth = round2(Math.min(D - CORE_H - 4, Math.max(4, design.frontDepth)));
+  const hallBand = { y: frontDepth, h: CORE_H };
+  const stair: Rect = { x: 0, y: hallBand.y, w: stairW, h: CORE_H };
+  const elevator: Rect | null = elevW ? { x: stairW, y: hallBand.y, w: elevW, h: CORE_H } : null;
+  const groundLevel = floorsIn.find((f) => f.level >= 0)?.level ?? floorsIn[0].level;
+  const slotsByLevel = new Map<number, SlotInfo[]>();
+
+  const floors: FloorLayout[] = floorsIn.map((f) => {
+    let uid = 0;
+    const id = (p: string) => `L${f.level}-${p}${uid++}`;
+    const sp = splits.get(f.level);
+    const lowerSlots = slotsByLevel.get(f.level - 1);
+    const hasUpper = (f.units ?? []).some((u) => u.part === "upper") && lowerSlots;
+
+    // Yalnız ortak mekânlı kat (bodrum, otopark, dükkan katı): tek konut yerleşimi, aynı çekirdek
+    if (!sp && !hasUpper) {
+      const rooms = f.rooms.filter((r) => !isParking(r));
+      const fl = layoutFloor(f.level, f.name, assignBands(rooms, { flip: variant === 1, reverse: variant === 2 }), { W, D, hallBand, stair, isGround: f.level === groundLevel, H, cols: {} });
+      if (elevator) addElevator(fl, elevator, id);
+      fl.cols = [];
+      return fl;
+    }
+
+    const placed: PlacedRoom[] = [];
+    const wallRooms: PlacedRoom[] = [];
+    const openings: Opening[] = [];
+    const outdoor: FloorLayout["outdoor"] = [];
+    const units: NonNullable<FloorLayout["units"]> = [];
+    const stairs: Rect[] = [];
+    const infos: SlotInfo[] = [];
+
+    if (sp) {
+      for (const side of ["front", "back"] as const) {
+        const list = side === "front" ? sp.front : sp.back;
+        const by = side === "front" ? 0 : hallBand.y + hallBand.h;
+        const bh = side === "front" ? hallBand.y : D - by;
+        const tot = list.reduce((s, u) => s + u.area, 0) || 1;
+        let x = 0;
+        list.forEach((u, k) => {
+          const bw = k === list.length - 1 ? round2(W - x) : round2((W * u.area) / tot);
+          const info = layoutSlot(program, u, { bx: x, by, bw, bh, side, mirror: false }, variant, coreStart, W);
+          infos.push(info);
+          x = round2(x + bw);
+        });
+      }
+    } else if (lowerSlots) {
+      // Dubleks üst katı: alt kattaki daire yerleşimleri
+      for (const s of lowerSlots) {
+        if (s.unit.part === "lower" && s.local[1]) infos.push({ ...s, unit: { ...s.unit, part: "upper", rooms: s.unit.upperRooms ?? [] } });
+        else infos.push({ ...s, local: [], unit: { ...s.unit, part: "upper", label: "" } });
+      }
+    }
+    slotsByLevel.set(f.level, infos);
+
+    for (const info of infos) {
+      const { xf, unit } = info;
+      const T = slotTransform(xf);
+      const slotRect: Rect = { x: xf.bx, y: xf.by, w: xf.bw, h: xf.bh };
+      const local = unit.part === "upper" ? info.local[1] : info.local[0];
+      if (!local) {
+        const filler: PlacedRoom = { id: id("bos"), name: "Çatı Terası", type: "teras", zone: "dis", requestedArea: 0, rect: slotRect, band: xf.side };
+        placed.push(filler);
+        wallRooms.push(filler);
+        continue;
+      }
+      const pre = unit.label ? `${unit.label}-` : "C-";
+      const rooms = local.rooms.map((r) => ({ ...r, id: id(pre + r.type), rect: T.rect(r.rect), unit: unit.label || undefined }));
+      placed.push(...rooms.filter((r) => r.type !== "merdiven"));
+      // duvar: dairenin holü ile iç merdiveni tek parça
+      const lhb = info.localHall;
+      const hallRect = T.rect({ x: 0, y: lhb.y, w: xf.bw, h: lhb.h });
+      wallRooms.push(...rooms.filter((r) => r.band !== "hall"), { ...rooms[0], id: "uband", band: "hall", rect: hallRect });
+      if (info.localStair) stairs.push(T.rect(info.localStair));
+      // açıklıklar: yalnız blok dış cephesindeki pencereler, iç kapılar
+      for (const o of local.openings) {
+        if (o.kind === "entrance" || o.kind === "balconyDoor") continue;
+        const t = T.op(o);
+        if (o.exterior) {
+          const ext = t.orient === "h" ? near(t.line, 0) || near(t.line, D) : near(t.line, 0) || near(t.line, W);
+          if (!ext) continue;
+        }
+        openings.push({ ...t, id: id("o") });
+      }
+      // daire kapısı: kat holüne
+      if (unit.part !== "upper") {
+        const target = local.rooms.find((r) => r.type === "antre" && near(r.rect.y + r.rect.h, xf.bh))
+          ?? local.rooms.filter((r) => near(r.rect.y + r.rect.h, xf.bh)).sort((a, b) => b.rect.w - a.rect.w)[0];
+        if (target) {
+          const lc = target.rect.x + target.rect.w / 2;
+          const lineY = xf.side === "front" ? hallBand.y : hallBand.y + hallBand.h;
+          const cx = Math.min(xf.bx + xf.bw - 0.7, Math.max(xf.bx + 0.7, Math.min(W - 0.7, Math.max(coreStart + 0.7, T.x(lc)))));
+          openings.push({ id: id("dk"), kind: "door", orient: "h", line: lineY, center: round2(cx), width: 1.0, sill: 0, head: 2.1, exterior: false, swing: xf.side === "front" ? -1 : 1 });
+        }
+      }
+      // balkonlar: dairenin cephesine çıkma
+      const outs = unit.rooms.filter(isOutdoorRoom).filter((r) => !isParking(r));
+      const facadeY = xf.side === "front" ? 0 : D;
+      const hostPref = (p: PlacedRoom) => ["salon", "ebeveyn", "yatak", "cocuk", "yemek", "mutfak"].indexOf(p.type as string);
+      const hosts = rooms
+        .filter((r) => r.band !== "hall" && hostPref(r) >= 0 && near(xf.side === "front" ? r.rect.y : r.rect.y + r.rect.h, facadeY))
+        .sort((a, b) => hostPref(a) - hostPref(b) || b.rect.w - a.rect.w);
+      const taken: [number, number][] = [];
+      outs.forEach((o, k) => {
+        const host = hosts[k % Math.max(1, hosts.length)];
+        const depth = o.type === "teras" || o.area > 10 ? 2.0 : 1.5;
+        const w = round2(Math.min(xf.bw - 0.4, Math.max(2, o.area / depth)));
+        let x0 = host ? host.rect.x + host.rect.w / 2 - w / 2 : xf.bx + (xf.bw - w) / 2;
+        x0 = Math.min(xf.bx + xf.bw - 0.2 - w, Math.max(xf.bx + 0.2, x0));
+        for (const [a, b] of taken) if (x0 < b && x0 + w > a) x0 = b;
+        if (x0 + w > xf.bx + xf.bw - 0.1) return;
+        taken.push([x0, x0 + w]);
+        const rect = { x: round2(x0), y: xf.side === "front" ? -depth : D, w, h: depth };
+        outdoor.push({ name: unit.label ? `${o.name} (${unit.label})` : o.name, area: o.area, type: o.type, rect });
+        if (host) {
+          const lo = Math.max(host.rect.x, x0), hi = Math.min(host.rect.x + host.rect.w, x0 + w);
+          if (hi - lo > 1.0) {
+            for (let i = openings.length - 1; i >= 0; i--) {
+              const op = openings[i];
+              if (op.orient === "h" && near(op.line, facadeY) && op.kind === "window" && op.center > host.rect.x && op.center < host.rect.x + host.rect.w) openings.splice(i, 1);
+            }
+            openings.push({ id: id("bk"), kind: "balconyDoor", orient: "h", line: facadeY, center: round2((lo + hi) / 2), width: round2(Math.min(1.8, hi - lo - 0.4)), sill: 0, head: 2.2, exterior: true, swing: xf.side === "front" ? 1 : -1 });
+          }
+        }
+      });
+      if (unit.label) units.push({ label: unit.label, type: unit.type, part: unit.part, rect: slotRect, area: unit.area });
+    }
+
+    // Çekirdek: merdiven + asansör + kat holü
+    const commonHall = f.rooms.find((r) => !r.unit && (r.type === "hol" || r.type === "antre"));
+    const isGround = f.level === groundLevel;
+    const hall: PlacedRoom = {
+      id: id("hol"), name: commonHall?.name ?? (isGround ? "Giriş Holü" : "Kat Holü"), type: "hol", zone: "sirkulasyon",
+      requestedArea: commonHall?.area ?? 0, rect: { x: coreStart, y: hallBand.y, w: round2(W - coreStart), h: CORE_H }, band: "hall",
+    };
+    placed.push(hall, { id: id("mrd"), name: "Merdiven", type: "merdiven", zone: "sirkulasyon", requestedArea: 0, rect: { ...stair }, band: "hall" });
+    wallRooms.push({ ...hall, id: "band", rect: { x: 0, y: hallBand.y, w: W, h: CORE_H } });
+    openings.push({ id: id("mp"), kind: "window", orient: "v", line: 0, center: stair.y + stair.h / 2, width: 1.2, sill: 1.2, head: 2.2, exterior: true, swing: 1 });
+    if (isGround) openings.push({ id: id("gr"), kind: "entrance", orient: "v", line: W, center: hallBand.y + hallBand.h / 2, width: 1.4, sill: 0, head: 2.4, exterior: true, swing: -1 });
+    if (elevator) {
+      const el: PlacedRoom = { id: id("asn"), name: "Asansör", type: "diger", zone: "sirkulasyon", requestedArea: 0, rect: { ...elevator }, band: "hall" };
+      placed.push(el);
+      wallRooms.push(el);
+      openings.push({ id: id("ak"), kind: "door", orient: "v", line: elevator.x + elevator.w, center: elevator.y + elevator.h / 2, width: 0.9, sill: 0, head: 2.1, exterior: false, swing: 1 });
+    }
+    const wallLines = buildWallLines(wallRooms, W, D);
+    const walls = subtractOpenings(wallLines, openings);
+    return { level: f.level, name: f.name, z: f.level * H, rooms: placed, openings, walls, wallLines, outdoor, cols: [], units, stairs };
+  });
+
+  const cutX = pickCut(floors, W, coreStart);
+  const topFloor = floorsIn[floorsIn.length - 1]?.level ?? 0;
+  return {
+    W, D, H, slab: SLAB, extWall: EXT, intWall: INT, roof: program.roof, stair, hallBand,
+    floors, cutX, totalHeight: (topFloor + 1) * H, roofHeight: program.roof === "duz" ? 0.9 : round2(Math.min(W, D) * 0.5 * 0.4 + 0.3),
+    variant, parking, elevator, apartment: true,
+  };
+}
+
+/** Bir daireyi yerel koordinatlarda çözer: yerel y = 0 cephe, y = derinlik çekirdek tarafı. */
+function layoutSlot(program: Program, unit: UnitSlot, xf: SlotXf, variant: number, coreStart: number, W: number): SlotInfo {
+  const fl: Program["floors"] = [{ level: 0, name: "a", rooms: unit.rooms.filter((r) => !isOutdoorRoom(r) && !isParking(r)) }];
+  if (unit.part === "lower" && unit.upperRooms?.length) fl.push({ level: 1, name: "b", rooms: unit.upperRooms.filter((r) => !isOutdoorRoom(r)) });
+  if (!fl[0].rooms.length) fl[0].rooms = [{ name: "Boş Alan", type: "diger", zone: "servis", area: xf.bw * xf.bh, note: "" }];
+  const mini: Program = { ...program, footprint: { width: xf.bw, depth: xf.bh }, floors: fl, adjacencies: [], blocks: [], unitTypes: [] };
+  const L = buildLayout(mini, { variant, unitMode: true } as UnitDesign);
+  // Daire kapısı (antre) kat holüne düşecek şekilde aynala; kenar dairede salon köşeye gelsin
+  const ant = L.floors[0].rooms.find((r) => r.type === "antre" && near(r.rect.y + r.rect.h, xf.bh));
+  const lc = ant ? ant.rect.x + ant.rect.w / 2 : xf.bw / 2;
+  const ok = (m: boolean) => { const x = slotTransform({ ...xf, mirror: m }).x(lc); return x > coreStart + 0.7 && x < W - 0.7; };
+  let mirror = near(xf.bx + xf.bw, W) && !near(xf.bx, 0);
+  if (!ok(mirror) && ok(!mirror)) mirror = !mirror;
+  return { unit, xf: { ...xf, mirror }, local: L.floors, localStair: L.stair, localHall: L.hallBand };
+}
+
+function slotTransform(xf: SlotXf) {
+  const x = (lx: number) => (xf.mirror ? xf.bx + xf.bw - lx : xf.bx + lx);
+  const y = (ly: number) => (xf.side === "front" ? xf.by + ly : xf.by + xf.bh - ly);
+  const rect = (r: Rect): Rect => {
+    const xa = x(r.x), xb = x(r.x + r.w), ya = y(r.y), yb = y(r.y + r.h);
+    return { x: round2(Math.min(xa, xb)), y: round2(Math.min(ya, yb)), w: round2(Math.abs(xb - xa)), h: round2(Math.abs(yb - ya)) };
+  };
+  const op = (o: Opening): Opening =>
+    o.orient === "h"
+      ? { ...o, line: round2(y(o.line)), center: round2(x(o.center)), swing: (xf.side === "front" ? o.swing : -o.swing) as 1 | -1 }
+      : { ...o, line: round2(x(o.line)), center: round2(y(o.center)), swing: (xf.mirror ? -o.swing : o.swing) as 1 | -1 };
+  return { x, y, rect, op };
+}
+
+function addElevator(fl: FloorLayout, el: Rect, id: (p: string) => string) {
+  const hall = fl.rooms.find((r) => r.band === "hall" && r.type === "hol");
+  if (hall) hall.rect = { ...hall.rect, x: el.x + el.w, w: round2(hall.rect.x + hall.rect.w - el.x - el.w) };
+  fl.rooms.push({ id: id("asn"), name: "Asansör", type: "diger", zone: "sirkulasyon", requestedArea: 0, rect: { ...el }, band: "hall" });
+  const door: Opening = { id: id("ak"), kind: "door", orient: "v", line: el.x + el.w, center: el.y + el.h / 2, width: 0.9, sill: 0, head: 2.1, exterior: false, swing: 1 };
+  fl.openings.push(door);
+  const extra = buildWallLines([{ ...fl.rooms[0], rect: el }], 1e9, 1e9).map((w) => ({ ...w, exterior: false, thickness: INT }));
+  fl.wallLines = [...fl.wallLines, ...extra];
+  fl.walls = subtractOpenings(fl.wallLines, fl.openings);
+}
+
+function pickCut(floors: FloorLayout[], W: number, x0: number) {
+  const candidates = floors.flatMap((f) => f.openings.filter((o) => o.orient === "h" && o.exterior).map((o) => o.center));
+  let cutX = round2(x0 + (W - x0) * 0.5);
+  let best = -1;
+  for (const c of candidates) {
+    if (c < x0 + 0.3) continue;
+    const hits = floors.reduce((s, f) => s + f.openings.filter((o) => o.orient === "h" && Math.abs(o.center - c) < o.width / 2 - 0.05).length, 0);
+    const score = hits - Math.abs(c - W / 2) / W;
+    if (score > best) { best = score; cutX = round2(c); }
+  }
+  return cutX;
+}
