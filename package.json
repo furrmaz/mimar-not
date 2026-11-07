@@ -1,0 +1,89 @@
+{
+  "name": "mimar-not",
+  "version": "0.1.0",
+  "description": "Mimarın müşteri görüşmesi notlarından Claude ile kat planı, kesit, cephe ve 3D model üreten uygulama",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
+    "build": "vite build",
+    "start": "tsx server/index.ts",
+    "typecheck": "tsc",
+    "build:electron": "esbuild electron/main.ts --bundle --platform=node --format=cjs --target=node20 --external:electron --outfile=electron-dist/main.cjs --log-level=warning && esbuild electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=electron-dist/preload.cjs --log-level=warning",
+    "desktop": "npm run build && npm run build:electron && electron .",
+    "dist:win": "npm run build && npm run build:electron && electron-builder --win --x64"
+  },
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.187.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "concurrently": "^10.0.7",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "@anthropic-ai/sdk": "^1.6.0",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "three": "^0.187.0",
+    "zod": "^4.6.7"
+  },
+  "type": "module",
+  "main": "electron-dist/main.cjs",
+  "author": "Mimar Not",
+  "build": {
+    "appId": "app.mimarnot.desktop",
+    "productName": "Mimar Not",
+    "copyright": "Mimar Not",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "electron-dist/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mimar Not",
+      "artifactName": "MimarNot-Kurulum-${version}.exe",
+      "language": "1055"
+    },
+    "portable": {
+      "artifactName": "MimarNot-Tasinabilir-${version}.exe"
+    },
+    "fileAssociations": [],
+    "publish": null
+  }
+}
