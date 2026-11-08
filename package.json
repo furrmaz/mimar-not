@@ -1,6 +1,6 @@
 {
   "name": "mimar-not",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Mimarın müşteri görüşmesi notlarından Claude ile kat planı, kesit, cephe ve 3D model üreten uygulama",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
@@ -9,11 +9,18 @@
     "typecheck": "tsc",
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --format=cjs --target=node20 --external:electron --outfile=electron-dist/main.cjs --log-level=warning && esbuild electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=electron-dist/preload.cjs --log-level=warning",
     "desktop": "npm run build && npm run build:electron && electron .",
-    "dist:win": "npm run build && npm run build:electron && electron-builder --win --x64 --publish never"
+    "dist:win": "npm run build && npm run build:electron && electron-builder --win --x64 --publish never",
+    "build:web": "VITE_STANDALONE=1 vite build",
+    "android:sync": "npm run build:web && cap sync android"
   },
   "license": "ISC",
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",

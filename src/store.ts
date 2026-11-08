@@ -1,3 +1,4 @@
+import { callGenerate, ApiError, isNative } from "./platform";
 import type { Program } from "./shared/schema";
 import { desktop } from "./desktop";
 import type { Brief } from "./brief";
@@ -82,24 +83,16 @@ export async function generateProgram(
   extra: { revision?: string; brief?: Record<string, string>; images?: { mediaType: string; data: string }[] } = {},
   signal?: AbortSignal,
 ): Promise<Program> {
-  let res: Response;
   try {
-    res = await fetch("api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes, previous: previous ?? undefined, ...extra }),
-      signal,
-    });
+    const data = await callGenerate({ notes, previous: previous ?? undefined, ...extra }, signal);
+    lastGen.raw = data.raw ?? null;
+    lastGen.warnings = Array.isArray(data.warnings) ? data.warnings : [];
+    lastGen.at = Date.now();
+    return data.program;
   } catch (e) {
-    if ((e as Error).name === "AbortError") throw e;
-    throw new Error("Sunucuya ulaşılamadı. 'npm run dev' ile API sunucusunun çalıştığından emin olun.");
+    if (e instanceof ApiError) { lastGen.raw = e.raw ?? null; lastGen.warnings = []; lastGen.at = Date.now(); }
+    throw e;
   }
-  const data = await res.json().catch(() => ({}));
-  lastGen.raw = data.raw ?? null;
-  lastGen.warnings = Array.isArray(data.warnings) ? data.warnings : [];
-  lastGen.at = Date.now();
-  if (!res.ok) throw new Error(data.error ?? `Sunucu hatası (${res.status})`);
-  return data.program as Program;
 }
 
 export function download(name: string, content: BlobPart | Uint8Array, type: string) {
@@ -133,10 +126,30 @@ const MIME: Record<string, string> = {
 
 /** Çıktıyı kaydet: masaüstünde "Farklı kaydet" penceresi, tarayıcıda indirme. */
 export async function saveOutput(baseName: string, ext: string, data: string | ArrayBuffer | Uint8Array | Blob) {
+  if (isNative()) return shareNative(`${slug(currentProject)}-${slug(baseName)}.${ext}`, data);
   if (desktop) {
     const payload = data instanceof Blob ? await data.arrayBuffer() : data;
     return desktop.saveFile(currentProject, baseName, ext, payload);
   }
   download(`${slug(baseName)}.${ext}`, data, MIME[ext] ?? "application/octet-stream");
   return { saved: true };
+}
+
+/** Android: dosyayı uygulama klasörüne yazar ve paylaş menüsünü açar (Drive, WhatsApp, e-posta, Dosyalar…). */
+async function shareNative(name: string, data: string | ArrayBuffer | Uint8Array | Blob) {
+  const [{ Filesystem, Directory, Encoding }, { Share }] = await Promise.all([import("@capacitor/filesystem"), import("@capacitor/share")]);
+  let written;
+  if (typeof data === "string") {
+    written = await Filesystem.writeFile({ path: name, data, directory: Directory.Cache, encoding: Encoding.UTF8 });
+  } else {
+    const blob = data instanceof Blob ? data : new Blob([data as BlobPart]);
+    const b64: string = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1] ?? ""); fr.onerror = no; fr.readAsDataURL(blob); });
+    written = await Filesystem.writeFile({ path: name, data: b64, directory: Directory.Cache });
+  }
+  try {
+    await Share.share({ title: name, files: [written.uri], dialogTitle: "Kaydet ya da paylaş" });
+  } catch (e) {
+    if (!/cancel/i.test(String((e as Error)?.message))) throw e;
+  }
+  return { saved: true, path: name };
 }

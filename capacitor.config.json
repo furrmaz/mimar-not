@@ -1,0 +1,9 @@
+{
+  "appId": "app.mimarnot.mobile",
+  "appName": "Mimar Not",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

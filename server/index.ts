@@ -5,6 +5,7 @@ import { createApp } from "./app";
 const PORT = Number(process.env.PORT ?? 8787);
 const app = createApp({
   getApiKey: () => process.env.ANTHROPIC_API_KEY,
+  getHiggsfield: () => (process.env.HF_API_KEY_ID && process.env.HF_API_KEY_SECRET ? { keyId: process.env.HF_API_KEY_ID, secret: process.env.HF_API_KEY_SECRET } : undefined),
   staticDir: path.resolve(import.meta.dirname, "../dist"),
 });
 app.listen(PORT, () => {

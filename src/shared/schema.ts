@@ -82,6 +82,22 @@ export const BlockSchema = z.object({
 });
 export type Block = z.infer<typeof BlockSchema>;
 
+const HEX = "#rrggbb biçiminde renk kodu";
+export const FacadeSchema = z
+  .object({
+    wallColor: z.string().describe(`Ana cephe rengi, ${HEX}; referans görsel varsa görseldeki ana duvar rengi`),
+    accentColor: z.string().describe(`Vurgu yüzeyi rengi (taş/ahşap/kaplama), ${HEX}`),
+    frameColor: z.string().describe(`Pencere doğraması rengi, ${HEX} (antrasit #2e3033, beyaz #f2f2f0, ahşap #8a5a3a gibi)`),
+    roofColor: z.string().describe(`Çatı örtüsü ya da parapet rengi, ${HEX}`),
+    windowStyle: z.enum(["kare", "dikey", "serit", "boy"]).describe("kare: klasik kare/yatay pencere, dikey: dar uzun pencere, serit: yatay bant pencere, boy: yerden tavana cam"),
+    accentPlacement: z.enum(["zemin", "dikey_serit", "kose", "cerceve", "yok"]).describe("Vurgu malzemesinin yeri: zemin kat, dikey şerit (merdiven/giriş aksında), bina köşeleri, pencere çerçeveleri ya da hiç"),
+    balconyRail: z.enum(["cam", "metal", "dolu"]).describe("Balkon korkuluğu: cam, ince metal, dolu parapet"),
+    shutters: z.boolean().describe("Pencere kepenkleri/panjur var mı (Akdeniz, klasik)"),
+    cornice: z.boolean().describe("Saçak/kat silmesi gibi yatay bantlar var mı"),
+  })
+  .describe("Cephenin görsel dili: referans görsel varsa ondan birebir oku; yoksa üsluptan çıkar. 3D model ve gerçekçi render bunu kullanır");
+export type Facade = z.infer<typeof FacadeSchema>;
+
 export const ProgramSchema = z.object({
   projectName: z.string(),
   clientName: z.string().describe("Müşteri adı; notlarda yoksa boş metin"),
@@ -116,6 +132,7 @@ export const ProgramSchema = z.object({
       glazing: z.enum(["az", "orta", "genis"]).describe("Cephede cam oranı: modern/minimal üslupta genis, geleneksel taş evde az"),
     })
     .describe("Üsluptan (ve varsa referans görsellerden) çıkarılan cephe malzemeleri; 3D ve cephe çizimleri bunu kullanır"),
+  facade: FacadeSchema,
   floors: z.array(FloorSchema),
   adjacencies: z
     .array(
@@ -132,6 +149,17 @@ export const ProgramSchema = z.object({
     .array(BlockSchema)
     .describe("Apartman ya da çok bloklu projede bloklar (tek apartman da bir bloktur). Müstakil konutta boş liste. Bloklar varsa üstteki floors boş liste olur, footprint ilk bloğun oturumudur"),
   blockSpacing: z.number().nullable().describe("Bloklar arası istenen asgari mesafe (m); notlarda yoksa null"),
+  requirements: z
+    .array(
+      z.object({
+        text: z.string().describe("Müşterinin ya da mimarın tek bir isteği, kısa (ör. 'Mutfak salona açık olsun', 'Her dairede ebeveyn banyosu'), ya da yönetmelik gereği olması gereken bir şey"),
+        source: z.enum(["not", "form", "gorsel", "yonetmelik"]).describe("not: notlarda geçiyor, form: mimarın formu, gorsel: ekteki görselden, yonetmelik: yönetmelik/işlev gereği zorunlu"),
+        status: z.enum(["karsilandi", "kismen", "karsilanmadi"]).describe("Programda karşılandı mı"),
+        how: z.string().describe("Programda nasıl karşılandığı ya da neden karşılanamadığı, 1 cümle"),
+      }),
+    )
+    .describe("Notlardaki, formdaki ve görsellerdeki TÜM istekler tek tek (hiçbirini atlama) + yönetmelik/işlev gereği olması gerekenler; her biri için programda karşılanma durumu"),
+  imageReadings: z.array(z.string()).describe("Ekteki her görsel için sırayla: görselin ne olduğu (cephe referansı, plan eskizi, el yazısı not, imar durumu, kroki vb.) ve ondan programa ne aldığın, 1-2 cümle. Görsel yoksa boş liste"),
   assumptions: z.array(z.string()).describe("Notlarda olmayan, senin yaptığın varsayımlar"),
   openQuestions: z.array(z.string()).describe("Mimarın müşteriye sorması gereken netleşmemiş konular"),
 });
@@ -144,7 +172,12 @@ export interface DesignOptions {
   /** "<kat>-<bant>" → sütun sınırlarının x koordinatları */
   cols?: Record<string, number[]>;
 }
-export type Program = Omit<z.infer<typeof ProgramSchema>, "floors" | "unitTypes" | "blocks" | "blockSpacing"> & {
+export type Requirement = z.infer<typeof ProgramSchema>["requirements"][number];
+export type Program = Omit<z.infer<typeof ProgramSchema>, "floors" | "unitTypes" | "blocks" | "blockSpacing" | "facade" | "requirements" | "imageReadings"> & {
+  /** Eski proje dosyalarında yoktur */
+  facade?: Facade;
+  requirements?: Requirement[];
+  imageReadings?: string[];
   blockSpacing?: number | null;
   floors: Floor[];
   /** Eski proje dosyalarında yoktur */
@@ -185,9 +218,31 @@ function fixRoom<T extends { name: string; type: string; zone: string }>(r: T): 
   return { ...r, type, zone };
 }
 /** Claude'un serbest metin oda tiplerini şemadaki değerlere çevirir. */
+const hex = (c: string | undefined, d: string) => {
+  const m = /#?([0-9a-f]{6}|[0-9a-f]{3})\b/i.exec(String(c ?? ""));
+  if (!m) return d;
+  const h = m[1].length === 3 ? m[1].split("").map((x) => x + x).join("") : m[1];
+  return `#${h.toLowerCase()}`;
+};
+/** Cephe renklerini doğrular; eksikse malzemeden varsayılan üretir. */
+export function normalizeFacade(f: Partial<Facade> | undefined, m: Materials = DEFAULT_MATERIALS): Facade {
+  const WALL: Record<string, string> = { siva_beyaz: "#f3f1ec", siva_krem: "#efe6d6", siva_gri: "#c9c7c2", tas: "#cbbfa8", tugla: "#a65e42", ahsap: "#9a6a43", beton: "#b5b3ae" };
+  return {
+    wallColor: hex(f?.wallColor, WALL[m.wall] ?? "#efe6d6"),
+    accentColor: hex(f?.accentColor, WALL[m.accent] ?? "#cbbfa8"),
+    frameColor: hex(f?.frameColor, "#2e3033"),
+    roofColor: hex(f?.roofColor, m.roof === "kiremit" ? "#9a4f35" : m.roof === "koyu_metal" ? "#3a3d40" : "#9a9d9f"),
+    windowStyle: (["kare", "dikey", "serit", "boy"] as const).includes(f?.windowStyle as "kare") ? f!.windowStyle! : m.glazing === "genis" ? "boy" : "kare",
+    accentPlacement: (["zemin", "dikey_serit", "kose", "cerceve", "yok"] as const).includes(f?.accentPlacement as "zemin") ? f!.accentPlacement! : "zemin",
+    balconyRail: (["cam", "metal", "dolu"] as const).includes(f?.balconyRail as "cam") ? f!.balconyRail! : "metal",
+    shutters: Boolean(f?.shutters),
+    cornice: Boolean(f?.cornice),
+  };
+}
 export function normalizeProgram(w: ProgramWire): Program {
   return {
     ...w,
+    facade: normalizeFacade(w.facade, w.materials),
     floors: w.floors.map((f) => ({ ...f, rooms: f.rooms.map(fixRoom) })),
     unitTypes: w.unitTypes.map((u) => ({ ...u, rooms: u.rooms.map(fixRoom) })),
     blocks: w.blocks.map((b) => ({ ...b, floors: b.floors.map((f) => ({ ...f, rooms: f.rooms.map(fixRoom) })) })),

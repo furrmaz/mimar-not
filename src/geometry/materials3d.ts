@@ -156,7 +156,7 @@ const TEX: Record<Mat | "tile" | "grass" | "paving" | "wood_floor" | "inner", ()
 
 const matCache = new Map<string, THREE.MeshStandardMaterial>();
 export function texturedMaterial(kind: keyof typeof TEX, opts: { color?: number; side?: THREE.Side } = {}) {
-  const key = `${kind}-${opts.side ?? 0}`;
+  const key = `${kind}-${opts.side ?? 0}-${opts.color ?? ""}`;
   const hit = matCache.get(key);
   if (hit) return hit;
   const t = TEX[kind]();

@@ -12,8 +12,10 @@ import { buildModel, type ModelOptions } from "../geometry/model3d";
 import type { Program } from "../shared/schema";
 import { zoningCheck } from "../geometry/zoning";
 import { saveOutput } from "../store";
+import { RenderDialog } from "./RenderDialog";
 
-export function ThreeView({ layout, program }: { layout: BuildingLayout; program: Program }) {
+export function ThreeView({ layout, program, refImages = [], onSettings }: { layout: BuildingLayout; program: Program; refImages?: string[]; onSettings?: () => void }) {
+  const [rendering, setRendering] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const ctx = useRef<{
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls; model: THREE.Group | null;
@@ -137,10 +139,10 @@ export function ThreeView({ layout, program }: { layout: BuildingLayout; program
     const entranceX = ent ? (ent.orient === "h" ? ent.center : ent.line) : undefined;
     const others = (z.blocks ?? []).filter((b) => b.index !== (program.blockIndex ?? 0));
     const avoid = others.map((b) => ({ x: b.x - z.building.x, y: b.y - z.building.y, w: b.L.W, d: b.L.D }));
-    const model = buildModel(layout, { ...opts, materials: program.materials, entranceX, avoid }, { width: program.site.width, depth: program.site.depth, offsetX: z.building.x, offsetY: z.building.y });
+    const model = buildModel(layout, { ...opts, materials: program.materials, facade: program.facade, entranceX, avoid }, { width: program.site.width, depth: program.site.depth, offsetX: z.building.x, offsetY: z.building.y });
     // çok bloklu: diğer bloklar da arsada
     for (const b of others) {
-      const m = buildModel(b.L, { ...opts, materials: program.materials });
+      const m = buildModel(b.L, { ...opts, materials: program.materials, facade: program.facade });
       m.name = b.name;
       m.position.set(b.x - z.building.x, 0, b.y - z.building.y);
       model.add(m);
@@ -183,6 +185,21 @@ export function ThreeView({ layout, program }: { layout: BuildingLayout; program
     c.renderer.domElement.toBlob((b) => b && saveOutput(`${program.projectName}-3d`, "png", b));
   };
 
+  /** Render için şu anki görünümün JPEG'i (en uzun kenar 1600 px) */
+  const capture = () => {
+    const c = ctx.current;
+    if (!c) return null;
+    if (c.real) c.composer.render();
+    else c.renderer.render(c.scene, c.camera);
+    const src = c.renderer.domElement;
+    const k = Math.min(1, 1600 / Math.max(src.width, src.height));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(src.width * k);
+    cv.height = Math.round(src.height * k);
+    cv.getContext("2d")!.drawImage(src, 0, 0, cv.width, cv.height);
+    return cv.toDataURL("image/jpeg", 0.9);
+  };
+
   const levels = layout.floors.map((f) => f.level);
   return (
     <div className="three-wrap">
@@ -211,11 +228,13 @@ export function ThreeView({ layout, program }: { layout: BuildingLayout; program
           <input type="checkbox" checked={opts.cutaway} onChange={(e) => setOpts({ ...opts, cutaway: e.target.checked, showRoof: e.target.checked ? false : opts.showRoof })} /> Maket kesiti (içini göster)
         </label>
         <span className="spacer" />
+        <button className="btn primary" onClick={() => { if (!opts.realistic) setOpts({ ...opts, realistic: true }); setTimeout(() => setRendering(true), 50); }} title="Bu açıdan Higgsfield ile fotoğraf gerçekliğinde görsel">✦ Gerçekçi render</button>
         <button className="btn ghost" onClick={exportPNG}>PNG</button>
         <button className="btn ghost" onClick={exportGLB}>GLB (3D model)</button>
       </div>
       <div ref={host} className="three-host" />
-      <div className="hint">Sürükle: döndür · Tekerlek: yakınlaş · Sağ tık: kaydır</div>
+      <div className="hint">Sürükle: döndür · Tekerlek/iki parmak: yakınlaş · Sağ tık/iki parmak sürükle: kaydır</div>
+      {rendering && <RenderDialog program={program} refImages={refImages} capture={capture} onClose={() => setRendering(false)} onSettings={() => { setRendering(false); onSettings?.(); }} />}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import * as THREE from "three";
 import type { BuildingLayout, FloorLayout, Opening } from "./layout";
 import { ZONE_COLORS, near } from "./layout";
 import { furnishFloor, type FurnitureKind } from "./furniture";
-import { DEFAULT_MATERIALS, type Materials } from "../shared/schema";
+import { DEFAULT_MATERIALS, normalizeFacade, type Facade, type Materials } from "../shared/schema";
 import { texturedMaterial, worldUV } from "./materials3d";
 
 export interface ModelOptions {
@@ -16,6 +16,8 @@ export interface ModelOptions {
   /** Dokulu malzemeler, peyzaj (ağaç, yol, yürüme yolu) */
   realistic?: boolean;
   materials?: Materials;
+  /** Cephe dili (renkler, vurgu yeri, korkuluk); referans görselden okunur */
+  facade?: Facade;
   /** Giriş kapısının arsadaki yerine giden yürüme yolu için */
   entranceX?: number;
   /** Diğer blokların (yerel koordinatta) alanları: ağaç konmaz */
@@ -36,31 +38,109 @@ const BASE = {
   furn: new THREE.MeshStandardMaterial({ color: 0xb08a63, roughness: 0.8 }),
   rail: new THREE.MeshStandardMaterial({ color: 0x2f3033, roughness: 0.4, metalness: 0.6 }),
 };
-let mats: typeof BASE & { gable?: THREE.Material } = { ...BASE };
+let mats: typeof BASE & { gable?: THREE.Material; accent?: THREE.Material } = { ...BASE };
+let fac: Facade = normalizeFacade(undefined);
 
 const REAL_GLASS = new THREE.MeshPhysicalMaterial({ color: 0x5f7684, roughness: 0.03, metalness: 0.0, transparent: true, opacity: 0.55, envMapIntensity: 2.2, clearcoat: 1 });
 const REAL_FRAME = new THREE.MeshStandardMaterial({ color: 0x2e3033, roughness: 0.45, metalness: 0.5 });
 const REAL_SLAB = new THREE.MeshStandardMaterial({ color: 0xd8d4cc, roughness: 0.85 });
 
+const hexNum = (h: string) => parseInt(h.slice(1), 16);
+/** Sıva türü malzemelerde beyaz doku cephe rengiyle boyanır; diğerlerinde (taş, tuğla, ahşap, beton) doku rengi korunur, hafifçe tonlanır. */
+function facadeMat(kind: Materials["wall"], color: string, side?: THREE.Side) {
+  if (kind.startsWith("siva")) return texturedMaterial("siva_beyaz", { color: hexNum(color), side });
+  const c = new THREE.Color(color);
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl);
+  // açık bir ton: dokunun deseni kalır, rengi görsele yaklaşır
+  const tint = new THREE.Color().setHSL(hsl.h, Math.min(0.35, hsl.s), Math.max(0.78, hsl.l));
+  return texturedMaterial(kind, { color: tint.getHex(), side });
+}
+
 function useMaterials(opts: ModelOptions) {
-  if (!opts.realistic) { mats = { ...BASE }; return; }
+  fac = normalizeFacade(opts.facade, opts.materials ?? DEFAULT_MATERIALS);
+  if (!opts.realistic) { mats = { ...BASE, accent: BASE.wallStone }; return; }
   const m = opts.materials ?? DEFAULT_MATERIALS;
   const roof =
-    m.roof === "kiremit" ? texturedMaterial("tile", { side: THREE.DoubleSide })
-    : new THREE.MeshStandardMaterial({ color: m.roof === "koyu_metal" ? 0x3a3d40 : 0x9a9d9f, roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
+    m.roof === "kiremit" ? texturedMaterial("tile", { side: THREE.DoubleSide, color: opts.facade ? new THREE.Color(fac.roofColor).lerp(new THREE.Color(0xffffff), 0.55).getHex() : undefined })
+    : new THREE.MeshStandardMaterial({ color: opts.facade ? hexNum(fac.roofColor) : m.roof === "koyu_metal" ? 0x3a3d40 : 0x9a9d9f, roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
+  const wall = opts.facade ? facadeMat(m.wall, fac.wallColor) : texturedMaterial(m.wall);
+  const accent = opts.facade ? facadeMat(m.accent, fac.accentColor) : texturedMaterial(m.accent);
+  const frame = opts.facade ? new THREE.MeshStandardMaterial({ color: hexNum(fac.frameColor), roughness: 0.45, metalness: 0.4 }) : REAL_FRAME;
   mats = {
     ...BASE,
-    wall: texturedMaterial(m.wall),
-    wallStone: texturedMaterial(m.accent),
+    wall,
+    // zemin kat duvarı: vurgu yeri "zemin" ise vurgu malzemesi
+    wallStone: fac.accentPlacement === "zemin" ? accent : wall,
+    accent,
     inner: texturedMaterial("inner"),
     slab: REAL_SLAB,
     glass: REAL_GLASS,
-    frame: REAL_FRAME,
+    frame,
+    rail: opts.facade ? frame : BASE.rail,
     door: texturedMaterial("ahsap"),
     roof,
     ground: texturedMaterial("grass"),
-    gable: texturedMaterial(m.wall, { side: THREE.DoubleSide }),
+    gable: opts.facade ? facadeMat(m.wall, fac.wallColor, THREE.DoubleSide) : texturedMaterial(m.wall, { side: THREE.DoubleSide }),
   };
+}
+
+/** Vurgu malzemesinin köşe, dikey şerit ya da pencere çerçevesi olarak eklenmesi; saçak/silme bantları */
+function addFacadeAccents(root: THREE.Group, L: BuildingLayout, visible: FloorLayout[]) {
+  if (!visible.length) return;
+  const acc = mats.accent ?? mats.wallStone;
+  const z0 = visible[0].z;
+  const top = visible[visible.length - 1].z + L.H;
+  const h = top - z0;
+  const t = L.extWall;
+  const g = new THREE.Group();
+  g.name = "Cephe vurguları";
+  if (fac.accentPlacement === "kose") {
+    const w = Math.min(1.2, L.W * 0.08);
+    for (const [x, z] of [[0, 0], [L.W, 0], [0, L.D], [L.W, L.D]] as const) {
+      g.add(box(w, h, 0.06, acc, x + (x === 0 ? w / 2 - t / 2 : -w / 2 + t / 2), z0 + h / 2, z + (z === 0 ? -t / 2 - 0.03 : t / 2 + 0.03)));
+      g.add(box(0.06, h, w, acc, x + (x === 0 ? -t / 2 - 0.03 : t / 2 + 0.03), z0 + h / 2, z + (z === 0 ? w / 2 - t / 2 : -w / 2 + t / 2)));
+    }
+  } else if (fac.accentPlacement === "dikey_serit") {
+    // ön cephede giriş aksında (yoksa ortada) tam yükseklik vurgu şeridi
+    const ent = L.floors[0]?.openings.find((o) => o.kind === "entrance" && o.orient === "h" && o.line <= 0.01);
+    const cx = ent?.center ?? L.W / 2;
+    const w = Math.min(2.4, L.W * 0.18);
+    g.add(box(w, h + 0.3, 0.12, acc, Math.min(L.W - w / 2, Math.max(w / 2, cx)), z0 + (h + 0.3) / 2, -t / 2 - 0.06));
+  }
+  if (fac.accentPlacement === "cerceve" || fac.shutters) {
+    for (const f of visible)
+      for (const o of f.openings) {
+        if (!o.exterior || o.kind !== "window") continue;
+        const off = o.line <= 0.01 || (o.orient === "v" && o.line <= 0.01) ? -t / 2 - 0.04 : t / 2 + 0.04;
+        const hh = o.head - o.sill;
+        const zc = f.z + o.sill + hh / 2;
+        const put = (len: number, hgt: number, d: number, m: THREE.Material, c: number, z: number, out: number) =>
+          o.orient === "h" ? box(len, hgt, d, m, c, z, o.line + out) : box(d, hgt, len, m, o.line + out, z, c);
+        if (fac.accentPlacement === "cerceve") {
+          const fw = 0.14;
+          g.add(put(o.width + 2 * fw, fw, 0.08, acc, o.center, f.z + o.head + fw / 2, off));
+          g.add(put(o.width + 2 * fw, fw, 0.1, acc, o.center, f.z + o.sill - fw / 2, off));
+          g.add(put(fw, hh, 0.08, acc, o.center - o.width / 2 - fw / 2, zc, off));
+          g.add(put(fw, hh, 0.08, acc, o.center + o.width / 2 + fw / 2, zc, off));
+        }
+        if (fac.shutters && o.width <= 2.2) {
+          const sw = o.width / 2;
+          const sm = mats.door;
+          g.add(put(sw, hh, 0.04, sm, o.center - o.width / 2 - sw / 2 - 0.05, zc, off * 1.3));
+          g.add(put(sw, hh, 0.04, sm, o.center + o.width / 2 + sw / 2 + 0.05, zc, off * 1.3));
+        }
+      }
+  }
+  if (fac.cornice) {
+    for (const f of visible.slice(1)) {
+      g.add(box(L.W + t + 0.16, 0.16, 0.12, mats.slab, L.W / 2, f.z - 0.05, -t / 2 - 0.06));
+      g.add(box(L.W + t + 0.16, 0.16, 0.12, mats.slab, L.W / 2, f.z - 0.05, L.D + t / 2 + 0.06));
+    }
+    g.add(box(L.W + t + 0.3, 0.22, L.D + t + 0.3, mats.slab, L.W / 2, top + 0.02, L.D / 2));
+  }
+  g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  root.add(g);
 }
 
 const FURN_MATS: Partial<Record<FurnitureKind, THREE.Material>> = {
@@ -114,6 +194,7 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
     root.add(grp);
   }
 
+  if (opts.realistic) addFacadeAccents(root, L, visible);
   if (site && opts.realistic) root.add(landscape(L, site, opts.entranceX, opts.avoid ?? []));
 
   // Çatı
@@ -181,12 +262,26 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
       continue;
     }
     grp.add(box(r.w, 0.18, r.h, mats.slab, r.x + r.w / 2, z0 - 0.09, r.y + r.h / 2, o.name));
-    // cam korkuluk
     const edge = r.y < 0 ? r.y : r.y + r.h; // dış kenar
-    grp.add(box(r.w, 1.0, 0.03, mats.glass, r.x + r.w / 2, z0 + 0.5, edge));
-    grp.add(box(0.03, 1.0, r.h, mats.glass, r.x, z0 + 0.5, r.y + r.h / 2));
-    grp.add(box(0.03, 1.0, r.h, mats.glass, r.x + r.w, z0 + 0.5, r.y + r.h / 2));
-    grp.add(box(r.w, 0.05, 0.06, mats.rail, r.x + r.w / 2, z0 + 1.05, edge));
+    if (fac.balconyRail === "dolu") {
+      // dolu parapet (cephe malzemesi)
+      grp.add(box(r.w, 1.05, 0.15, mats.wall, r.x + r.w / 2, z0 + 0.52, edge));
+      grp.add(box(0.15, 1.05, r.h, mats.wall, r.x, z0 + 0.52, r.y + r.h / 2));
+      grp.add(box(0.15, 1.05, r.h, mats.wall, r.x + r.w, z0 + 0.52, r.y + r.h / 2));
+    } else if (fac.balconyRail === "metal") {
+      // ince metal dikmeler + küpeşte
+      for (let x = r.x + 0.06; x <= r.x + r.w; x += 0.12) grp.add(box(0.018, 1.0, 0.018, mats.rail, x, z0 + 0.5, edge));
+      for (const sx of [r.x, r.x + r.w]) for (let y = r.y + 0.12; y < r.y + r.h; y += 0.12) grp.add(box(0.018, 1.0, 0.018, mats.rail, sx, z0 + 0.5, y));
+      grp.add(box(r.w, 0.05, 0.05, mats.rail, r.x + r.w / 2, z0 + 1.03, edge));
+      grp.add(box(0.05, 0.05, r.h, mats.rail, r.x, z0 + 1.03, r.y + r.h / 2));
+      grp.add(box(0.05, 0.05, r.h, mats.rail, r.x + r.w, z0 + 1.03, r.y + r.h / 2));
+    } else {
+      // cam korkuluk
+      grp.add(box(r.w, 1.0, 0.03, mats.glass, r.x + r.w / 2, z0 + 0.5, edge));
+      grp.add(box(0.03, 1.0, r.h, mats.glass, r.x, z0 + 0.5, r.y + r.h / 2));
+      grp.add(box(0.03, 1.0, r.h, mats.glass, r.x + r.w, z0 + 0.5, r.y + r.h / 2));
+      grp.add(box(r.w, 0.05, 0.06, mats.rail, r.x + r.w / 2, z0 + 1.05, edge));
+    }
   }
 }
 

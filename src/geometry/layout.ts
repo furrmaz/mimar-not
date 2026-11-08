@@ -167,7 +167,7 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
   const stair: Rect | null = multi ? { x: 0, y: hallBand.y, w: stairW, h: hallDepth } : null;
 
   const floors: FloorLayout[] = program.floors.map((f, i) =>
-    layoutFloor(f.level, f.name, assignments[i], { W, D, hallBand, stair, isGround: f.level === program.floors[0].level, H, cols: design.cols ?? {} }),
+    layoutFloor(f.level, f.name, assignments[i], { W, D, hallBand, stair, isGround: f.level === program.floors[0].level, H, cols: design.cols ?? {}, windowStyle: program.facade?.windowStyle }),
   );
 
   // Kesit hattı: ön ve arka cephedeki pencerelerden en çoğunu kesen x (merdiven dışında)
@@ -201,6 +201,8 @@ interface Ctx {
   stair: Rect | null;
   isGround: boolean;
   cols: Record<string, number[]>;
+  /** Cephe dili: pencere biçimi */
+  windowStyle?: "kare" | "dikey" | "serit" | "boy";
 }
 
 interface Assignment {
@@ -578,10 +580,15 @@ function makeOpenings(rooms: PlacedRoom[], ctx: Ctx, id: (p: string) => string):
   for (const r of banded) {
     if (r.name.startsWith("Boş") || r.name.startsWith("Depo / Boş")) continue;
     const isWet = WET.includes(r.type as RoomType) || r.type === "depo" || r.type === "kiler" || r.type === "teknik";
+    const ws = ctx.windowStyle ?? "kare";
+    const head = Math.min(ctx.H - 0.45, ws === "boy" || ws === "dikey" ? 2.5 : 2.2);
     const winFor = (len: number) =>
-      isWet ? { w: Math.min(0.7, len - 0.4), sill: 1.5, head: 2.1 } :
-      r.type === "salon" ? { w: Math.min(3.2, len * 0.6), sill: 0.5, head: 2.2 } :
-      { w: Math.min(2.0, len * 0.5), sill: 0.9, head: 2.2 };
+      isWet ? { w: Math.min(ws === "serit" ? 1.6 : 0.7, len - 0.4), sill: 1.5, head: 2.1 } :
+      ws === "boy" ? { w: Math.min(r.type === "salon" ? 4.2 : 2.4, len * (r.type === "salon" ? 0.75 : 0.6)), sill: 0, head } :
+      ws === "dikey" ? { w: Math.min(r.type === "salon" ? 1.6 : 1.0, len * 0.4), sill: r.type === "salon" ? 0 : 0.6, head } :
+      ws === "serit" ? { w: Math.min(len - 0.5, len * 0.85), sill: 1.0, head } :
+      r.type === "salon" ? { w: Math.min(3.2, len * 0.6), sill: 0.5, head } :
+      { w: Math.min(2.0, len * 0.5), sill: 0.9, head };
     const edges: { orient: "h" | "v"; line: number; a: number; b: number; swing: 1 | -1 }[] = [];
     if (near(r.rect.y, 0)) edges.push({ orient: "h", line: 0, a: r.rect.x, b: r.rect.x + r.rect.w, swing: 1 });
     if (near(r.rect.y + r.rect.h, D)) edges.push({ orient: "h", line: D, a: r.rect.x, b: r.rect.x + r.rect.w, swing: -1 });

@@ -7,8 +7,9 @@ export interface UpdateState {
   message?: string;
 }
 export interface DesktopBridge {
-  getSettings(): Promise<{ hasKey: boolean; keyHint: string; outputRoot: string }>;
+  getSettings(): Promise<{ hasKey: boolean; keyHint: string; hasHiggsfield?: boolean; hfHint?: string; outputRoot: string }>;
   setApiKey(key: string): Promise<{ hasKey: boolean }>;
+  setHiggsfield?(keyId: string, secret: string): Promise<{ hasHiggsfield: boolean }>;
   saveFile(project: string, name: string, ext: string, data: Data): Promise<{ saved: boolean; path?: string }>;
   saveAndOpen(project: string, name: string, ext: string, data: Data): Promise<{ ok: boolean; path: string; error?: string }>;
   openFolder(project: string): Promise<string>;

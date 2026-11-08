@@ -1,0 +1,144 @@
+name: Sürüm (Windows, Android, Web)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Web paketini derle ve Android'e aktar
+        run: npm run android:sync
+      # Depo sırlarında kendi imza anahtarınız yoksa, ilk derlemede bir anahtar üretilir ve
+      # Actions önbelleğinde saklanır; böylece sonraki sürümler telefona güncelleme olarak kurulur.
+      - name: İmza anahtarını önbellekten al
+        id: kscache
+        uses: actions/cache@v4
+        with:
+          path: ~/.mimarnot-ks
+          key: android-keystore-v1
+      - name: İmza anahtarı
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/ks.jks"
+            KS="$RUNNER_TEMP/ks.jks"; PASS="$KS_PASS"; ALIAS="$KS_ALIAS"
+          else
+            mkdir -p ~/.mimarnot-ks
+            if [ ! -f ~/.mimarnot-ks/ks.jks ]; then
+              openssl rand -base64 24 | tr -d '\n/+=' > ~/.mimarnot-ks/pass
+              keytool -genkeypair -keystore ~/.mimarnot-ks/ks.jks -alias mimarnot -keyalg RSA -keysize 2048 -validity 10000 \
+                -storepass "$(cat ~/.mimarnot-ks/pass)" -keypass "$(cat ~/.mimarnot-ks/pass)" -dname "CN=Mimar Not, O=Mimar Not, C=TR"
+            fi
+            KS=~/.mimarnot-ks/ks.jks; PASS="$(cat ~/.mimarnot-ks/pass)"; ALIAS=mimarnot
+          fi
+          echo "::add-mask::$PASS"
+          { echo "ANDROID_KEYSTORE_FILE=$KS"; echo "ANDROID_KEYSTORE_PASSWORD=$PASS"; echo "ANDROID_KEY_PASSWORD=$PASS"; echo "ANDROID_KEY_ALIAS=$ALIAS"; } >> "$GITHUB_ENV"
+      - name: APK derle
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          IFS=. read -r MA MI PA <<< "$V"
+          export APP_VERSION="$V" APP_VERSION_CODE=$((MA * 10000 + MI * 100 + PA))
+          cd android && chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+          mkdir -p ../out && cp app/build/outputs/apk/release/app-release.apk "../out/MimarNot-Android-$V.apk"
+      - name: Web paneli paketi
+        run: cd dist && zip -qr "../out/MimarNot-Web-$(node -p "require('../package.json').version").zip" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: out/*
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  pages:
+    # Web paneli: GitHub Pages açıksa https://<kullanıcı>.github.io/mimar-not/ adresinde yayınlanır
+    needs: android
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  release:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Sürüm numarasını oku
+        id: ver
+        run: echo "v=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Sürüm sayfasına ekle (Releases)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          name: Mimar Not ${{ steps.ver.outputs.v }}
+          body: |
+            **Windows**
+            - **MimarNot-Kurulum-*.exe**: kurulum dosyası (masaüstü ve Başlat menüsü kısayolu)
+            - **MimarNot-Tasinabilir-*.exe**: kurulum gerektirmeden çalışır
+            Uygulama imzasız olduğu için Windows uyarı verirse "Ek bilgi" → "Yine de çalıştır".
+
+            **Android (telefon / tablet)**
+            - **MimarNot-Android-*.apk**: telefondan bu sayfayı açıp APK'yı indirin ve kurun ("bilinmeyen kaynaklardan yükleme" izni istenir).
+
+            **Web paneli**
+            - Tarayıcıdan: https://furrmaz.github.io/mimar-not/ (GitHub Pages açıksa)
+            - **MimarNot-Web-*.zip**: kendi sunucunuzda barındırmak için statik dosyalar
+
+            Her sürümde ilk açılışta Ayarlar'dan Claude API anahtarını girin. Gerçekçi render için Higgsfield Key ID ve Secret gerekir.
+          files: |
+            art/windows/*
+            art/android/*

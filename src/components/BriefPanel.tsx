@@ -19,6 +19,8 @@ const NUMS: { k: NumKey; label: string; step: number; ph?: string }[] = [
 ];
 
 /** Notlar ekranındaki seçim alanları: arsa, bina, imar, üslup, çatı ve referans görseller. */
+const MAX_IMG = 5;
+
 export function BriefPanel({ brief, images, onBrief, onImages, onError }: {
   brief: Brief;
   images: string[];
@@ -28,18 +30,36 @@ export function BriefPanel({ brief, images, onBrief, onImages, onError }: {
 }) {
   const file = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Brief>(k: K, v: Brief[K]) => onBrief({ ...brief, [k]: v });
-  const filled = Object.values(brief).filter((v) => v !== undefined && v !== "" && v !== STYLES[0]).length + images.length;
+  const filled = Object.values(brief).filter((v) => v !== undefined && v !== "" && v !== STYLES[0]).length;
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
     const list = [...images];
     for (const f of Array.from(files)) {
-      if (list.length >= 3) { onError("En fazla 3 referans görsel eklenebilir."); break; }
+      if (list.length >= MAX_IMG) { onError(`En fazla ${MAX_IMG} görsel eklenebilir.`); break; }
       if (!f.type.startsWith("image/")) continue;
       try { list.push(await shrinkImage(f)); } catch { onError(`${f.name} okunamadı.`); }
     }
     onImages(list);
   };
   return (
+    <>
+    <div className="refs refs-top">
+      <div className="small"><b>Görseller</b> <span className="muted">(en fazla {MAX_IMG})</span></div>
+      <div className="muted small">Referans cephe fotoğrafı, el eskizi / kroki, el yazısı not ya da imar durumu ekleyebilirsiniz. Claude her görselin ne olduğunu anlar: cepheyi renk ve biçimiyle aynen alır, eskizden odaları ve ölçüleri, imar belgesinden değerleri okur. Görselle tek başına da proje üretebilirsiniz.</div>
+      <div className="ref-list">
+        {images.map((src, i) => (
+          <div className="ref" key={i}>
+            <img src={src} alt={`Görsel ${i + 1}`} />
+            <span className="ref-n">{i + 1}</span>
+            <button className="ref-x" title="Kaldır" onClick={() => onImages(images.filter((_, k) => k !== i))}>×</button>
+          </div>
+        ))}
+        {images.length < MAX_IMG && (
+          <button className="ref add" onClick={() => file.current?.click()} title="Görsel ekle ya da fotoğraf çek">+ Görsel</button>
+        )}
+      </div>
+      <input ref={file} type="file" accept="image/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+    </div>
     <details className="brief" open={filled > 0 ? true : undefined}>
       <summary>Proje bilgileri ve üslup {filled > 0 && <span className="pill ok">{filled} seçim</span>}</summary>
       <div className="brief-grid">
@@ -73,22 +93,8 @@ export function BriefPanel({ brief, images, onBrief, onImages, onError }: {
           </label>
         ))}
       </div>
-      <div className="refs">
-        <div className="muted small">"Bu tarz olsun" görselleri (en fazla 3) — Claude cephe dilini, malzemeyi ve cam oranını bunlardan çıkarır.</div>
-        <div className="ref-list">
-          {images.map((src, i) => (
-            <div className="ref" key={i}>
-              <img src={src} alt={`Referans ${i + 1}`} />
-              <button className="ref-x" title="Kaldır" onClick={() => onImages(images.filter((_, k) => k !== i))}>×</button>
-            </div>
-          ))}
-          {images.length < 3 && (
-            <button className="ref add" onClick={() => file.current?.click()} title="Görsel ekle">+ Görsel</button>
-          )}
-        </div>
-        <input ref={file} type="file" accept="image/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-      </div>
       <div className="muted small">Boş bıraktıklarınızı Claude notlardan çıkarır. Doldurduklarınız aynen kullanılır.</div>
     </details>
+    </>
   );
 }

@@ -25,6 +25,8 @@ import { roomChecks } from "./geometry/roomcheck";
 import { blockTypeKey, blockView, isMultiBlock, unitCounts } from "./geometry/blocks";
 import { BlocksEditor } from "./components/BlocksEditor";
 import { SITE_NOTES, SITE_PROGRAM } from "./sample-site";
+import { RequirementsCard } from "./components/RequirementsCard";
+import { STANDALONE, isNative, loadKeys } from "./platform";
 
 /** Demo derlemesi (VITE_DEMO=1): API ve indirmeler olmadan, örnek projeyle açılır. */
 const DEMO = import.meta.env.VITE_DEMO === "1";
@@ -74,6 +76,12 @@ export default function App() {
     refreshHealth();
   }, []);
   function refreshHealth() {
+    if (STANDALONE) {
+      const hasKey = Boolean(loadKeys().claude);
+      setApiInfo({ ok: true, hasKey });
+      if (!hasKey) setShowSettings(true);
+      return;
+    }
     fetch("api/health")
       .then((r) => r.json())
       .then((d) => {
@@ -108,6 +116,7 @@ export default function App() {
     if (layout && floorIdx >= layout.floors.length) setFloorIdx(0);
   }, [layout, floorIdx]);
 
+  const canGenerate = project.notes.trim().length >= 10 || (project.refImages?.length ?? 0) > 0 || Boolean(briefForPrompt(project.brief));
   const run = async (mode: "new" | "update") => {
     if (DEMO) {
       setError("Bu demo sürümünde Claude bağlantısı yok. Notları düzenleyip programı elle değiştirebilirsiniz; tam sürümde bu düğme notlardan yeni program üretir.");
@@ -127,6 +136,8 @@ export default function App() {
       });
       setTab(mode === "update" ? tab : "program");
       syncGen();
+      // telefonda: sonuç notların altında kalmasın
+      if (window.innerWidth < 900) setTimeout(() => document.querySelector(".workspace")?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (e) {
       if (!isAbort(e)) { setError((e as Error).message); syncGen(); }
     } finally {
@@ -310,8 +321,8 @@ export default function App() {
         {DEMO && <span className="badge">Demo · örnek proje, indirme ve sesli dikte tam sürümde</span>}
         {apiInfo && !apiInfo.ok && <span className="badge warn">API sunucusu yok · örnek proje ve elle düzenleme çalışır</span>}
         {apiInfo?.ok && !apiInfo.hasKey && (
-          <button className="badge warn as-button" onClick={() => desktop && setShowSettings(true)}>
-            {desktop ? "Claude API anahtarı girilmedi · Ayarlar" : "ANTHROPIC_API_KEY tanımlı değil"}
+          <button className="badge warn as-button" onClick={() => (desktop || STANDALONE) && setShowSettings(true)}>
+            {desktop || STANDALONE ? "Claude API anahtarı girilmedi · Ayarlar" : "ANTHROPIC_API_KEY tanımlı değil"}
           </button>
         )}
         <span className="spacer" />
@@ -347,11 +358,11 @@ export default function App() {
             onError={setError}
           />
           <div className="actions">
-            <button className="btn primary" disabled={busy || project.notes.trim().length < 10} onClick={() => run("new")}>
+            <button className="btn primary" disabled={busy || !canGenerate} onClick={() => run("new")}>
               {busy ? "Claude programı çıkarıyor…" : "Proje üret"}
             </button>
             {program && (
-              <button className="btn" disabled={busy || project.notes.trim().length < 10} onClick={() => run("update")} title="Mevcut programı koruyarak notlardaki değişiklikleri uygula">
+              <button className="btn" disabled={busy || !canGenerate} onClick={() => run("update")} title="Mevcut programı koruyarak notlardaki değişiklikleri uygula">
                 Notlarla güncelle
               </button>
             )}
@@ -417,7 +428,7 @@ export default function App() {
                   </button>
                   <button className="btn ghost small" onClick={() => saveOutput(view.projectName, "ifc", buildIFC(layout, view, office.architect))} title="IFC4 BIM modeli: katlar, duvarlar, kapı/pencere, döşeme ve mahaller (Revit, ArchiCAD, BricsCAD)">IFC (BIM)</button>
                   <button className="btn ghost small" onClick={() => saveOutput(`${program!.projectName}-program`, "json", JSON.stringify(program, null, 2))}>JSON</button>
-                  <button className="btn small" onClick={savePDF}>Çizim seti (PDF)</button>
+                  {!isNative() && <button className="btn small" onClick={savePDF}>Çizim seti (PDF)</button>}
                 </div>
               </nav>
               <div className="tab-body">
@@ -430,6 +441,7 @@ export default function App() {
                     <span className="muted small">Planlar, kesit, cephe, DXF ve IFC seçili bloğa aittir; vaziyet planı, 3D ve alan tablosu tüm siteyi gösterir.</span>
                   </div>
                 )}
+                {tab === "program" && <RequirementsCard program={program!} brief={project.brief} busy={busy} onFix={(t) => void revise(t)} />}
                 {tab === "program" && (multi ? <BlocksEditor program={program!} blockIndex={blockSel} onChange={setProgram} /> : <ProgramEditor program={view} layout={layout} onChange={setView} />)}
                 {tab === "plan" && (
                   <>
@@ -477,7 +489,7 @@ export default function App() {
                     <SvgSheet svg={elevationSVG(layout, view, facade)} name={`${view.projectName}-${FACADE_NAMES[facade]}`} />
                   </>
                 )}
-                {tab === "3d" && <ThreeView layout={layout} program={view} />}
+                {tab === "3d" && <ThreeView layout={layout} program={view} refImages={project.refImages ?? []} onSettings={() => setShowSettings(true)} />}
                 {tab === "zoning" && <ZoningPanel program={view} layout={layout} onChange={setView} />}
                 {tab === "areas" && <AreasPanel program={view} layout={layout} />}
               </div>

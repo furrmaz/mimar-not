@@ -65,8 +65,8 @@ export function applyBrief(p: Program, b: Brief | undefined): Program {
   return q;
 }
 
-/** Referans görseli küçültüp JPEG data URL'e çevirir (en uzun kenar 900 px). */
-export async function shrinkImage(file: File, max = 900): Promise<string> {
+/** Görseli küçültüp JPEG data URL'e çevirir (en uzun kenar 1400 px: el yazısı ve eskiz ölçüleri okunabilsin). */
+export async function shrinkImage(file: File, max = 1400): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();

@@ -10,7 +10,7 @@ import { createApp } from "../server/app";
 const isDev = !app.isPackaged;
 const configPath = () => path.join(app.getPath("userData"), "ayarlar.json");
 
-interface Config { apiKeyEnc?: string; apiKeyPlain?: string; model?: string }
+interface Config { apiKeyEnc?: string; apiKeyPlain?: string; model?: string; hfEnc?: string; hfPlain?: string }
 
 function readConfig(): Config {
   try { return JSON.parse(fs.readFileSync(configPath(), "utf8")); } catch { return {}; }
@@ -37,6 +37,23 @@ function setApiKey(key: string) {
   writeConfig(c);
 }
 
+const enc = (v: string) => (safeStorage.isEncryptionAvailable() ? { e: safeStorage.encryptString(v).toString("base64") } : { p: v });
+function getHiggsfield(): { keyId: string; secret: string } | undefined {
+  if (process.env.HF_API_KEY_ID && process.env.HF_API_KEY_SECRET) return { keyId: process.env.HF_API_KEY_ID, secret: process.env.HF_API_KEY_SECRET };
+  const c = readConfig();
+  let raw = c.hfPlain;
+  if (c.hfEnc && safeStorage.isEncryptionAvailable()) { try { raw = safeStorage.decryptString(Buffer.from(c.hfEnc, "base64")); } catch { /* bozuk */ } }
+  if (!raw) return undefined;
+  const [keyId, secret] = raw.split("\n");
+  return keyId && secret ? { keyId, secret } : undefined;
+}
+function setHiggsfield(keyId: string, secret: string) {
+  const c = readConfig();
+  delete c.hfEnc; delete c.hfPlain;
+  if (keyId && secret) { const r = enc(`${keyId}\n${secret}`); if (r.e) c.hfEnc = r.e; else c.hfPlain = r.p; }
+  writeConfig(c);
+}
+
 /** Çıktıların varsayılan klasörü: Belgeler/Mimar Not/<proje> */
 function outputDir(project: string) {
   const safe = project.replace(/[\\/:*?"<>|]+/g, "-").trim() || "Proje";
@@ -60,6 +77,7 @@ const toBuffer = (data: string | ArrayBuffer | Uint8Array) =>
 async function start() {
   const server = createApp({
     getApiKey,
+    getHiggsfield,
     model: readConfig().model,
     staticDir: path.join(__dirname, "..", "dist"),
     desktop: true,
@@ -92,7 +110,8 @@ async function start() {
   ipcMain.handle("update:check", () => { checkUpdates(win, true); return { version: app.getVersion() }; });
   ipcMain.handle("update:install", () => { if (lastUpdate.state === "ready") autoUpdater.quitAndInstall(); });
   ipcMain.handle("app:version", () => app.getVersion());
-  ipcMain.handle("settings:get", () => ({ hasKey: Boolean(getApiKey()), keyHint: (getApiKey() ?? "").slice(-4), outputRoot: path.join(app.getPath("documents"), "Mimar Not") }));
+  ipcMain.handle("settings:setHiggsfield", (_e, a: { keyId: string; secret: string }) => { setHiggsfield(String(a?.keyId ?? "").trim(), String(a?.secret ?? "").trim()); return { hasHiggsfield: Boolean(getHiggsfield()) }; });
+  ipcMain.handle("settings:get", () => ({ hasKey: Boolean(getApiKey()), keyHint: (getApiKey() ?? "").slice(-4), hasHiggsfield: Boolean(getHiggsfield()), hfHint: (getHiggsfield()?.keyId ?? "").slice(0, 6), outputRoot: path.join(app.getPath("documents"), "Mimar Not") }));
   ipcMain.handle("settings:setKey", (_e, key: string) => { setApiKey(String(key ?? "").trim()); return { hasKey: Boolean(getApiKey()) }; });
 
   // Kaydet penceresi ile dosya yaz
