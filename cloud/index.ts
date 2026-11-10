@@ -13,7 +13,12 @@ if (!anthropicKey) console.warn("UYARI: ANTHROPIC_API_KEY tanımlı değil; üre
 if (adminToken.length < 12) console.warn("UYARI: ADMIN_TOKEN tanımlı değil ya da çok kısa (en az 12 karakter); yönetim paneli kapalı.");
 
 const db = openDB(env("DATA_DIR", "./data"));
-const hfId = env("HF_API_KEY_ID"), hfSecret = env("HF_API_KEY_SECRET");
+// Higgsfield anahtarı "KeyID:Secret" tek parça girildiyse ayır
+const hfRaw = env("HF_API_KEY_ID");
+const hfId = hfRaw.includes(":") && !env("HF_API_KEY_SECRET") ? hfRaw.split(":")[0] : hfRaw;
+const hfSecret = env("HF_API_KEY_SECRET") || (hfRaw.includes(":") ? hfRaw.slice(hfRaw.indexOf(":") + 1) : "");
+// WhatsApp: 0543… → 90543…
+const wa = env("CONTACT_WHATSAPP").replace(/\D/g, "").replace(/^0/, "90");
 const api = createCloudApp({
   db,
   anthropicKey,
@@ -22,7 +27,7 @@ const api = createCloudApp({
   adminToken: adminToken.length >= 12 ? adminToken : "",
   payment: {
     bank: env("PAY_BANK"), holder: env("PAY_HOLDER"), iban: env("PAY_IBAN"),
-    email: env("CONTACT_EMAIL"), whatsapp: env("CONTACT_WHATSAPP"),
+    email: env("CONTACT_EMAIL"), whatsapp: wa,
     company: env("COMPANY_NAME"), address: env("COMPANY_ADDRESS"),
   },
 });
