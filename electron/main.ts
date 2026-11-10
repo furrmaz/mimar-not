@@ -8,6 +8,12 @@ import { autoUpdater } from "electron-updater";
 import { createApp } from "../server/app";
 
 const isDev = !app.isPackaged;
+const FIXED_PORT = 47615;
+// Tek örnek: ikinci açılış aynı porta bağlanamayıp ayrı depoyla açılmasın
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+let mainWin: BrowserWindow | null = null;
+app.on("second-instance", () => { if (mainWin && !mainWin.isDestroyed()) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.focus(); } });
 const configPath = () => path.join(app.getPath("userData"), "ayarlar.json");
 
 interface Config { apiKeyEnc?: string; apiKeyPlain?: string; model?: string; hfEnc?: string; hfPlain?: string }
@@ -82,8 +88,14 @@ async function start() {
     staticDir: path.join(__dirname, "..", "dist"),
     desktop: true,
   });
-  const listener = server.listen(0, "127.0.0.1");
-  await new Promise((r) => listener.once("listening", r));
+  // Sabit port: arayüzün yerel deposu (projeler, antet, hesap oturumu) adrese bağlıdır; port her açılışta
+  // değişirse kayıtlar kaybolur. Port doluysa rastgele porta düşülür.
+  const listenOn = (p: number) => new Promise<import("node:http").Server>((ok, no) => {
+    const l = server.listen(p, "127.0.0.1");
+    l.once("listening", () => ok(l));
+    l.once("error", no);
+  });
+  const listener = await listenOn(FIXED_PORT).catch(() => listenOn(0));
   const port = (listener.address() as AddressInfo).port;
 
   const win = new BrowserWindow({
@@ -100,6 +112,7 @@ async function start() {
       sandbox: true,
     },
   });
+  mainWin = win;
   // Dış bağlantılar sistem tarayıcısında açılsın
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
   // Mikrofon izni (Windows sesli yazma Win+H dışında, tarayıcı dikte denemeleri için)
@@ -220,7 +233,7 @@ function checkUpdates(win: BrowserWindow, manual = false) {
   autoUpdater.checkForUpdates().catch((e) => sendUpdate(win, { state: "error", message: String(e?.message ?? e) }));
 }
 
-app.whenReady().then(start).catch((err) => {
+app.whenReady().then(() => (gotLock ? start() : undefined)).catch((err) => {
   dialog.showErrorBox("Mimar Not başlatılamadı", String(err?.stack ?? err));
   app.quit();
 });

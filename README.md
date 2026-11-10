@@ -6,6 +6,17 @@ Mimarın müşteri görüşmesinde aldığı notlardan, tek tuşla ön tasarım 
 
 Program ekranında oda alanlarını, oturum ölçüsünü, kat yüksekliğini, çatı tipini değiştirdiğinizde bütün çizimler anında güncellenir. "Notlarla güncelle" mevcut programı koruyarak yeni notları uygular.
 
+## Satış (abonelik) sürümü
+
+v0.6'dan itibaren Mimar Not, sizin barındırdığınız **Mimar Not Bulut** sunucusu üzerinden aylık abonelikle satılır: mimar e-postasıyla hesap açar, ücretsiz dener, havale/EFT ile öder; abonelik yönetim panelinden açılır. Claude ve render ücretini sunucu öder, her hesabın aylık üretim/render hakkı sunucuda tutulur. Kurulum ve günlük işleyiş: **[docs/SATIS-KURULUM.md](docs/SATIS-KURULUM.md)**.
+
+```bash
+cp cloud/.env.example .env   # ANTHROPIC_API_KEY ve ADMIN_TOKEN girin
+npm run cloud:dev            # http://localhost:8080  (/, /app, /admin)
+```
+
+Sunucu kodu `cloud/` (hesap, kota, işler, yönetim API'si), tanıtım sitesi ve yasal metinler `site/`, yönetim paneli `cloud/public/admin/`. Yayına alma: `Dockerfile`, `render.yaml`, `deploy/docker-compose.yml`. Uygulamalar derlenirken `VITE_CLOUD_URL` (GitHub'da `CLOUD_URL` değişkeni) verilmezse eskisi gibi kullanıcının kendi API anahtarıyla çalışır.
+
 ## Windows masaüstü uygulaması
 
 `MimarNot-Kurulum-0.1.0.exe` kurulum dosyasıdır (masaüstü ve Başlat menüsü kısayolu oluşturur). `MimarNot-Tasinabilir-0.1.0.exe` kurulum gerektirmeden çalışır.
