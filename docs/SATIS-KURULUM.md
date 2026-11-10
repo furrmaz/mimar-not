@@ -23,18 +23,21 @@ Windows / Android / tarayıcı  ──►  Mimar Not sunucusu (sizin)  ──►
 3. İstenen ortam değişkenlerini girin (aşağıdaki tablo). `ADMIN_TOKEN` otomatik üretilir; Render panelinde **Environment** sekmesinden görebilirsiniz.
 4. Kurulum bitince `https://mimar-not-xxxx.onrender.com` gibi bir adres alırsınız. Kendi alan adınızı **Settings → Custom Domains** bölümünden ekleyin (ör. `mimarnot.com.tr`).
 
-### Seçenek B: Kendi sunucunuz (VPS, ayda yaklaşık 5 €)
+### Seçenek B: Kendi sunucunuz (VPS / VDS)
 
-Hetzner, DigitalOcean ya da Türkiye'de bir VPS. Ubuntu + Docker kurulu olsun.
+Ubuntu 22.04 ya da 24.04, en az 2 GB RAM. Sunucuda başka projeler çalışıyorsa onlara dokunulmaz. Sunucuya SSH ile bağlanıp tek komut:
 
 ```bash
-git clone https://github.com/furrmaz/mimar-not.git && cd mimar-not/deploy
-cp ../cloud/.env.example .env      # değerleri doldurun
-echo "DOMAIN=mimarnot.com.tr" >> .env
-DOMAIN=mimarnot.com.tr docker compose up -d --build
+curl -fsSL https://raw.githubusercontent.com/furrmaz/mimar-not/main/deploy/install.sh -o mimarnot-kur.sh && sudo bash mimarnot-kur.sh
 ```
 
-Alan adınızın DNS A kaydı sunucunun IP'sini göstermeli; HTTPS sertifikası otomatik alınır.
+Betik Docker'ı kurar (yoksa), kodu `/opt/mimar-not` klasörüne indirir, alan adını, Claude anahtarını ve havale bilgilerini sorar, yönetici parolasını kendisi üretir ve uygulamayı başlatır:
+
+- 80/443 portları boşsa HTTPS'i kendisi kurar (Caddy, Let's Encrypt).
+- Sunucuda nginx çalışıyorsa nginx'e yeni bir site ekler ve certbot ile sertifika alır; mevcut siteler değişmez.
+- Alan adınız yoksa geçici olarak `104-233-4-32.sslip.io` biçiminde bir adres kullanır; alan adı alınca `/opt/mimar-not/deploy/.env` içindeki `DOMAIN` satırını değiştirip betiği yeniden çalıştırın.
+
+Sonunda site, panel adresi ve yönetici parolası ekrana yazılır ve `/root/mimarnot-bilgiler.txt` dosyasına kaydedilir. Güncellemek için aynı betiği yeniden çalıştırın: `sudo bash /opt/mimar-not/deploy/install.sh`.
 
 ### Ortam değişkenleri
 

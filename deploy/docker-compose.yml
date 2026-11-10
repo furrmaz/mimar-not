@@ -1,13 +1,20 @@
-# Kendi sunucunuzda (VPS) çalıştırmak için: alan adınızın DNS kaydını sunucuya yönlendirin,
-# deploy/.env dosyasını doldurun (cloud/.env.example'a bakın) ve:  docker compose up -d --build
+# Mimar Not Bulut, kendi sunucunuzda (VPS). Kolay yol: deploy/install.sh (her şeyi sorarak kurar).
+# Elle: deploy/.env dosyasını doldurun (cloud/.env.example + DOMAIN=...) ve
+#   80/443 boşsa:            docker compose --profile caddy up -d --build   (HTTPS otomatik)
+#   başka web sunucusu varsa: docker compose up -d --build                   (127.0.0.1:APP_PORT, nginx'ten yönlendirin)
 services:
   app:
     build: ..
     restart: unless-stopped
     env_file: .env
+    environment:
+      DATA_DIR: /data
+    ports:
+      - "127.0.0.1:${APP_PORT:-8737}:8080"
     volumes:
       - mimarnot-data:/data
   caddy:
+    profiles: ["caddy"]
     image: caddy:2
     restart: unless-stopped
     ports: ["80:80", "443:443"]
