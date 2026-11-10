@@ -48,10 +48,13 @@ else
   KEY=""
   while [[ "$KEY" != sk-ant-* ]]; do KEY=$(asks "Claude API anahtarı (sk-ant-…, yazarken görünmez)"); done
   HFID=$(ask "Higgsfield Key ID (render; yoksa Enter)" "")
-  HFSEC=""; [ -n "$HFID" ] && HFSEC=$(asks "Higgsfield Secret")
+  HFSEC=""
+  if [[ "$HFID" == *:* ]]; then HFSEC=${HFID#*:}; HFID=${HFID%%:*}   # "KeyID:Secret" tek parça yapıştırıldıysa
+  elif [ -n "$HFID" ]; then HFSEC=$(asks "Higgsfield Secret"); fi
   echo "Havale/EFT bilgileri (Abone ol ekranında görünür):"
   BANK=$(ask "  Banka adı" ""); HOLDER=$(ask "  Hesap sahibi" ""); IBAN=$(ask "  IBAN" "")
   MAIL=$(ask "İletişim e-postası" ""); WA=$(ask "WhatsApp numarası (ör. 905321234567)" "")
+  WA=${WA//[^0-9]/}; [[ "$WA" == 0* ]] && WA="90${WA#0}"
   COMPANY=$(ask "Satıcı unvanı (kullanım koşullarında görünür)" ""); ADDRESS=$(ask "Satıcı adresi" "")
   APP_PORT=8737; while port_busy "$APP_PORT"; do APP_PORT=$((APP_PORT + 1)); done
   ADMIN=$(openssl rand -hex 16)
@@ -109,6 +112,9 @@ NGINX
     command -v certbot >/dev/null || apt-get install -y -qq certbot python3-certbot-nginx
     certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect \
       || warn "HTTPS sertifikası alınamadı. DNS kaydının bu sunucuyu gösterdiğinden emin olup şunu çalıştırın: certbot --nginx -d $DOMAIN"
+  elif docker ps --format '{{.Image}} {{.Ports}}' | grep -Eq '^[^ ]*caddy[^ ]* .*:443->'; then
+    MODE=caddy-ext
+    bash "$DIR/deploy/attach-caddy.sh" || MODE=manual
   else
     MODE=manual
   fi
