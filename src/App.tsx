@@ -27,6 +27,8 @@ import { BlocksEditor } from "./components/BlocksEditor";
 import { SITE_NOTES, SITE_PROGRAM } from "./sample-site";
 import { RequirementsCard } from "./components/RequirementsCard";
 import { STANDALONE, isNative, loadKeys } from "./platform";
+import { AccountChip, AccountDialog } from "./components/AccountDialog";
+import { cachedMe, cloudConfigured, onAccount, refreshMe, signedIn, type Me } from "./cloud";
 
 /** Demo derlemesi (VITE_DEMO=1): API ve indirmeler olmadan, örnek projeyle açılır. */
 const DEMO = import.meta.env.VITE_DEMO === "1";
@@ -63,6 +65,17 @@ export default function App() {
   const [apiInfo, setApiInfo] = useState<{ ok: boolean; hasKey: boolean; model?: string } | null>(null);
   const project = projects.find((p) => p.id === activeId) ?? projects[0];
   const [showSettings, setShowSettings] = useState(false);
+  const CLOUD = !DEMO && cloudConfigured();
+  const [me, setMe] = useState<Me | null>(() => (signedIn() ? cachedMe() : null));
+  const [account, setAccount] = useState<{ reason?: string } | null>(null);
+  useEffect(() => {
+    if (!CLOUD) return;
+    const off = onAccount(setMe);
+    const open = (e: Event) => setAccount({ reason: (e as CustomEvent<string | undefined>).detail });
+    window.addEventListener("mimarnot:account-dialog", open);
+    if (signedIn()) refreshMe().catch(() => {});
+    return () => { off(); window.removeEventListener("mimarnot:account-dialog", open); };
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
   const [dxfUnit, setDxfUnit] = useState<DxfUnit>(() => {
     try { return (localStorage.getItem("mimar-not.dxfUnit") as DxfUnit) || "cm"; } catch { return "cm"; }
@@ -79,14 +92,16 @@ export default function App() {
     if (STANDALONE) {
       const hasKey = Boolean(loadKeys().claude);
       setApiInfo({ ok: true, hasKey });
-      if (!hasKey) setShowSettings(true);
+      if (!hasKey && !CLOUD) setShowSettings(true);
+      if (!hasKey && CLOUD && !signedIn()) setAccount({});
       return;
     }
     fetch("api/health")
       .then((r) => r.json())
       .then((d) => {
         setApiInfo({ ok: true, hasKey: d.hasKey, model: d.model });
-        if (desktop && !d.hasKey) setShowSettings(true);
+        if (desktop && !d.hasKey && !CLOUD) setShowSettings(true);
+        if (!d.hasKey && CLOUD && !signedIn()) setAccount({});
       })
       .catch(() => setApiInfo({ ok: false, hasKey: false }));
   }
@@ -279,7 +294,7 @@ export default function App() {
     const name = `${view.projectName} - cizim seti`;
     if (desktop) {
       const r = await desktop.saveAndOpen(view.projectName, name, "dxf", dxf);
-      setToast(r.ok ? `Kaydedildi ve açılıyor: ${r.path}` : r.error?.includes("yazılamadı") ? r.error : `Kaydedildi: ${r.path}. DXF dosyalarını açacak view bulunamadı; dosyayı AutoCAD'de elle açın.`);
+      setToast(r.ok ? `Kaydedildi ve açılıyor: ${r.path}` : r.error?.includes("yazılamadı") ? r.error : `Kaydedildi: ${r.path}. DXF dosyalarını açacak program bulunamadı; dosyayı AutoCAD'de elle açın.`);
     } else {
       await saveOutput(name, "dxf", dxf);
     }
@@ -319,17 +334,19 @@ export default function App() {
           }} />
         </div>
         {DEMO && <span className="badge">Demo · örnek proje, indirme ve sesli dikte tam sürümde</span>}
-        {apiInfo && !apiInfo.ok && <span className="badge warn">API sunucusu yok · örnek proje ve elle düzenleme çalışır</span>}
-        {apiInfo?.ok && !apiInfo.hasKey && (
+        {apiInfo && !apiInfo.ok && !CLOUD && <span className="badge warn">API sunucusu yok · örnek proje ve elle düzenleme çalışır</span>}
+        {apiInfo?.ok && !apiInfo.hasKey && !CLOUD && (
           <button className="badge warn as-button" onClick={() => (desktop || STANDALONE) && setShowSettings(true)}>
             {desktop || STANDALONE ? "Claude API anahtarı girilmedi · Ayarlar" : "ANTHROPIC_API_KEY tanımlı değil"}
           </button>
         )}
         <span className="spacer" />
         <UpdateButton onMessage={setToast} />
+        {CLOUD && <AccountChip me={me} onClick={() => setAccount({})} />}
         {desktop && <button className="btn ghost small" onClick={() => desktop!.openFolder(program?.projectName || project.title)}>Çıktı klasörü</button>}
         <button className="btn ghost small" onClick={() => setShowSettings(true)}>Ayarlar</button>
       </header>
+      {account && <AccountDialog reason={account.reason} onClose={() => setAccount(null)} />}
       {showSettings && <SettingsDialog onOffice={setOffice} onClose={() => { setShowSettings(false); refreshHealth(); }} />}
       {toast && <div className="toast" role="status">{toast}</div>}
 

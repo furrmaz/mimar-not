@@ -4,6 +4,7 @@
 import type { GenerateRequest, GenerateResult } from "./shared/generate";
 import type { RenderRequest } from "./shared/render";
 import { desktop } from "./desktop";
+import { CloudError, cloudConfigured, requestAccountDialog, runJob, signedIn } from "./cloud";
 
 type Cap = { isNativePlatform?: () => boolean; getPlatform?: () => string };
 const cap = (): Cap | undefined => (window as unknown as { Capacitor?: Cap }).Capacitor;
@@ -36,9 +37,26 @@ export class ApiError extends Error {
   constructor(message: string, public raw?: unknown, public status = 0) { super(message); }
 }
 
+const LOGIN_MSG = "Proje üretmek için Mimar Not hesabınızla giriş yapın (sağ üstte Hesap).";
+
+/** Bulut hesabıyla iş çalıştırır; hata türlerini uygulamanın ApiError'una çevirir. */
+async function viaCloud<T>(kind: "generate" | "render", body: unknown, opts: { signal?: AbortSignal; onStatus?: (s: string) => void }): Promise<T> {
+  try {
+    return await runJob<T>(kind, body, opts);
+  } catch (e) {
+    if (e instanceof CloudError) {
+      if (e.status === 499) throw new DOMException("Durduruldu", "AbortError");
+      throw new ApiError(e.message, e.raw, e.status);
+    }
+    throw e;
+  }
+}
+
 export async function callGenerate(body: GenerateRequest, signal?: AbortSignal): Promise<GenerateResult> {
+  if (signedIn()) return viaCloud<GenerateResult>("generate", body, { signal });
   if (STANDALONE) {
     const key = loadKeys().claude?.trim();
+    if (!key && cloudConfigured()) { requestAccountDialog(); throw new ApiError(LOGIN_MSG, null, 401); }
     if (!key) throw new ApiError("Claude API anahtarı girilmemiş. Sağ üstteki Ayarlar'dan anahtarınızı girin.", null, 401);
     const [{ default: Anthropic }, { generateWithClaude, GenerateError }] = await Promise.all([import("@anthropic-ai/sdk"), import("./shared/generate")]);
     const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, fetch: webFetch(), maxRetries: 2, baseURL: testBase("claude") });
@@ -59,6 +77,7 @@ export async function callGenerate(body: GenerateRequest, signal?: AbortSignal):
     throw new ApiError("Sunucuya ulaşılamadı. 'npm run dev' ile API sunucusunun çalıştığından emin olun.");
   }
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && cloudConfigured()) { requestAccountDialog(); throw new ApiError(LOGIN_MSG, null, 401); }
   if (!res.ok) throw new ApiError(data.error ?? `Sunucu hatası (${res.status})`, data.raw, res.status);
   return data as GenerateResult;
 }
@@ -75,6 +94,7 @@ async function toDataUrl(f: typeof fetch, url: string): Promise<string | null> {
 export interface RenderResult { url: string; data: string | null; model: string; price: number | null }
 
 export async function callRender(req: RenderRequest, opts: { signal?: AbortSignal; onStatus?: (s: string) => void } = {}): Promise<RenderResult> {
+  if (signedIn()) return viaCloud<RenderResult>("render", req, opts);
   if (STANDALONE) {
     const k = loadKeys();
     const { renderWithHiggsfield } = await import("./shared/render");
@@ -104,6 +124,7 @@ export async function callRender(req: RenderRequest, opts: { signal?: AbortSigna
 
 /** Ayarlarda Higgsfield anahtarı var mı */
 export async function hasHiggsfield(): Promise<boolean> {
+  if (signedIn()) return true;
   if (desktop) return Boolean((await desktop.getSettings()).hasHiggsfield);
   if (STANDALONE) { const k = loadKeys(); return Boolean(k.hfId && k.hfSecret); }
   const h = await fetch("api/health").then((r) => r.json()).catch(() => ({}));

@@ -10,6 +10,11 @@ permissions:
   pages: write
   id-token: write
 
+# Bulut sunucusu adresi: Settings → Secrets and variables → Actions → Variables → CLOUD_URL
+# (ör. https://mimarnot.com.tr). Tanımlıysa uygulamalar Mimar Not hesabıyla (abonelik) çalışır.
+env:
+  VITE_CLOUD_URL: ${{ vars.CLOUD_URL }}
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -47,6 +52,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      - name: Bulut sunucusu testleri
+        run: npm run test:cloud
       - name: Web paketini derle ve Android'e aktar
         run: npm run android:sync
       # Depo sırlarında kendi imza anahtarınız yoksa, ilk derlemede bir anahtar üretilir ve
@@ -138,7 +145,7 @@ jobs:
             - Tarayıcıdan: https://furrmaz.github.io/mimar-not/ (GitHub Pages açıksa)
             - **MimarNot-Web-*.zip**: kendi sunucunuzda barındırmak için statik dosyalar
 
-            Her sürümde ilk açılışta Ayarlar'dan Claude API anahtarını girin. Gerçekçi render için Higgsfield Key ID ve Secret gerekir.
+            İlk açılışta Mimar Not hesabınızla giriş yapın ya da ücretsiz deneme hesabı açın.
           files: |
             art/windows/*
             art/android/*

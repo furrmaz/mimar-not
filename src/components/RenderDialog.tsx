@@ -3,6 +3,7 @@ import type { Program } from "../shared/schema";
 import { CUSTOM_MODEL_ID, RENDER_MODELS, USD_TRY_HINT, renderPrompt } from "../shared/render";
 import { callRender, hasHiggsfield, type RenderResult } from "../platform";
 import { saveOutput } from "../store";
+import { cachedMe, remaining, signedIn } from "../cloud";
 
 const PREF = "mimarnot.render";
 interface Pref { modelId: string; customPath: string; hi: boolean; useRefs: boolean; aspect: string }
@@ -28,6 +29,8 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
   const [results, setResults] = useState<(RenderResult & { at: number })[]>([]);
   const [keyOk, setKeyOk] = useState<boolean | null>(null);
   const ac = useRef<AbortController | null>(null);
+  const cloud = signedIn();
+  useEffect(() => { if (cloud && pref.modelId === CUSTOM_MODEL_ID) set({ modelId: RENDER_MODELS[0].id }); }, []);
   useEffect(() => { setView(capture()); hasHiggsfield().then(setKeyOk).catch(() => setKeyOk(false)); }, []);
   useEffect(() => () => ac.current?.abort(), []);
 
@@ -60,7 +63,7 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal render-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="render-title">
-        <h2 id="render-title">Gerçekçi render (Higgsfield)</h2>
+        <h2 id="render-title">Gerçekçi render{cloud ? "" : " (Higgsfield)"}</h2>
         {keyOk === false && (
           <div className="warn-box">
             Higgsfield anahtarı girilmemiş. <button className="link" onClick={onSettings}>Ayarlar'dan</button> Key ID ve Secret girin (anahtarı <a href="https://cloud.higgsfield.ai" target="_blank" rel="noreferrer">cloud.higgsfield.ai</a> → API Keys bölümünden alırsınız).
@@ -79,17 +82,17 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
                 <label key={m.id} className={`model-opt ${pref.modelId === m.id ? "on" : ""}`}>
                   <input type="radio" name="rmodel" checked={pref.modelId === m.id} onChange={() => set({ modelId: m.id })} />
                   <span className="model-name">{m.label}</span>
-                  <span className="model-price">${m.price} / görsel <span className="muted">≈ {(m.price * USD_TRY_HINT).toFixed(2).replace(".", ",")} TL</span></span>
+                  {cloud ? <span className="model-price muted">1 render hakkı</span> : <span className="model-price">${m.price} / görsel <span className="muted">≈ {(m.price * USD_TRY_HINT).toFixed(2).replace(".", ",")} TL</span></span>}
                   <span className="muted small model-note">{m.note}</span>
                 </label>
               ))}
-              <label className={`model-opt ${pref.modelId === CUSTOM_MODEL_ID ? "on" : ""}`}>
+              {!cloud && <label className={`model-opt ${pref.modelId === CUSTOM_MODEL_ID ? "on" : ""}`}>
                 <input type="radio" name="rmodel" checked={pref.modelId === CUSTOM_MODEL_ID} onChange={() => set({ modelId: CUSTOM_MODEL_ID })} />
                 <span className="model-name">Diğer model (API yolu)</span>
                 <span className="model-price muted">ücret Higgsfield'da</span>
                 <span className="muted small model-note">Hesabınızda açık başka bir model (ör. FLUX) için Higgsfield konsolundaki API yolunu yazın.</span>
                 {pref.modelId === CUSTOM_MODEL_ID && <input className="custom-path" value={pref.customPath} placeholder="/saglayici/model-adi" onChange={(e) => set({ customPath: e.target.value })} />}
-              </label>
+              </label>}
             </div>
             <div className="row" style={{ gap: 12, flexWrap: "wrap", marginTop: 8 }}>
               <label className="check"><input type="checkbox" checked={pref.hi} onChange={(e) => set({ hi: e.target.checked })} /> 2K çözünürlük</label>
@@ -106,7 +109,7 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
               <span>Ek talimat (isteğe bağlı)</span>
               <input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="ör. gün batımı, havuz başı, yağmur sonrası ıslak zemin, kış" />
             </label>
-            <p className="muted small">Ücret Higgsfield hesabınızdan düşer; fiyatlar Higgsfield'ın kendi sayfasındandır (Kasım 2026), TL karşılığı yaklaşıktır. Görüntü ve referanslar yalnızca Higgsfield'a gönderilir.</p>
+            {cloud ? <p className="muted small">Her render aboneliğinizdeki render hakkından 1 düşer (kalan: {remaining(cachedMe(), "render")}). Hata veren render haktan düşmez.</p> : <p className="muted small">Ücret Higgsfield hesabınızdan düşer; fiyatlar Higgsfield'ın kendi sayfasındandır (Kasım 2026), TL karşılığı yaklaşıktır. Görüntü ve referanslar yalnızca Higgsfield'a gönderilir.</p>}
           </div>
         </div>
         {error && <div className="error">{error}</div>}
@@ -130,7 +133,7 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
           <button className="btn ghost" onClick={onClose}>Kapat</button>
           <button className="btn primary" disabled={!view || !!status || keyOk === false || (pref.modelId === CUSTOM_MODEL_ID && !pref.customPath.trim())} onClick={run}>
             {results.length ? "Yeniden render" : "Render al"}
-            {model ? ` · $${model.price}` : ""}
+            {model && !cloud ? ` · $${model.price}` : ""}
           </button>
         </div>
       </div>

@@ -1,0 +1,13 @@
+node_modules
+android
+release
+dist
+dist-web
+cloud-dist
+electron-dist
+data
+.git
+.env
+*.png
+!site/img/*.png
+!build/icon.png

@@ -288,3 +288,31 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--line); border-bott
   .req-src { grid-column: 2; justify-self: start; }
   .toast { left: 10px; right: 10px; transform: none; max-width: none; }
 }
+
+/* Hesap ve abonelik */
+.badge.ok { background: #e3f2e8; color: var(--ok); }
+.account-modal { width: min(680px, 94vw); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { flex: 1; padding: 8px 10px; border: none; background: #fff; cursor: pointer; font-weight: 500; }
+.seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.account-modal .full { grid-column: 1 / -1; }
+.account-modal form.grid-fields { grid-template-columns: 1fr 1fr; }
+.account-modal label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.acc-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.usage .bar { height: 7px; background: #eee; border-radius: 6px; overflow: hidden; margin-top: 4px; }
+.usage .bar div { height: 100%; background: var(--ok); }
+.usage .bar.low div { background: var(--bad); }
+.plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.plan { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; position: relative; }
+.plan input { position: absolute; opacity: 0; pointer-events: none; }
+.plan.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.plan.hl::after { content: "Önerilen"; position: absolute; top: 8px; right: 10px; font-size: 11px; color: var(--accent); font-weight: 600; }
+.plan .price { font-size: 18px; font-weight: 700; }
+.plan ul { margin: 4px 0 0; padding-left: 16px; color: #3a3a3d; }
+.pay-box { background: #fbfaf8; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.pay-box ol { padding-left: 18px; margin: 6px 0; line-height: 1.6; }
+.iban { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.iban code { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; font-size: 13px; }
+details.advanced { border-top: 1px solid var(--line); padding-top: 8px; }
+details.advanced summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+@media (max-width: 640px) { .account-modal form.grid-fields { grid-template-columns: 1fr; } }

@@ -3,3 +3,6 @@ dist
 electron-dist
 release
 .env
+cloud-dist
+dist-web
+data

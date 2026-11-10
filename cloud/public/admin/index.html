@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Mimar Not Yönetim</title>
+<style>
+  :root { --bg:#f5f4f1; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e2e0db; --accent:#b5532e; --ok:#2e7d4f; --bad:#b3261e; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 14px/1.45 Inter, "Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; gap:12px; align-items:center; padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
+  header b { font-size:16px; } header .sp { flex:1; }
+  main { padding:18px 20px 60px; max-width:1200px; margin:0 auto; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-bottom:16px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .card .v { font-size:22px; font-weight:700; } .card .l { color:var(--muted); font-size:12px; }
+  input, select, textarea, button { font:inherit; }
+  input, select, textarea { padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  button { border:1px solid var(--line); background:#fff; padding:7px 12px; border-radius:8px; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  button.danger { color:var(--bad); }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); font-weight:600; background:#fbfaf8; }
+  tr.u { cursor:pointer; } tr.u:hover { background:#faf8f5; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; background:#eee; }
+  .pill.active { background:#e3f2e8; color:var(--ok); } .pill.trial { background:#fff3cd; color:#7a5a00; } .pill.expired, .pill.disabled { background:#fdecea; color:var(--bad); }
+  .muted { color:var(--muted); } .small { font-size:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #detail { position:fixed; inset:0 0 0 auto; width:min(560px,100%); background:var(--panel); border-left:1px solid var(--line); box-shadow:-10px 0 30px rgba(0,0,0,.08); padding:18px; overflow:auto; z-index:3; }
+  #detail h2 { margin:0 0 4px; font-size:18px; } #detail h3 { font-size:14px; margin:18px 0 8px; }
+  .box { border:1px solid var(--line); border-radius:10px; padding:12px; margin:8px 0; }
+  .msg { padding:8px 10px; border-radius:8px; background:#e3f2e8; color:var(--ok); margin:8px 0; }
+  .err { background:#fdecea; color:var(--bad); }
+  #login { max-width:360px; margin:12vh auto; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px; }
+  #login input { width:100%; margin:10px 0; }
+  .wrap { overflow-x:auto; }
+  @media (max-width:640px) { .hide-sm { display:none; } }
+</style>
+</head>
+<body>
+<div id="login" hidden>
+  <h2 style="margin-top:0">Mimar Not Yönetim</h2>
+  <p class="muted small">Sunucudaki ADMIN_TOKEN değerini girin.</p>
+  <form id="loginForm"><input id="tok" type="password" placeholder="Yönetici parolası" autocomplete="current-password" /><button class="primary" style="width:100%">Giriş</button></form>
+  <div id="loginErr" class="msg err" hidden></div>
+</div>
+
+<div id="app" hidden>
+  <header><b>Mimar Not Yönetim</b><span class="sp"></span><button id="backup">Yedek indir</button><button id="refresh">Yenile</button><button id="logout">Çıkış</button></header>
+  <main>
+    <div class="cards" id="stats"></div>
+    <div class="row" style="margin-bottom:10px">
+      <input id="q" placeholder="Ara: e-posta, ad, ofis, telefon, MN-0012" style="flex:1;min-width:220px" />
+      <select id="filter"><option value="">Tümü</option><option value="trial">Deneme</option><option value="active">Abone</option><option value="expired">Süresi dolan</option><option value="disabled">Kapalı</option></select>
+    </div>
+    <div class="wrap"><table>
+      <thead><tr><th>No</th><th>Kullanıcı</th><th>Durum</th><th class="hide-sm">Bitiş</th><th>Üretim</th><th class="hide-sm">Render</th><th class="hide-sm">Dönem maliyeti</th></tr></thead>
+      <tbody id="users"></tbody>
+    </table></div>
+    <p class="muted small">Havale/EFT geldiğinde: açıklamadaki müşteri numarasını (MN-…) arayın, kullanıcıyı açın, plan ve ay seçip "Aboneliği aç" deyin. Süresi bitmemiş abonelik kaldığı yerden uzatılır.</p>
+  </main>
+</div>
+<div id="detail" hidden></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const d = (t) => (t ? new Date(t).toLocaleDateString("tr-TR") : "–");
+const dt = (t) => (t ? new Date(t).toLocaleString("tr-TR") : "–");
+const tl = (n) => `${Number(n || 0).toLocaleString("tr-TR")} TL`;
+const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
+const ST = { trial: "Deneme", active: "Abone", expired: "Süresi doldu", disabled: "Kapalı" };
+let token = sessionStorage.getItem("mn.admin") || "";
+let plans = [];
+let all = [];
+
+async function api(path, body) {
+  const r = await fetch(path, { method: body ? "POST" : "GET", headers: { "X-Admin-Token": token, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { showLogin(j.error); throw new Error(j.error); }
+  if (!r.ok) throw new Error(j.error || `Hata ${r.status}`);
+  return j;
+}
+function showLogin(e) { $("#app").hidden = true; $("#detail").hidden = true; $("#login").hidden = false; if (e && token) { $("#loginErr").hidden = false; $("#loginErr").textContent = e; } }
+$("#loginForm").onsubmit = async (e) => { e.preventDefault(); token = $("#tok").value.trim(); sessionStorage.setItem("mn.admin", token); await load(); };
+$("#logout").onclick = () => { token = ""; sessionStorage.removeItem("mn.admin"); showLogin(); };
+$("#refresh").onclick = () => load();
+$("#backup").onclick = async () => {
+  const r = await fetch("/api/admin/backup", { headers: { "X-Admin-Token": token } });
+  if (!r.ok) return alert("Yedek alınamadı");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `mimarnot-yedek-${new Date().toISOString().slice(0, 10)}.db`; a.click();
+};
+let t; $("#q").oninput = () => { clearTimeout(t); t = setTimeout(loadUsers, 250); };
+$("#filter").onchange = () => renderUsers();
+
+async function load() {
+  const s = await api("/api/admin/stats");
+  $("#login").hidden = true; $("#app").hidden = false;
+  plans = s.plans;
+  const margin = s.monthRevenueTry - s.monthCostUsd * 41;
+  $("#stats").innerHTML = [
+    ["Abone", s.active], ["Denemede", s.trials], ["Toplam kullanıcı", s.users], ["Son 30 gün kayıt", s.signups30],
+    ["Bu ay tahsilat", tl(s.monthRevenueTry)], ["Bu ay API maliyeti", `${usd(s.monthCostUsd)} ≈ ${tl(Math.round(s.monthCostUsd * 41))}`],
+    ["Bu ay üretim / render", `${s.monthGenerations} / ${s.monthRenders}`], ["Ortalama üretim maliyeti", usd(s.avgGenerateCostUsd)],
+    ["Bu ay hata", s.monthFailures], ["Kaba kâr (bu ay)", tl(Math.round(margin))],
+  ].map(([l, v]) => `<div class="card"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+  await loadUsers();
+}
+async function loadUsers() { all = await api(`/api/admin/users?q=${encodeURIComponent($("#q").value)}`); renderUsers(); }
+function renderUsers() {
+  const f = $("#filter").value;
+  const list = all.filter((u) => (f === "disabled" ? u.disabled : !f || u.status === f));
+  $("#users").innerHTML = list.map((u) => `<tr class="u" data-id="${u.id}">
+    <td>${esc(u.ref)}</td>
+    <td><b>${esc(u.name || "–")}</b><div class="muted small">${esc(u.email)}${u.office ? " · " + esc(u.office) : ""}${u.phone ? " · " + esc(u.phone) : ""}</div></td>
+    <td><span class="pill ${u.disabled ? "disabled" : u.status}">${ST[u.disabled ? "disabled" : u.status]}${u.plan ? " · " + esc(u.plan.label) : ""}</span></td>
+    <td class="hide-sm">${d(u.until)}</td>
+    <td>${u.used.generate} / ${u.limits.generate}</td>
+    <td class="hide-sm">${u.used.render} / ${u.limits.render}</td>
+    <td class="hide-sm">${usd(u.periodCostUsd)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Kayıt yok</td></tr>`;
+  document.querySelectorAll("tr.u").forEach((tr) => (tr.onclick = () => openUser(tr.dataset.id)));
+}
+
+async function openUser(id, note) {
+  const { user: u, payments, usage, sessions } = await api(`/api/admin/users/${id}`);
+  const box = $("#detail"); box.hidden = false;
+  const planOpts = plans.map((p) => `<option value="${esc(p.id)}" ${p.id === (u.planId || plans.find((x) => x.highlight)?.id) ? "selected" : ""}>${esc(p.label)} · ${tl(p.priceTry)}/ay</option>`).join("");
+  box.innerHTML = `
+    <div class="row" style="justify-content:space-between"><h2>${esc(u.name || u.email)}</h2><button id="close">Kapat</button></div>
+    <div class="muted small">${esc(u.ref)} · ${esc(u.email)} · ${esc(u.office)} · ${esc(u.phone)}</div>
+    <div class="muted small">Kayıt ${dt(u.createdAt)} · Son görülme ${dt(u.lastSeen)}</div>
+    ${note ? `<div class="msg">${note}</div>` : ""}
+    <div class="box">
+      <span class="pill ${u.disabled ? "disabled" : u.status}">${ST[u.disabled ? "disabled" : u.status]}${u.plan ? " · " + esc(u.plan.label) : ""}</span>
+      Bitiş: <b>${d(u.until)}</b> · Bu dönem: ${u.used.generate}/${u.limits.generate} üretim, ${u.used.render}/${u.limits.render} render · Maliyet ${usd(u.periodCostUsd)}
+    </div>
+    <h3>Havale geldi: aboneliği aç / uzat</h3>
+    <div class="box">
+      <div class="row">
+        <select id="plan">${planOpts}</select>
+        <select id="months">${[1, 3, 6, 12].map((m) => `<option value="${m}">${m} ay</option>`).join("")}</select>
+        <input id="amount" type="number" placeholder="Tutar (TL)" style="width:120px" />
+      </div>
+      <div class="row" style="margin-top:8px"><input id="pnote" placeholder="Not (ör. dekont no, banka)" style="flex:1" /><button class="primary" id="activate">Aboneliği aç</button></div>
+      <p class="muted small">Tutar boşsa plan fiyatı × ay yazılır. Fatura için ödemeyi muhasebenize de işleyin.</p>
+    </div>
+    <h3>Diğer işlemler</h3>
+    <div class="row">
+      <button id="trial">Denemeyi 7 gün uzat</button>
+      <button id="reset">Parola sıfırla</button>
+      ${u.planUntil && u.planUntil > Date.now() ? `<button id="cancel" class="danger">Aboneliği bitir</button>` : ""}
+      <button id="toggle" class="danger">${u.disabled ? "Hesabı aç" : "Hesabı kapat"}</button>
+    </div>
+    <h3>Not</h3>
+    <textarea id="unote" rows="2" style="width:100%">${esc(u.note)}</textarea>
+    <button id="saveNote" style="margin-top:6px">Notu kaydet</button>
+    <h3>Ödemeler</h3>
+    <table><tr><th>Tarih</th><th>Plan</th><th>Ay</th><th>Tutar</th><th>Bitiş</th><th>Not</th></tr>
+      ${payments.map((p) => `<tr><td>${d(p.at)}</td><td>${esc(p.plan)}</td><td>${p.months}</td><td>${tl(p.amount_try)}</td><td>${d(p.until)}</td><td class="small">${esc(p.note)}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Yok</td></tr>`}
+    </table>
+    <h3>Son kullanım</h3>
+    <table><tr><th>Zaman</th><th>Tür</th><th>Sonuç</th><th>Maliyet</th></tr>
+      ${usage.map((x) => `<tr><td class="small">${dt(x.at)}</td><td>${x.kind === "generate" ? "Üretim" : "Render"} <span class="muted small">${esc(x.detail.slice(0, 80))}</span></td><td>${x.ok ? "✓" : "✗"}</td><td>${usd(x.cost_usd)}<div class="muted small">${x.input_tokens ? `${x.input_tokens}/${x.output_tokens} tk` : ""}</div></td></tr>`).join("") || `<tr><td colspan="4" class="muted">Yok</td></tr>`}
+    </table>
+    <h3>Cihazlar</h3>
+    <div class="small muted">${sessions.map((s) => `${esc(s.device)} · son ${dt(s.last_seen)}`).join("<br>") || "Oturum yok"}</div>`;
+  const act = async (fn, msg) => { try { const r = await fn(); await openUser(id, typeof msg === "function" ? msg(r) : msg); loadUsers(); load(); } catch (e) { alert(e.message); } };
+  $("#close").onclick = () => (box.hidden = true);
+  $("#activate").onclick = () => {
+    const months = Number($("#months").value), plan = $("#plan").value, amount = $("#amount").value;
+    if (!confirm(`${u.email} için ${months} ay ${plan} aboneliği açılsın mı?`)) return;
+    act(() => api(`/api/admin/users/${id}/activate`, { plan, months, amount: amount === "" ? undefined : Number(amount), note: $("#pnote").value }), "Abonelik açıldı. Kullanıcı uygulamada hemen görür.");
+  };
+  $("#trial").onclick = () => act(() => api(`/api/admin/users/${id}/update`, { trialDays: 7 }), "Deneme 7 gün uzatıldı.");
+  $("#reset").onclick = () => { if (confirm("Parola sıfırlansın mı? Kullanıcının tüm cihazlarda oturumu kapanır.")) act(() => api(`/api/admin/users/${id}/reset-password`, {}), (r) => `Yeni parola: <b>${esc(r.password)}</b> — kullanıcıya iletin, girişten sonra değiştirsin.`); };
+  $("#toggle").onclick = () => { if (confirm(u.disabled ? "Hesap açılsın mı?" : "Hesap kapatılsın mı? Oturumları sonlanır.")) act(() => api(`/api/admin/users/${id}/update`, { disabled: !u.disabled }), u.disabled ? "Hesap açıldı." : "Hesap kapatıldı."); };
+  const c = $("#cancel"); if (c) c.onclick = () => { if (confirm("Abonelik şimdi bitirilsin mi?")) act(() => api(`/api/admin/users/${id}/update`, { cancelPlan: true }), "Abonelik bitirildi."); };
+  $("#saveNote").onclick = () => act(() => api(`/api/admin/users/${id}/update`, { note: $("#unote").value }), "Not kaydedildi.");
+}
+
+token ? load().catch(() => {}) : showLogin();
+</script>
+</body>
+</html>

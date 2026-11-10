@@ -2,6 +2,23 @@ import { useEffect, useState } from "react";
 import { desktop } from "../desktop";
 import { loadOffice, saveOffice, type OfficeInfo } from "../office";
 import { STANDALONE, loadKeys, saveKeys, platformName, APP_VERSION } from "../platform";
+import { cloudBase, cloudBaseOverride, cloudConfigured, setCloudBase } from "../cloud";
+
+/** Bulut sürümünde anahtar ayarları "Gelişmiş" altına katlanır */
+function Advanced({ on, children }: { on: boolean; children: React.ReactNode }) {
+  const [url, setUrl] = useState(cloudBaseOverride());
+  if (!on) return <>{children}</>;
+  return (
+    <details className="advanced">
+      <summary>Gelişmiş (geliştirici ayarları)</summary>
+      <p className="muted small">Mimar Not hesabıyla giriş yaptığınızda bu ayarlara gerek yoktur. Kendi Claude ya da Higgsfield anahtarınızı kullanmak isterseniz hesaptan çıkış yapıp aşağıya girin.</p>
+      <label className="field"><span>Sunucu adresi</span>
+        <input value={url} placeholder={cloudBase()} onChange={(e) => setUrl(e.target.value)} onBlur={() => setCloudBase(url)} />
+      </label>
+      {children}
+    </details>
+  );
+}
 
 /** Ayarlar: antet (ofis) bilgileri; masaüstünde ayrıca Claude API anahtarı (Windows'ta şifreli saklanır). */
 export function SettingsDialog({ onClose, onOffice }: { onClose: () => void; onOffice?: (o: OfficeInfo) => void }) {
@@ -57,12 +74,13 @@ export function SettingsDialog({ onClose, onOffice }: { onClose: () => void; onO
           <label className="field"><span>İletişim</span><input value={office.contact} onChange={(e) => setO("contact", e.target.value)} placeholder="telefon / e-posta" /></label>
         </div>
         <p className="muted small">Bu bilgiler tüm paftaların (SVG, PNG, PDF, DXF) antet kutusuna yazılır; değişiklik hemen kaydedilir.</p>
+        <Advanced on={cloudConfigured()}>
         {canKeys && (
           <>
             <h3 className="settings-sub">Claude bağlantısı</h3>
             <label className="field">
               <span>Claude API anahtarı</span>
-              <input id="api-key" type="password" autoFocus={Boolean(info && !info.hasKey)} value={key} placeholder={info?.hasKey ? `Kayıtlı (…${info.keyHint}). Değiştirmek için yenisini yapıştırın` : "sk-ant-…"} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+              <input id="api-key" type="password" autoFocus={Boolean(info && !info.hasKey && !cloudConfigured())} value={key} placeholder={info?.hasKey ? `Kayıtlı (…${info.keyHint}). Değiştirmek için yenisini yapıştırın` : "sk-ant-…"} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
             </label>
             <p className="muted small">
               Anahtarı <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noreferrer">platform.claude.com</a> adresinden alabilirsiniz. {desktop ? "Anahtar yalnızca bu bilgisayarda, Windows kullanıcı hesabınıza bağlı olarak şifreli saklanır ve sadece Claude API'ye gönderilir." : "Anahtar yalnızca bu cihazda (uygulama/tarayıcı deposunda) saklanır ve doğrudan Claude API'ye gönderilir; başka bir sunucuya gitmez. Ortak kullanılan bir bilgisayarda işiniz bitince silin."}
@@ -86,6 +104,7 @@ export function SettingsDialog({ onClose, onOffice }: { onClose: () => void; onO
         ) : (
             <p className="muted small">Sunucu sürümünde .env dosyasına HF_API_KEY_ID ve HF_API_KEY_SECRET yazın.</p>
         )}
+        </Advanced>
         {(desktop || STANDALONE) && <p className="muted small">Sürüm {APP_VERSION || "?"} · {platformName()}</p>}
         <div className="row end">
           <button className="btn ghost" onClick={onClose}>Kapat</button>
