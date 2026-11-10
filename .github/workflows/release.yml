@@ -4,6 +4,12 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    # Yalnız sunucu kurulumu / belge değişiklikleri yeni uygulama sürümü çıkarmasın
+    paths-ignore:
+      - "deploy/**"
+      - "docs/**"
+      - "render.yaml"
+      - "*.md"
 
 permissions:
   contents: write
