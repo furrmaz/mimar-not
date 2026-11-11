@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { openDB } from "./db";
+import { writeRenderPrompt } from "../src/shared/renderprompt";
 import { createCloudApp } from "./server";
 import { SAMPLE_PROGRAM } from "../src/sample";
 
@@ -16,7 +17,7 @@ const hfFetch: typeof fetch = async (url, init) => {
   const u = String(url);
   if (u.endsWith("/files/generate-upload-url")) return Response.json({ public_url: "https://x/img.png", upload_url: "https://up/x" });
   if (u.startsWith("https://up/")) return new Response("", { status: 200 });
-  if (u.includes("/xai/")) return Response.json({ status_url: "https://hf/requests/1/status" });
+  if (u.includes("/xai/") || u.includes("/alibaba/")) return Response.json({ status_url: "https://hf/requests/1/status" });
   if (u.endsWith("/status")) return Response.json({ status: "completed", images: [{ url: "https://img/out.png" }] });
   if (u === "https://img/out.png") return new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/png" } });
   return new Response("nf " + u + " " + init?.method, { status: 404 });
@@ -81,6 +82,16 @@ const wait = async (tok: string, id: string) => { for (;;) { await new Promise((
   r = await call("/api/jobs/render", { tok, body: { view: "data:image/png;base64,AAAA", prompt: "x", modelId: "custom", customPath: "/pahali/model" } });
   const rw = await wait(tok, r.j.id);
   ok(rw.j.status === "done" && rw.j.result.data.startsWith("data:image/png;base64,") && rw.j.me.used.render === 1, "render bitti (özel model listedekine çevrildi)");
+  {
+    // Claude talimatı: sahte istemci metin döndürmezse şablona düşer, render yine çalışır
+    const camera = { height: 1.6, distance: 25, pitch: 2, focal: 32, buildingHeight: 9, facades: [{ name: "front", where: "left" }, { name: "right", where: "right" }], frame: { x0: 0.2, x1: 0.8, y0: 0.25, y1: 0.85 } };
+    const r2 = await call("/api/jobs/render", { tok, body: { view: "data:image/jpeg;base64,AAAA", prompt: "", modelId: "qwen", autoPrompt: true, program: SAMPLE_PROGRAM, camera, extra: "gün batımı" } });
+    const w2 = await wait(tok, r2.j.id);
+    ok(w2.j.status === "done" && (w2.j.result.promptSource === "template" && /eye-level street view/.test(w2.j.result.prompt) && /gün batımı/.test(w2.j.result.prompt)), "otomatik talimat: Claude yanıtsızsa kamera bilgili şablon");
+    const fakeText = { beta: { messages: { stream: () => ({ finalMessage: async () => ({ stop_reason: "end_turn", content: [{ type: "text", text: "Turn this 3D model render into a photorealistic photograph from the identical eye-level camera viewpoint, two storeys, white render walls, timber accents, sunset light." }], usage: { input_tokens: 3000, output_tokens: 300 }, model: "claude-opus-5-5" }) }) } } } as never;
+    const wp = await writeRenderPrompt(fakeText, { view: "data:image/jpeg;base64,AAAA", program: SAMPLE_PROGRAM, camera: camera as never });
+    ok(wp.source === "claude" && wp.prompt.startsWith("Turn this 3D model"), "Claude talimatı kullanıldı");
+  }
   if (rw.j.status !== "done") console.log(rw.j);
   // başka kullanıcı işi göremez
   const other = await call("/api/auth/register", { body: { email: "b@c.de", password: "parola1234", acceptTerms: true } });

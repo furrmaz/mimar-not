@@ -1,29 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import type { Program } from "../shared/schema";
-import { CUSTOM_MODEL_ID, RENDER_MODELS, USD_TRY_HINT, renderPrompt } from "../shared/render";
+import { CUSTOM_MODEL_ID, RENDER_MODELS, USD_TRY_HINT, renderPrompt, type CameraInfo } from "../shared/render";
 import { callRender, hasHiggsfield, type RenderResult } from "../platform";
 import { saveOutput } from "../store";
 import { cachedMe, remaining, signedIn } from "../cloud";
 
+export interface RenderCapture { image: string; camera: CameraInfo; aspect: string }
+
 const PREF = "mimarnot.render";
-interface Pref { modelId: string; customPath: string; hi: boolean; useRefs: boolean; aspect: string }
+interface Pref { modelId: string; customPath: string; hi: boolean; useRefs: boolean; aspect: string; autoPrompt: boolean; v?: number }
 const loadPref = (): Pref => {
-  const d: Pref = { modelId: RENDER_MODELS[0].id, customPath: "", hi: true, useRefs: true, aspect: "16:9" };
-  try { return { ...d, ...JSON.parse(localStorage.getItem(PREF) ?? "{}") }; } catch { return d; }
+  const d: Pref = { modelId: RENDER_MODELS[0].id, customPath: "", hi: true, useRefs: true, aspect: "auto", autoPrompt: true, v: 2 };
+  try {
+    const p = { ...d, ...JSON.parse(localStorage.getItem(PREF) ?? "{}") } as Pref;
+    // v0.8.0: varsayılan model açıyı koruyan Qwen Edit, oran görünümle aynı
+    if (p.v !== 2) return { ...p, modelId: d.modelId, aspect: "auto", autoPrompt: true, v: 2 };
+    return p;
+  } catch { return d; }
 };
 
 /** 3D görünümden Higgsfield ile fotoğraf gerçekliğinde render. */
 export function RenderDialog({ program, refImages, capture, onClose, onSettings }: {
   program: Program;
   refImages: string[];
-  capture: () => string | null;
+  capture: (aspect?: string, modelId?: string) => RenderCapture | null;
   onClose: () => void;
   onSettings: () => void;
 }) {
   const [pref, setPref] = useState<Pref>(loadPref);
   const set = (p: Partial<Pref>) => { const n = { ...pref, ...p }; setPref(n); try { localStorage.setItem(PREF, JSON.stringify(n)); } catch { /* yok say */ } };
-  const [view, setView] = useState<string | null>(null);
+  const [shot, setShot] = useState<RenderCapture | null>(null);
+  const view = shot?.image ?? null;
   const [extra, setExtra] = useState("");
+  const [manual, setManual] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<(RenderResult & { at: number })[]>([]);
@@ -31,7 +40,11 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
   const ac = useRef<AbortController | null>(null);
   const cloud = signedIn();
   useEffect(() => { if (cloud && pref.modelId === CUSTOM_MODEL_ID) set({ modelId: RENDER_MODELS[0].id }); }, []);
-  useEffect(() => { setView(capture()); hasHiggsfield().then(setKeyOk).catch(() => setKeyOk(false)); }, []);
+  const grab = () => setShot(capture(pref.aspect, pref.modelId));
+  // gerçekçi görünüm yeni açıldıysa sahnenin oturması için kısa bekle
+  useEffect(() => { const t = setTimeout(grab, 250); hasHiggsfield().then(setKeyOk).catch(() => setKeyOk(false)); return () => clearTimeout(t); }, []);
+  useEffect(() => { if (shot) grab(); }, [pref.aspect, pref.modelId]);
+  useEffect(() => { if (shot && !pref.autoPrompt && manual == null) setManual(renderPrompt(program, extra.trim(), refImages.length ? 1 : 0, shot.camera)); }, [shot]);
   useEffect(() => () => ac.current?.abort(), []);
 
   const model = RENDER_MODELS.find((m) => m.id === pref.modelId);
@@ -42,8 +55,13 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
     ac.current = new AbortController();
     setStatus("Başlıyor…");
     try {
+      const auto = pref.autoPrompt && manual == null;
       const out = await callRender(
-        { view, refs, prompt: renderPrompt(program, extra.trim(), refs.length), modelId: pref.modelId, customPath: pref.customPath, aspect: pref.aspect, hi: pref.hi },
+        {
+          view, refs, modelId: pref.modelId, customPath: pref.customPath, aspect: shot?.aspect ?? "16:9", hi: pref.hi,
+          prompt: manual ?? renderPrompt(program, extra.trim(), refs.length, shot?.camera),
+          autoPrompt: auto, program: auto ? program : undefined, camera: shot?.camera, extra: extra.trim(),
+        },
         { signal: ac.current.signal, onStatus: setStatus },
       );
       setResults((r) => [{ ...out, at: Date.now() }, ...r]);
@@ -73,7 +91,8 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
           <div>
             <div className="muted small">Kullanılacak görüntü (3D görünümün şu anki açısı)</div>
             {view ? <img className="render-src" src={view} alt="3D görünüm" /> : <div className="muted">Görüntü alınamadı</div>}
-            <button className="link small" onClick={() => setView(capture())}>Açıyı değiştirdim, yeniden al</button>
+            <button className="link small" onClick={grab}>Açıyı değiştirdim, yeniden al</button>
+            <p className="muted small">Render tam bu kadrajdan alınır. Açıyı 3D görünümde ayarlayıp “yeniden al”a basın.</p>
           </div>
           <div>
             <div className="field"><span>Model</span></div>
@@ -101,12 +120,23 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
               )}
               <label>Oran{" "}
                 <select value={pref.aspect} onChange={(e) => set({ aspect: e.target.value })}>
+                  <option value="auto">Görünümle aynı{shot && pref.aspect === "auto" ? ` (${shot.aspect})` : ""}</option>
                   {["16:9", "4:3", "3:2", "1:1", "3:4", "9:16"].map((a) => <option key={a}>{a}</option>)}
                 </select>
               </label>
             </div>
+            <label className="check" style={{ marginTop: 8 }}>
+              <input type="checkbox" checked={pref.autoPrompt && manual == null} onChange={(e) => { setManual(e.target.checked ? null : renderPrompt(program, extra.trim(), refs.length, shot?.camera)); set({ autoPrompt: e.target.checked }); }} />
+              Görsel talimatını Claude yazsın (görüntüye ve plana bakarak)
+            </label>
+            {manual != null && (
+              <label className="field" style={{ marginTop: 4 }}>
+                <span>Görsel talimatı (İngilizce, düzenleyebilirsiniz)</span>
+                <textarea rows={6} value={manual} onChange={(e) => setManual(e.target.value)} />
+              </label>
+            )}
             <label className="field" style={{ marginTop: 8 }}>
-              <span>Ek talimat (isteğe bağlı)</span>
+              <span>Ek talimat (isteğe bağlı, Türkçe yazabilirsiniz)</span>
               <input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="ör. gün batımı, havuz başı, yağmur sonrası ıslak zemin, kış" />
             </label>
             {cloud ? <p className="muted small">Her render aboneliğinizdeki render hakkından 1 düşer (kalan: {remaining(cachedMe(), "render")}). Hata veren render haktan düşmez.</p> : <p className="muted small">Ücret Higgsfield hesabınızdan düşer; fiyatlar Higgsfield'ın kendi sayfasındandır (Kasım 2026), TL karşılığı yaklaşıktır. Görüntü ve referanslar yalnızca Higgsfield'a gönderilir.</p>}
@@ -127,6 +157,13 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
               <span className="muted small">{r.model}{r.price != null ? ` · $${r.price}` : ""}</span>
               <button className="btn small" onClick={() => save(r)}>Kaydet</button>
             </figcaption>
+            {r.prompt && (
+              <details className="small">
+                <summary className="muted">{r.promptSource === "claude" ? "Claude'un yazdığı görsel talimatı" : r.promptSource === "template" ? "Kullanılan görsel talimatı (Claude'a ulaşılamadı, şablon)" : "Kullanılan görsel talimatı"}</summary>
+                <p style={{ whiteSpace: "pre-wrap" }}>{r.prompt}</p>
+                <button className="link small" onClick={() => { setManual(r.prompt!); set({ autoPrompt: false }); }}>Bu talimatı düzenleyip tekrar kullan</button>
+              </details>
+            )}
           </figure>
         ))}
         <div className="row end">

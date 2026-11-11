@@ -11,6 +11,7 @@ import type { DB, UserRow } from "./db";
 import { claudeCost, entitlement, loadPlans, loadTrial, type Plan } from "./plans";
 import { generateWithClaude, GenerateError, DEFAULT_MODEL, type GenerateRequest } from "../src/shared/generate";
 import { renderWithHiggsfield, RENDER_MODELS, type RenderRequest } from "../src/shared/render";
+import { writeRenderPrompt } from "../src/shared/renderprompt";
 
 export interface CloudOptions {
   db: DB;
@@ -261,13 +262,18 @@ export function createCloudApp(o: CloudOptions) {
     const keys = o.higgsfield;
     const job = startJob(u, "render", async (job) => {
       try {
-        const out = await renderWithHiggsfield(body, keys, { signal: job.ac.signal, fetch: o.renderFetch, api: o.higgsfieldApi, onStatus: (s) => { job.stage = s; } });
+        const client = o.claudeClient?.() ?? new Anthropic({ apiKey: o.anthropicKey, maxRetries: 1 });
+        const out = await renderWithHiggsfield(body, keys, {
+          signal: job.ac.signal, fetch: o.renderFetch, api: o.higgsfieldApi, onStatus: (s) => { job.stage = s; },
+          writePrompt: (r, refs) => writeRenderPrompt(o.anthropicKey ? client : null, { view: r.view, refs, program: r.program, camera: r.camera, extra: r.extra, modelId: r.modelId }, { model, signal: job.ac.signal }),
+        });
         job.stage = "Görsel indiriliyor…";
         const f = o.renderFetch ?? fetch;
         const img = await f(out.url);
         const buf = Buffer.from(await img.arrayBuffer());
-        logUsage(u.id, "render", true, { model: out.model, cost: out.price ?? 0 });
-        return { url: out.url, model: out.model, price: null, data: `data:${img.headers.get("content-type") ?? "image/png"};base64,${buf.toString("base64")}` };
+        const pCost = out.promptModel ? claudeCost(out.promptModel, out.promptUsage as Parameters<typeof claudeCost>[1]) : 0;
+        logUsage(u.id, "render", true, { model: out.model, cost: (out.price ?? 0) + pCost, detail: `prompt:${out.promptSource}` });
+        return { url: out.url, model: out.model, price: null, prompt: out.prompt, promptSource: out.promptSource, data: `data:${img.headers.get("content-type") ?? "image/png"};base64,${buf.toString("base64")}` };
       } catch (e) {
         if (!job.ac.signal.aborted) logUsage(u.id, "render", false, { detail: (e as Error).message });
         throw e;
