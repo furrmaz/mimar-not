@@ -1,4 +1,4 @@
-// Mimar Not masaüstü uygulaması (Electron).
+// Planhane masaüstü uygulaması (Electron).
 // API sunucusu uygulamanın içinde, yalnızca 127.0.0.1 üzerinde çalışır; arayüz ona bağlanır.
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell, Menu } from "electron";
 import path from "node:path";
@@ -8,6 +8,11 @@ import { autoUpdater } from "electron-updater";
 import { createApp } from "../server/app";
 
 const isDev = !app.isPackaged;
+// Ad "Mimar Not"tan "Planhane"ye değişti: eski kurulumun ayarları ve projeleri (userData) kaybolmasın
+{
+  const legacy = path.join(app.getPath("appData"), "Mimar Not");
+  if (fs.existsSync(legacy)) app.setPath("userData", legacy);
+}
 const FIXED_PORT = 47615;
 // Tek örnek: ikinci açılış aynı porta bağlanamayıp ayrı depoyla açılmasın
 const gotLock = app.requestSingleInstanceLock();
@@ -60,10 +65,10 @@ function setHiggsfield(keyId: string, secret: string) {
   writeConfig(c);
 }
 
-/** Çıktıların varsayılan klasörü: Belgeler/Mimar Not/<proje> */
+/** Çıktıların varsayılan klasörü: Belgeler/Planhane/<proje> */
 function outputDir(project: string) {
   const safe = project.replace(/[\\/:*?"<>|]+/g, "-").trim() || "Proje";
-  const dir = path.join(app.getPath("documents"), "Mimar Not", safe);
+  const dir = path.join(app.getPath("documents"), "Planhane", safe);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -103,7 +108,7 @@ async function start() {
     height: 920,
     minWidth: 1000,
     minHeight: 640,
-    title: "Mimar Not",
+    title: "Planhane",
     backgroundColor: "#f5f4f1",
     icon: path.join(__dirname, "..", "build", "icon.png"),
     webPreferences: {
@@ -124,7 +129,7 @@ async function start() {
   ipcMain.handle("update:install", () => { if (lastUpdate.state === "ready") autoUpdater.quitAndInstall(); });
   ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("settings:setHiggsfield", (_e, a: { keyId: string; secret: string }) => { setHiggsfield(String(a?.keyId ?? "").trim(), String(a?.secret ?? "").trim()); return { hasHiggsfield: Boolean(getHiggsfield()) }; });
-  ipcMain.handle("settings:get", () => ({ hasKey: Boolean(getApiKey()), keyHint: (getApiKey() ?? "").slice(-4), hasHiggsfield: Boolean(getHiggsfield()), hfHint: (getHiggsfield()?.keyId ?? "").slice(0, 6), outputRoot: path.join(app.getPath("documents"), "Mimar Not") }));
+  ipcMain.handle("settings:get", () => ({ hasKey: Boolean(getApiKey()), keyHint: (getApiKey() ?? "").slice(-4), hasHiggsfield: Boolean(getHiggsfield()), hfHint: (getHiggsfield()?.keyId ?? "").slice(0, 6), outputRoot: path.join(app.getPath("documents"), "Planhane") }));
   ipcMain.handle("settings:setKey", (_e, key: string) => { setApiKey(String(key ?? "").trim()); return { hasKey: Boolean(getApiKey()) }; });
 
   // Kaydet penceresi ile dosya yaz
@@ -138,7 +143,7 @@ async function start() {
     return { saved: true, path: res.filePath };
   });
 
-  // Belgeler/Mimar Not/<proje> içine kaydet ve varsayılan programla aç (DXF → AutoCAD)
+  // Belgeler/Planhane/<proje> içine kaydet ve varsayılan programla aç (DXF → AutoCAD)
   ipcMain.handle("file:saveAndOpen", async (_e, a: { project: string; name: string; ext: string; data: string | ArrayBuffer | Uint8Array }) => {
     const file = path.join(outputDir(a.project), `${a.name}.${a.ext}`);
     try {
@@ -153,13 +158,13 @@ async function start() {
   ipcMain.handle("folder:open", (_e, project: string) => shell.openPath(outputDir(project)));
 
   // Çizim setini PDF olarak kaydet (A3 yatay)
-  // Proje dosyası (.mimarnot = JSON)
+  // Proje dosyası (.planhane = JSON; eski .mimarnot dosyaları da açılır)
   ipcMain.handle("project:save", async (_e, a: { name: string; content: string; path?: string }) => {
     let file = a.path;
     if (!file) {
       const res = await dialog.showSaveDialog(win, {
-        defaultPath: path.join(outputDir(a.name), `${a.name}.mimarnot`),
-        filters: [{ name: "Mimar Not projesi", extensions: ["mimarnot"] }],
+        defaultPath: path.join(outputDir(a.name), `${a.name}.planhane`),
+        filters: [{ name: "Planhane projesi", extensions: ["planhane"] }],
       });
       if (res.canceled || !res.filePath) return { saved: false };
       file = res.filePath;
@@ -170,8 +175,8 @@ async function start() {
   ipcMain.handle("project:open", async () => {
     const res = await dialog.showOpenDialog(win, {
       properties: ["openFile"],
-      defaultPath: path.join(app.getPath("documents"), "Mimar Not"),
-      filters: [{ name: "Mimar Not projesi", extensions: ["mimarnot", "json"] }],
+      defaultPath: path.join(app.getPath("documents"), "Planhane"),
+      filters: [{ name: "Planhane projesi", extensions: ["planhane", "mimarnot", "json"] }],
     });
     if (res.canceled || !res.filePaths[0]) return null;
     return { path: res.filePaths[0], content: fs.readFileSync(res.filePaths[0], "utf8") };
@@ -195,7 +200,7 @@ async function start() {
         { type: "separator" },
         { label: "Güncellemeleri denetle", click: () => { win.webContents.send("menu", "update"); checkUpdates(win, true); } },
         { type: "separator" },
-        { label: "Çıktı klasörünü aç", click: () => shell.openPath(path.join(app.getPath("documents"), "Mimar Not")) }, { type: "separator" }, { role: "quit", label: "Çıkış" }] },
+        { label: "Çıktı klasörünü aç", click: () => shell.openPath(path.join(app.getPath("documents"), "Planhane")) }, { type: "separator" }, { role: "quit", label: "Çıkış" }] },
       { label: "Düzen", submenu: [{ role: "undo", label: "Geri al" }, { role: "redo", label: "Yinele" }, { type: "separator" }, { role: "cut", label: "Kes" }, { role: "copy", label: "Kopyala" }, { role: "paste", label: "Yapıştır" }, { role: "selectAll", label: "Tümünü seç" }] },
       { label: "Görünüm", submenu: [{ role: "reload", label: "Yenile" }, { role: "zoomIn", label: "Yakınlaştır" }, { role: "zoomOut", label: "Uzaklaştır" }, { role: "resetZoom", label: "Gerçek boyut" }, { role: "togglefullscreen", label: "Tam ekran" }, ...(isDev ? [{ role: "toggleDevTools" as const }] : [])] },
     ]),
@@ -213,7 +218,7 @@ function sendUpdate(win: BrowserWindow, st: UpdateState) {
 }
 function checkUpdates(win: BrowserWindow, manual = false) {
   if (isDev || process.env.PORTABLE_EXECUTABLE_DIR) {
-    if (manual) sendUpdate(win, { state: "unsupported", message: "Otomatik güncelleme yalnızca kurulum dosyasıyla (MimarNot-Kurulum) kurulan sürümde çalışır. Yeni sürümü Releases sayfasından indirebilirsiniz." });
+    if (manual) sendUpdate(win, { state: "unsupported", message: "Otomatik güncelleme yalnızca kurulum dosyasıyla (Planhane-Kurulum) kurulan sürümde çalışır. Yeni sürümü Releases sayfasından indirebilirsiniz." });
     return;
   }
   if (lastUpdate.state === "downloading" || lastUpdate.state === "ready") {
@@ -234,7 +239,7 @@ function checkUpdates(win: BrowserWindow, manual = false) {
 }
 
 app.whenReady().then(() => (gotLock ? start() : undefined)).catch((err) => {
-  dialog.showErrorBox("Mimar Not başlatılamadı", String(err?.stack ?? err));
+  dialog.showErrorBox("Planhane başlatılamadı", String(err?.stack ?? err));
   app.quit();
 });
 app.on("window-all-closed", () => app.quit());

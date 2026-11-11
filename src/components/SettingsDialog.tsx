@@ -11,7 +11,7 @@ function Advanced({ on, children }: { on: boolean; children: React.ReactNode }) 
   return (
     <details className="advanced">
       <summary>Gelişmiş (geliştirici ayarları)</summary>
-      <p className="muted small">Mimar Not hesabıyla giriş yaptığınızda bu ayarlara gerek yoktur. Kendi Claude ya da Higgsfield anahtarınızı kullanmak isterseniz hesaptan çıkış yapıp aşağıya girin.</p>
+      <p className="muted small">Planhane hesabıyla giriş yaptığınızda bu ayarlara gerek yoktur. Kendi Claude ya da Higgsfield anahtarınızı kullanmak isterseniz hesaptan çıkış yapıp aşağıya girin.</p>
       <label className="field"><span>Sunucu adresi</span>
         <input value={url} placeholder={cloudBase()} onChange={(e) => setUrl(e.target.value)} onBlur={() => setCloudBase(url)} />
       </label>

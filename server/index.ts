@@ -9,6 +9,6 @@ const app = createApp({
   staticDir: path.resolve(import.meta.dirname, "../dist"),
 });
 app.listen(PORT, () => {
-  console.log(`Mimar Not: http://localhost:${PORT}`);
+  console.log(`Planhane: http://localhost:${PORT}`);
   if (!process.env.ANTHROPIC_API_KEY) console.warn("UYARI: ANTHROPIC_API_KEY tanımlı değil. .env dosyası oluşturun.");
 });

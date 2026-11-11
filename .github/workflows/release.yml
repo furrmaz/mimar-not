@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 # Bulut sunucusu adresi: Settings → Secrets and variables → Actions → Variables → CLOUD_URL
-# (ör. https://mimarnot.com.tr). Tanımlıysa uygulamalar Mimar Not hesabıyla (abonelik) çalışır.
+# (ör. https://planhane.com.tr). Tanımlıysa uygulamalar Planhane hesabıyla (abonelik) çalışır.
 env:
   VITE_CLOUD_URL: ${{ vars.CLOUD_URL }}
 
@@ -85,7 +85,7 @@ jobs:
             if [ ! -f ~/.mimarnot-ks/ks.jks ]; then
               openssl rand -base64 24 | tr -d '\n/+=' > ~/.mimarnot-ks/pass
               keytool -genkeypair -keystore ~/.mimarnot-ks/ks.jks -alias mimarnot -keyalg RSA -keysize 2048 -validity 10000 \
-                -storepass "$(cat ~/.mimarnot-ks/pass)" -keypass "$(cat ~/.mimarnot-ks/pass)" -dname "CN=Mimar Not, O=Mimar Not, C=TR"
+                -storepass "$(cat ~/.mimarnot-ks/pass)" -keypass "$(cat ~/.mimarnot-ks/pass)" -dname "CN=Planhane, O=Planhane, C=TR"
             fi
             KS=~/.mimarnot-ks/ks.jks; PASS="$(cat ~/.mimarnot-ks/pass)"; ALIAS=mimarnot
           fi
@@ -98,9 +98,9 @@ jobs:
           IFS=. read -r MA MI PA <<< "$V"
           export APP_VERSION="$V" APP_VERSION_CODE=$((MA * 10000 + MI * 100 + PA))
           cd android && chmod +x gradlew && ./gradlew assembleRelease --no-daemon
-          mkdir -p ../out && cp app/build/outputs/apk/release/app-release.apk "../out/MimarNot-Android-$V.apk"
+          mkdir -p ../out && cp app/build/outputs/apk/release/app-release.apk "../out/Planhane-Android-$V.apk"
       - name: Web paneli paketi
-        run: cd dist && zip -qr "../out/MimarNot-Web-$(node -p "require('../package.json').version").zip" .
+        run: cd dist && zip -qr "../out/Planhane-Web-$(node -p "require('../package.json').version").zip" .
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -137,21 +137,21 @@ jobs:
         with:
           tag_name: ${{ steps.ver.outputs.v }}
           target_commitish: ${{ github.sha }}
-          name: Mimar Not ${{ steps.ver.outputs.v }}
+          name: Planhane ${{ steps.ver.outputs.v }}
           body: |
             **Windows**
-            - **MimarNot-Kurulum-*.exe**: kurulum dosyası (masaüstü ve Başlat menüsü kısayolu)
-            - **MimarNot-Tasinabilir-*.exe**: kurulum gerektirmeden çalışır
+            - **Planhane-Kurulum-*.exe**: kurulum dosyası (masaüstü ve Başlat menüsü kısayolu)
+            - **Planhane-Tasinabilir-*.exe**: kurulum gerektirmeden çalışır
             Uygulama imzasız olduğu için Windows uyarı verirse "Ek bilgi" → "Yine de çalıştır".
 
             **Android (telefon / tablet)**
-            - **MimarNot-Android-*.apk**: telefondan bu sayfayı açıp APK'yı indirin ve kurun ("bilinmeyen kaynaklardan yükleme" izni istenir).
+            - **Planhane-Android-*.apk**: telefondan bu sayfayı açıp APK'yı indirin ve kurun ("bilinmeyen kaynaklardan yükleme" izni istenir).
 
             **Web paneli**
             - Tarayıcıdan: https://furrmaz.github.io/mimar-not/ (GitHub Pages açıksa)
-            - **MimarNot-Web-*.zip**: kendi sunucunuzda barındırmak için statik dosyalar
+            - **Planhane-Web-*.zip**: kendi sunucunuzda barındırmak için statik dosyalar
 
-            İlk açılışta Mimar Not hesabınızla giriş yapın ya da ücretsiz deneme hesabı açın.
+            İlk açılışta Planhane hesabınızla giriş yapın ya da ücretsiz deneme hesabı açın.
           files: |
             art/windows/*
             art/android/*

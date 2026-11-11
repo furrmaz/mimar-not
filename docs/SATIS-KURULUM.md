@@ -1,9 +1,9 @@
-# Mimar Not'u satışa açma rehberi
+# Planhane'yi satışa açma rehberi
 
-Bu sürümle Mimar Not **aylık abonelikle** satılır. Mimar hiçbir API anahtarı girmez: e-postasıyla hesap açar, 7 gün ücretsiz dener, havale/EFT ile öder; siz yönetim panelinden aboneliğini açarsınız. Claude ve render ücretini sizin sunucunuz öder ve her kullanıcının aylık hakkı (kota) sunucuda tutulur.
+Bu sürümle Planhane **aylık abonelikle** satılır. Mimar hiçbir API anahtarı girmez: e-postasıyla hesap açar, 7 gün ücretsiz dener, havale/EFT ile öder; siz yönetim panelinden aboneliğini açarsınız. Claude ve render ücretini sizin sunucunuz öder ve her kullanıcının aylık hakkı (kota) sunucuda tutulur.
 
 ```
-Windows / Android / tarayıcı  ──►  Mimar Not sunucusu (sizin)  ──►  Claude API (Anthropic)
+Windows / Android / tarayıcı  ──►  Planhane sunucusu (sizin)  ──►  Claude API (Anthropic)
         (hesapla giriş)              hesaplar, kota, yönetim          Higgsfield (render)
                                      tanıtım sitesi, web uygulaması
 ```
@@ -21,7 +21,7 @@ Windows / Android / tarayıcı  ──►  Mimar Not sunucusu (sizin)  ──►
 1. <https://render.com> hesabı açın, GitHub hesabınızı bağlayın.
 2. **New → Blueprint** → `furrmaz/mimar-not` deposunu seçin. Depodaki `render.yaml` dosyası sunucuyu ve kalıcı diski (veritabanı için) otomatik tanımlar.
 3. İstenen ortam değişkenlerini girin (aşağıdaki tablo). `ADMIN_TOKEN` otomatik üretilir; Render panelinde **Environment** sekmesinden görebilirsiniz.
-4. Kurulum bitince `https://mimar-not-xxxx.onrender.com` gibi bir adres alırsınız. Kendi alan adınızı **Settings → Custom Domains** bölümünden ekleyin (ör. `mimarnot.com.tr`).
+4. Kurulum bitince `https://mimar-not-xxxx.onrender.com` gibi bir adres alırsınız. Kendi alan adınızı **Settings → Custom Domains** bölümünden ekleyin (ör. `planhane.com.tr`).
 
 ### Seçenek B: Kendi sunucunuz (VPS / VDS)
 
@@ -35,9 +35,21 @@ Betik Docker'ı kurar (yoksa), kodu `/opt/mimar-not` klasörüne indirir, alan a
 
 - 80/443 portları boşsa HTTPS'i kendisi kurar (Caddy, Let's Encrypt).
 - Sunucuda nginx çalışıyorsa nginx'e yeni bir site ekler ve certbot ile sertifika alır; mevcut siteler değişmez.
-- Alan adınız yoksa geçici olarak `104-233-4-32.sslip.io` biçiminde bir adres kullanır; alan adı alınca `/opt/mimar-not/deploy/.env` içindeki `DOMAIN` satırını değiştirip betiği yeniden çalıştırın.
+- Alan adınız yoksa geçici olarak `104-233-4-32.sslip.io` biçiminde bir adres kullanır; alan adı alınca aşağıdaki **Alan adına geçiş** adımlarını uygulayın.
 
 Sonunda site, panel adresi ve yönetici parolası ekrana yazılır ve `/root/mimarnot-bilgiler.txt` dosyasına kaydedilir. Güncellemek için aynı betiği yeniden çalıştırın: `sudo bash /opt/mimar-not/deploy/install.sh`.
+
+### Alan adına geçiş (ör. planhane.com.tr)
+
+1. Alan adını aldığınız firmanın panelinde **DNS yönetimi** bölümüne girin ve iki **A kaydı** ekleyin: ad `@` → değer sunucu IP'si (ör. `104.233.4.32`), ad `www` → aynı IP. Varsa eski "park sayfası" A/CNAME kayıtlarını silin. Yayılması birkaç dakika ile birkaç saat sürebilir.
+2. Sunucuya bağlanıp tek komut çalıştırın:
+
+   ```bash
+   sudo bash /opt/mimar-not/deploy/set-domain.sh planhane.com.tr
+   ```
+
+   Betik kodu günceller, alan adını ve `www` adresini ekler, HTTPS'i ayarlar (sunucudaki Caddy ya da nginx hangisiyse). Eski geçici adres de çalışmaya devam eder; kurulu uygulamalar bir süre ona bağlanabilir. DNS henüz yayılmadıysa uyarı verir; sertifika DNS yayılınca kendiliğinden alınır.
+3. Aşağıdaki **3. Uygulamaları sunucunuza bağlama** adımında `CLOUD_URL` değerini yeni adres yapın.
 
 ### Ortam değişkenleri
 
@@ -52,6 +64,7 @@ Sonunda site, panel adresi ve yönetici parolası ekrana yazılır ve `/root/mim
 | `COMPANY_NAME`, `COMPANY_ADDRESS` | Satıcı unvanı ve adresi (kullanım koşulları ve KVKK sayfalarına yazılır) |
 | `TRIAL_DAYS`, `TRIAL_GENERATE`, `TRIAL_RENDER` | Deneme süresi ve hakları (varsayılan 7 gün, 3 üretim, 2 render) |
 | `PLANS_JSON` | Planları ve fiyatları değiştirmek için (aşağıda) |
+| `DOMAIN`, `EXTRA_DOMAINS` | Sitenin alan adı ve boşlukla ayrılmış ek adresler (yalnız `deploy/` kurulumunda; `set-domain.sh` doldurur) |
 
 Sunucu açılınca şu adresler çalışır:
 
@@ -65,7 +78,7 @@ Sunucu açılınca şu adresler çalışır:
 GitHub'da depo → **Settings → Secrets and variables → Actions → Variables** sekmesi → **New repository variable**:
 
 - Ad: `CLOUD_URL`
-- Değer: sunucu adresiniz, ör. `https://mimarnot.com.tr` (sonunda `/` olmadan)
+- Değer: sunucu adresiniz, ör. `https://planhane.com.tr` (sonunda `/` olmadan)
 
 Sonra `main` dalına yapılan ilk gönderimde (ya da **Actions → Sürüm → Run workflow**) Windows, Android ve web paneli bu adrese bağlı olarak derlenir. Bu değişken tanımlı değilken uygulamalar eskisi gibi "kendi API anahtarınla" çalışır.
 

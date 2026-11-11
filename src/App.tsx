@@ -235,7 +235,7 @@ export default function App() {
         setToast(`Proje kaydedildi: ${r.path}`);
       }
     } else {
-      download(`${slug(name)}.mimarnot`, content, "application/json");
+      download(`${slug(name)}.planhane`, content, "application/json");
     }
   };
   const importProject = (text: string, filePath?: string) => {
@@ -314,7 +314,7 @@ export default function App() {
           <span className="logo" aria-hidden>
             <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 21V9l9-6 9 6v12h-6v-7H9v7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
           </span>
-          Mimar Not
+          Planhane
         </div>
         <div className="project-picker">
           <select value={project.id} onChange={(e) => setActiveId(e.target.value)}>
@@ -327,7 +327,7 @@ export default function App() {
           <span className="sep" />
           <button className="btn ghost small" onClick={openProjectFile} title="Ctrl+O">Aç…</button>
           <button className="btn ghost small" onClick={() => saveProjectFile()} title="Ctrl+S">Kaydet</button>
-          <input ref={fileInput} type="file" accept=".mimarnot,.json" hidden onChange={async (e) => {
+          <input ref={fileInput} type="file" accept=".planhane,.mimarnot,.json" hidden onChange={async (e) => {
             const f = e.target.files?.[0];
             if (f) importProject(await f.text());
             e.target.value = "";

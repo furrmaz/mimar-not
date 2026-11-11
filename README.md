@@ -1,4 +1,4 @@
-# Mimar Not
+# Planhane
 
 Mimarın müşteri görüşmesinde aldığı notlardan, tek tuşla ön tasarım çizim seti üreten web uygulaması.
 
@@ -8,7 +8,7 @@ Program ekranında oda alanlarını, oturum ölçüsünü, kat yüksekliğini, �
 
 ## Satış (abonelik) sürümü
 
-v0.6'dan itibaren Mimar Not, sizin barındırdığınız **Mimar Not Bulut** sunucusu üzerinden aylık abonelikle satılır: mimar e-postasıyla hesap açar, ücretsiz dener, havale/EFT ile öder; abonelik yönetim panelinden açılır. Claude ve render ücretini sunucu öder, her hesabın aylık üretim/render hakkı sunucuda tutulur. Kurulum ve günlük işleyiş: **[docs/SATIS-KURULUM.md](docs/SATIS-KURULUM.md)**.
+v0.6'dan itibaren Planhane, sizin barındırdığınız **Planhane Bulut** sunucusu üzerinden aylık abonelikle satılır: mimar e-postasıyla hesap açar, ücretsiz dener, havale/EFT ile öder; abonelik yönetim panelinden açılır. Claude ve render ücretini sunucu öder, her hesabın aylık üretim/render hakkı sunucuda tutulur. Kurulum ve günlük işleyiş: **[docs/SATIS-KURULUM.md](docs/SATIS-KURULUM.md)**.
 
 ```bash
 cp cloud/.env.example .env   # ANTHROPIC_API_KEY ve ADMIN_TOKEN girin
@@ -19,10 +19,10 @@ Sunucu kodu `cloud/` (hesap, kota, işler, yönetim API'si), tanıtım sitesi ve
 
 ## Windows masaüstü uygulaması
 
-`MimarNot-Kurulum-0.1.0.exe` kurulum dosyasıdır (masaüstü ve Başlat menüsü kısayolu oluşturur). `MimarNot-Tasinabilir-0.1.0.exe` kurulum gerektirmeden çalışır.
+`Planhane-Kurulum-0.1.0.exe` kurulum dosyasıdır (masaüstü ve Başlat menüsü kısayolu oluşturur). `Planhane-Tasinabilir-0.1.0.exe` kurulum gerektirmeden çalışır.
 
 - İlk açılışta **Ayarlar** penceresi Claude API anahtarını ister. Anahtar Windows kullanıcı hesabınıza bağlı şifreleme (DPAPI) ile yalnızca bu bilgisayarda saklanır.
-- **AutoCAD'de aç**: planlar, A-A kesiti, 4 cephe ve vaziyet planını tek bir DXF dosyasına yazar, `Belgeler\Mimar Not\<proje>` klasörüne kaydeder ve DXF ile ilişkili programda (AutoCAD) açar. Birim m / cm / mm seçilebilir (varsayılan cm).
+- **AutoCAD'de aç**: planlar, A-A kesiti, 4 cephe ve vaziyet planını tek bir DXF dosyasına yazar, `Belgeler\Planhane\<proje>` klasörüne kaydeder ve DXF ile ilişkili programda (AutoCAD) açar. Birim m / cm / mm seçilebilir (varsayılan cm).
 - DXF katmanları `MN-` önekiyle ayrılır: DUVAR, DUVAR-DOLGU (poşe), PENCERE, KAPI, MERDIVEN, MAHAL, OLCU, KESIT-HATTI, DOSEME, CATI, CEPHE, ARSA, CEKME…
 - **Çizim seti (PDF)**: A3 yatay PDF olarak kaydeder.
 - Sesle yazmak için imleç not alanındayken Windows'un yerleşik sesli yazmasını kullanın: **Win + H**.
@@ -59,7 +59,7 @@ API anahtarı olmadan da "Örnek görüşmeyi yükle" ile bütün çizimleri ve 
 | Alan tablosu, yaklaşık maliyet, asgari ölçü uyarıları | Alanlar & Maliyet sekmesi |
 | BIM modeli (katlar, duvarlar, kapı/pencere boşlukları, döşemeler, mahaller) | IFC4 |
 | Bina programı | JSON |
-| Proje dosyası (notlar + program) | .mimarnot (Dosya → Kaydet / Aç, Ctrl+S / Ctrl+O) |
+| Proje dosyası (notlar + program) | .planhane (eski .mimarnot dosyaları da açılır; Dosya → Kaydet / Aç, Ctrl+S / Ctrl+O) |
 | Çizim seti | Tarayıcıdan PDF (A3 yatay) |
 
 Kat Planları sekmesinde üç plan alternatifi (A: gündüz sokak tarafında, B: gündüz bahçe tarafında, C: oda sırası ters) komşuluk isteklerine ve asgari ölçülere göre puanlanır; biri seçilir. "Sınırları düzenle" ile oda sınırları ve hol bandı sürüklenerek ayarlanır. Ayarlar'a girilen ofis / mimar bilgileri tüm paftaların antetine yazılır.

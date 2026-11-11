@@ -1,6 +1,6 @@
 {
   "name": "mimar-not",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Mimarın müşteri görüşmesi notlarından Claude ile kat planı, kesit, cephe ve 3D model üreten uygulama",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
@@ -49,11 +49,11 @@
   },
   "type": "module",
   "main": "electron-dist/main.cjs",
-  "author": "Mimar Not",
+  "author": "Planhane",
   "build": {
     "appId": "app.mimarnot.desktop",
-    "productName": "Mimar Not",
-    "copyright": "Mimar Not",
+    "productName": "Planhane",
+    "copyright": "Planhane",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -88,12 +88,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Mimar Not",
-      "artifactName": "MimarNot-Kurulum-${version}.exe",
+      "shortcutName": "Planhane",
+      "artifactName": "Planhane-Kurulum-${version}.exe",
       "language": "1055"
     },
     "portable": {
-      "artifactName": "MimarNot-Tasinabilir-${version}.exe"
+      "artifactName": "Planhane-Tasinabilir-${version}.exe"
     },
     "fileAssociations": [],
     "publish": [

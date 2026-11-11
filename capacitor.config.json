@@ -1,6 +1,6 @@
 {
   "appId": "app.mimarnot.mobile",
-  "appName": "Mimar Not",
+  "appName": "Planhane",
   "webDir": "dist",
   "android": { "allowMixedContent": false },
   "plugins": {

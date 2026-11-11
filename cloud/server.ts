@@ -1,4 +1,4 @@
-// Mimar Not Bulut sunucusu: hesaplar, abonelik/kota, Claude ve Higgsfield çağrıları (bizim anahtarlarımızla),
+// Planhane Bulut sunucusu: hesaplar, abonelik/kota, Claude ve Higgsfield çağrıları (bizim anahtarlarımızla),
 // yönetim paneli API'si. Uzun süren işler arka planda çalışır; istemci iş durumunu sorgular
 // (barındırma sağlayıcılarının istek zaman aşımına ve mobil bağlantı kopmalarına dayanıklı).
 import express, { type Request, type Response, type NextFunction } from "express";
