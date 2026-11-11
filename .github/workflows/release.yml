@@ -17,9 +17,10 @@ permissions:
   id-token: write
 
 # Bulut sunucusu adresi: uygulamalar Planhane hesabıyla (abonelik) bu sunucuya bağlanır.
+# planhane.com.tr .tr kayıt merkezinde etkinleşene kadar geçici sslip.io adresi; sonra https://planhane.com.tr yapılacak.
 # Başka bir adres için: Settings → Secrets and variables → Actions → Variables → CLOUD_URL_OVERRIDE
 env:
-  VITE_CLOUD_URL: ${{ vars.CLOUD_URL_OVERRIDE || 'https://planhane.com.tr' }}
+  VITE_CLOUD_URL: ${{ vars.CLOUD_URL_OVERRIDE || 'https://104-233-4-32.sslip.io' }}
 
 concurrency:
   group: release-${{ github.ref }}
