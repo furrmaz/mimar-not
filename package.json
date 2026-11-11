@@ -1,6 +1,6 @@
 {
   "name": "mimar-not",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "Mimarın müşteri görüşmesi notlarından Claude ile kat planı, kesit, cephe ve 3D model üreten uygulama",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
