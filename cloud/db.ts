@@ -1,4 +1,4 @@
-// Mimar Not Bulut: SQLite veritabanı (Node'un yerleşik node:sqlite modülü; ek bağımlılık yok).
+// Planhane Bulut: SQLite veritabanı (Node'un yerleşik node:sqlite modülü; ek bağımlılık yok).
 // Tek dosya: DATA_DIR/mimarnot.db. Yedek için bu dosyayı kopyalamak yeterli.
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";

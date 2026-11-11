@@ -1,4 +1,4 @@
-// Mimar Not Bulut istemcisi: hesap, abonelik durumu ve sunucuda çalışan üretim/render işleri.
+// Planhane Bulut istemcisi: hesap, abonelik durumu ve sunucuda çalışan üretim/render işleri.
 // Sunucu adresi derlemede VITE_CLOUD_URL ile verilir ("same-origin": uygulamanın sunulduğu adres);
 // Ayarlar > Gelişmiş'ten değiştirilebilir.
 
@@ -78,7 +78,7 @@ async function req<T>(path: string, init: RequestInit & { json?: unknown } = {})
     res = await fetch(base + path, { ...init, headers: { ...headers, ...(init.headers as Record<string, string> | undefined) }, body: init.json !== undefined ? JSON.stringify(init.json) : init.body });
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
-    throw new CloudError("Mimar Not sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edin.", 0, "network");
+    throw new CloudError("Planhane sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edin.", 0, "network");
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

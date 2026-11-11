@@ -9,7 +9,7 @@ export interface Project {
   notes: string;
   program: Program | null;
   updatedAt: number;
-  /** Masaüstünde kaydedildiği .mimarnot dosyası */
+  /** Masaüstünde kaydedildiği .planhane dosyası (eski adı .mimarnot) */
   filePath?: string;
   /** Proje bilgileri formu */
   brief?: Brief;
@@ -42,7 +42,7 @@ export function fromProjectFile(text: string): Project {
   if (data && data.floors && data.footprint) {
     return { ...newProject(data.clientName || data.projectName || "İçe aktarılan"), program: data as Program };
   }
-  if (!data || data.format !== "mimarnot") throw new Error("Bu dosya bir Mimar Not projesi değil.");
+  if (!data || data.format !== "mimarnot") throw new Error("Bu dosya bir Planhane projesi değil.");
   return { ...newProject(data.title || "Proje"), notes: data.notes ?? "", program: data.program ?? null, brief: data.brief, refImages: data.refImages, history: data.history };
 }
 

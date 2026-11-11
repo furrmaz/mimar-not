@@ -6,7 +6,7 @@ import {
 
 const STATUS: Record<Me["status"], string> = { trial: "Deneme", active: "Abone", expired: "Süresi doldu", disabled: "Kapalı" };
 
-/** Mimar Not hesabı: giriş / kayıt, abonelik durumu, kalan haklar, havale/EFT ile abone olma. */
+/** Planhane hesabı: giriş / kayıt, abonelik durumu, kalan haklar, havale/EFT ile abone olma. */
 export function AccountDialog({ onClose, reason }: { onClose: () => void; reason?: string | null }) {
   const [me, setMe] = useState<Me | null>(signedIn() ? cachedMe() : null);
   const [cfg, setCfg] = useState<PublicConfig | null>(null);
@@ -36,7 +36,7 @@ export function AccountDialog({ onClose, reason }: { onClose: () => void; reason
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal account-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="acc-title">
-        <h2 id="acc-title">Mimar Not hesabı</h2>
+        <h2 id="acc-title">Planhane hesabı</h2>
         {reason && <div className="warn-box">{reason}</div>}
         {!me ? (
           <>
@@ -127,7 +127,7 @@ function Subscribe({ cfg, me }: { cfg: PublicConfig; me: Me }) {
   const plan = cfg.plans.find((p) => p.id === pick);
   const pay = cfg.payment;
   const total = plan ? plan.priceTry * months : 0;
-  const msg = `Merhaba, Mimar Not ${plan?.label} planı için ${months} aylık ${fmtTry(total)} ödeme yaptım. Müşteri no: ${me.ref}, e-posta: ${me.email}`;
+  const msg = `Merhaba, Planhane ${plan?.label} planı için ${months} aylık ${fmtTry(total)} ödeme yaptım. Müşteri no: ${me.ref}, e-posta: ${me.email}`;
   const copy = async (t: string) => { try { await navigator.clipboard.writeText(t); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* yoksay */ } };
   return (
     <div className="subscribe">
@@ -165,7 +165,7 @@ function Subscribe({ cfg, me }: { cfg: PublicConfig; me: Me }) {
             <li>Dekontu gönderin; aboneliğiniz aynı gün (genelde 1 saat içinde) açılır ve bu ekranda görünür.
               <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                 {pay.whatsapp && <a className="btn small primary" href={`https://wa.me/${pay.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer">WhatsApp'tan dekont gönder</a>}
-                {pay.email && <a className="btn small" href={`mailto:${pay.email}?subject=${encodeURIComponent(`Mimar Not ödeme ${me.ref}`)}&body=${encodeURIComponent(msg)}`}>E-postayla gönder</a>}
+                {pay.email && <a className="btn small" href={`mailto:${pay.email}?subject=${encodeURIComponent(`Planhane ödeme ${me.ref}`)}&body=${encodeURIComponent(msg)}`}>E-postayla gönder</a>}
               </div>
             </li>
           </ol>

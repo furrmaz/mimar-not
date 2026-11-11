@@ -174,7 +174,7 @@ export function buildIFC(L: BuildingLayout, program: Program, author = ""): stri
     "ISO-10303-21;",
     "HEADER;",
     "FILE_DESCRIPTION(('ViewDefinition [DesignTransferView]'),'2;1');",
-    `FILE_NAME(${str(program.projectName + ".ifc")},'${ts}',(${str(author) === "$" ? "''" : str(author)}),(''),'Mimar Not','Mimar Not','');`,
+    `FILE_NAME(${str(program.projectName + ".ifc")},'${ts}',(${str(author) === "$" ? "''" : str(author)}),(''),'Planhane','Planhane','');`,
     "FILE_SCHEMA(('IFC4'));",
     "ENDSEC;",
     "DATA;",

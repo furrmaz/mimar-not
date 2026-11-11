@@ -37,7 +37,7 @@ export class ApiError extends Error {
   constructor(message: string, public raw?: unknown, public status = 0) { super(message); }
 }
 
-const LOGIN_MSG = "Proje üretmek için Mimar Not hesabınızla giriş yapın (sağ üstte Hesap).";
+const LOGIN_MSG = "Proje üretmek için Planhane hesabınızla giriş yapın (sağ üstte Hesap).";
 
 /** Bulut hesabıyla iş çalıştırır; hata türlerini uygulamanın ApiError'una çevirir. */
 async function viaCloud<T>(kind: "generate" | "render", body: unknown, opts: { signal?: AbortSignal; onStatus?: (s: string) => void }): Promise<T> {

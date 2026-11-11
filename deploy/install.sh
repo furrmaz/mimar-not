@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mimar Not Bulut kurulumu / güncellemesi (Ubuntu 22.04 / 24.04).
+# Planhane Bulut kurulumu / güncellemesi (Ubuntu 22.04 / 24.04).
 # Sunucuda root olarak:
 #   curl -fsSL https://raw.githubusercontent.com/furrmaz/mimar-not/main/deploy/install.sh -o mimarnot-kur.sh && sudo bash mimarnot-kur.sh
 # Aynı sunucudaki başka projelere dokunmaz: 80/443 boşsa kendi HTTPS'ini (Caddy) kurar; nginx varsa ona
@@ -42,7 +42,7 @@ if [ -f .env ]; then
   ok "Mevcut ayarlar kullanılıyor ($DIR/deploy/.env). Değiştirmek için bu dosyayı düzenleyip betiği yeniden çalıştırın."
 else
   IP=$(curl -fsS4 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
-  echo "Alan adınız varsa (ör. mimarnot.com.tr) DNS A kaydını $IP adresine yönlendirip buraya yazın."
+  echo "Alan adınız varsa (ör. planhane.com.tr) DNS A kaydını $IP adresine yönlendirip buraya yazın."
   echo "Yoksa Enter'a basın; geçici olarak ${IP//./-}.sslip.io adresi kullanılır (HTTPS çalışır, sonra değiştirilebilir)."
   DOMAIN=$(ask "Alan adı" "${IP//./-}.sslip.io")
   KEY=""
@@ -92,7 +92,7 @@ else
     MODE=nginx
     CONF=/etc/nginx/sites-available/mimarnot.conf
     cat > "$CONF" <<NGINX
-# Mimar Not (deploy/install.sh tarafından oluşturuldu)
+# Planhane (deploy/install.sh tarafından oluşturuldu)
 server {
     listen 80;
     server_name $DOMAIN;
@@ -127,7 +127,7 @@ if curl -fsS "http://127.0.0.1:$APP_PORT/api/health" >/dev/null 2>&1; then ok "U
 
 URL="https://$DOMAIN"
 cat > "$INFO" <<TXT
-Mimar Not Bulut
+Planhane Bulut
 Site:            $URL
 Web uygulaması:  $URL/app/
 Yönetim paneli:  $URL/admin/

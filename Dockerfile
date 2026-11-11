@@ -1,4 +1,4 @@
-# Mimar Not Bulut: tanıtım sitesi (/), web uygulaması (/app), yönetim paneli (/admin) ve API tek kapta.
+# Planhane Bulut: tanıtım sitesi (/), web uygulaması (/app), yönetim paneli (/admin) ve API tek kapta.
 FROM node:24-slim AS build
 WORKDIR /src
 COPY package.json package-lock.json ./

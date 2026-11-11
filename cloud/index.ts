@@ -1,4 +1,4 @@
-// Mimar Not Bulut: giriş noktası. Ortam değişkenleri için docs/SATIS-KURULUM.md ve cloud/.env.example.
+// Planhane Bulut: giriş noktası. Ortam değişkenleri için docs/SATIS-KURULUM.md ve cloud/.env.example.
 import "dotenv/config";
 import express from "express";
 import path from "node:path";
@@ -50,4 +50,4 @@ app.use(express.static(site, { extensions: ["html"] }));
 app.use((_req, res) => res.status(404).sendFile(path.join(site, "404.html"), (e) => e && res.end()));
 
 const port = Number(env("PORT", "8080"));
-app.listen(port, () => console.log(`Mimar Not Bulut http://localhost:${port} (admin: /admin, uygulama: /app)`));
+app.listen(port, () => console.log(`Planhane Bulut http://localhost:${port} (admin: /admin, uygulama: /app)`));
