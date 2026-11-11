@@ -48,4 +48,4 @@ echo
 echo "✓ Site:            https://$NEW"
 echo "  Web uygulaması:  https://$NEW/app/"
 echo "  Yönetim paneli:  https://$NEW/admin/"
-echo "Uygulamaların yeni adrese bağlanması için GitHub'da CLOUD_URL değişkenini https://$NEW yapın (docs/SATIS-KURULUM.md)."
+[ "$NEW" = planhane.com.tr ] || echo "Uygulamaların bu adrese bağlanması için .github/workflows/release.yml içindeki VITE_CLOUD_URL adresini (ya da GitHub'da CLOUD_URL_OVERRIDE değişkenini) https://$NEW yapın."

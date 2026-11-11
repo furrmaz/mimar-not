@@ -146,4 +146,4 @@ if [ "$MODE" = manual ]; then
 fi
 echo
 echo "Bu bilgiler $INFO dosyasına kaydedildi. Yönetici parolasını kimseyle paylaşmayın."
-echo "Son adım: GitHub → depo → Settings → Secrets and variables → Actions → Variables → CLOUD_URL = $URL"
+[ "$DOMAIN" = planhane.com.tr ] || echo "Uygulamaların bu sunucuya bağlanması için: GitHub → depo → Settings → Secrets and variables → Actions → Variables → CLOUD_URL_OVERRIDE = $URL"

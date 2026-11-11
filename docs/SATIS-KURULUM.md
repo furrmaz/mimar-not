@@ -49,7 +49,7 @@ Sonunda site, panel adresi ve yönetici parolası ekrana yazılır ve `/root/mim
    ```
 
    Betik kodu günceller, alan adını ve `www` adresini ekler, HTTPS'i ayarlar (sunucudaki Caddy ya da nginx hangisiyse). Eski geçici adres de çalışmaya devam eder; kurulu uygulamalar bir süre ona bağlanabilir. DNS henüz yayılmadıysa uyarı verir; sertifika DNS yayılınca kendiliğinden alınır.
-3. Aşağıdaki **3. Uygulamaları sunucunuza bağlama** adımında `CLOUD_URL` değerini yeni adres yapın.
+3. Adres planhane.com.tr değilse aşağıdaki **3. Uygulamaları sunucunuza bağlama** adımına bakın.
 
 ### Ortam değişkenleri
 
@@ -75,12 +75,7 @@ Sunucu açılınca şu adresler çalışır:
 
 ## 3. Uygulamaları sunucunuza bağlama
 
-GitHub'da depo → **Settings → Secrets and variables → Actions → Variables** sekmesi → **New repository variable**:
-
-- Ad: `CLOUD_URL`
-- Değer: sunucu adresiniz, ör. `https://planhane.com.tr` (sonunda `/` olmadan)
-
-Sonra `main` dalına yapılan ilk gönderimde (ya da **Actions → Sürüm → Run workflow**) Windows, Android ve web paneli bu adrese bağlı olarak derlenir. Bu değişken tanımlı değilken uygulamalar eskisi gibi "kendi API anahtarınla" çalışır.
+Windows, Android ve web paneli `https://planhane.com.tr` sunucusuna bağlı olarak derlenir (`.github/workflows/release.yml` → `VITE_CLOUD_URL`). Başka bir adres kullanacaksanız ya o satırı değiştirin ya da GitHub'da depo → **Settings → Secrets and variables → Actions → Variables** → `CLOUD_URL_OVERRIDE` değişkenini adresinizle (sonunda `/` olmadan) tanımlayın. Değişiklik `main` dalına yapılan ilk gönderimde ya da **Actions → Sürüm → Run workflow** ile derlenen sürümde geçerli olur.
 
 ## 4. Günlük işleyiş
 
