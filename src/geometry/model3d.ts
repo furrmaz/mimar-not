@@ -6,6 +6,7 @@ import { ZONE_COLORS, near } from "./layout";
 import { furnishFloor, type FurnitureKind } from "./furniture";
 import { DEFAULT_MATERIALS, normalizeFacade, type Facade, type Materials } from "../shared/schema";
 import { texturedMaterial, worldUV } from "./materials3d";
+import { legacyStairInfo, stairGeom } from "./stair";
 
 export interface ModelOptions {
   showRoof: boolean;
@@ -213,12 +214,16 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
   // Döşeme
   const lowest = f.level === L.floors[0].level;
   if (L.stair && !lowest) {
-    // merdiven boşluğu bırakılmış döşeme
+    // merdiven boşluğu bırakılmış döşeme (boşluğun çevresinde dört parça)
     const st = L.stair, e = L.extWall / 2, y = z0 - L.slab / 2;
-    grp.add(box(L.W + 2 * e, L.slab, st.y + e, mats.slab, L.W / 2, y, (st.y - e) / 2, "Döşeme"));
-    const yb = st.y + st.h;
-    grp.add(box(L.W + 2 * e, L.slab, L.D - yb + e, mats.slab, L.W / 2, y, (yb + L.D + e) / 2, "Döşeme"));
-    grp.add(box(L.W - st.w + e, L.slab, st.h, mats.slab, (st.w + L.W + e) / 2, y, st.y + st.h / 2, "Döşeme"));
+    const x0 = -e, x1 = L.W + e, y0 = -e, y1 = L.D + e;
+    const part = (ax: number, bx: number, ay: number, by: number) => {
+      if (bx - ax > 0.01 && by - ay > 0.01) grp.add(box(bx - ax, L.slab, by - ay, mats.slab, (ax + bx) / 2, y, (ay + by) / 2, "Döşeme"));
+    };
+    part(x0, x1, y0, Math.max(y0, st.y));
+    part(x0, x1, Math.min(y1, st.y + st.h), y1);
+    part(x0, Math.max(x0, st.x), st.y, st.y + st.h);
+    part(Math.min(x1, st.x + st.w), x1, st.y, st.y + st.h);
   } else {
     grp.add(box(L.W + L.extWall, L.slab, L.D + L.extWall, mats.slab, L.W / 2, z0 - L.slab / 2, L.D / 2, "Döşeme"));
   }
@@ -312,34 +317,23 @@ function addOpening(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, o: Open
 
 function addStair(grp: THREE.Group, L: BuildingLayout, z0: number) {
   const st = L.stair!;
-  const flightW = (st.h - 0.15) / 2;
-  const landing = 1.1;
-  const run = st.w - landing;
-  const rise = L.H / 2;
-  const n = Math.max(6, Math.round(rise / 0.17));
-  const tr = run / n;
-  const hStep = rise / n;
-  // 1. kol: x = st.w → landing, yükselir (alt kol, plan y düşük)
-  for (let i = 0; i < n; i++) {
-    const x = st.w - (i + 0.5) * tr;
-    const top = z0 + (i + 1) * hStep;
-    grp.add(box(tr, 0.06, flightW, mats.stair, x, top - 0.03, st.y + flightW / 2));
-  }
+  const g = stairGeom(st, L.stairInfo ?? legacyStairInfo(st, L.H), L.H);
+  const T = 0.06;
+  for (const f of g.flights) for (const s of f.steps) grp.add(box(s.rect.w, T, s.rect.h, mats.stair, s.rect.x + s.rect.w / 2, z0 + s.top - T / 2, s.rect.y + s.rect.h / 2));
   // sahanlık
-  grp.add(box(landing, 0.15, st.h, mats.stair, landing / 2, z0 + rise - 0.075, st.y + st.h / 2));
-  // 2. kol: landing → st.w
-  for (let i = 0; i < n; i++) {
-    const x = landing + (i + 0.5) * tr;
-    const top = z0 + rise + (i + 1) * hStep;
-    grp.add(box(tr, 0.06, flightW, mats.stair, x, top - 0.03, st.y + flightW + 0.15 + flightW / 2));
-  }
-  // orta perde
-  grp.add(box(run, L.H * 0.9, 0.1, mats.inner, landing + run / 2, z0 + L.H * 0.45, st.y + flightW + 0.075));
+  grp.add(box(g.landing.w, 0.15, g.landing.h, mats.stair, g.landing.x + g.landing.w / 2, z0 + g.landingTop - 0.075, g.landing.y + g.landing.h / 2));
+  // kollar arası perde
+  grp.add(box(Math.max(0.08, g.well.w), L.H * 0.9, Math.max(0.08, g.well.h), mats.inner, g.well.x + g.well.w / 2, z0 + L.H * 0.45, g.well.y + g.well.h / 2));
 }
 
 function addStairRail(grp: THREE.Group, L: BuildingLayout, z0: number) {
   const st = L.stair!;
-  grp.add(box(0.04, 1.0, st.h, mats.glass, st.w, z0 + 0.5, st.y + st.h / 2));
+  const info = L.stairInfo ?? legacyStairInfo(st, L.H);
+  // en üst katta merdiven boşluğunun hole bakan kenarında cam korkuluk
+  // yalnız 1. kolun (aşağı inen boşluğun) önünde; 2. koldan kata çıkılır
+  const fw = info.flightW;
+  if (info.axis === "x") grp.add(box(0.04, 1.0, fw, mats.glass, st.x + (info.sign === -1 ? st.w : 0), z0 + 0.5, st.y + fw / 2));
+  else grp.add(box(fw, 1.0, 0.04, mats.glass, st.x + fw / 2, z0 + 0.5, info.sign === 1 ? st.y : st.y + st.h));
 }
 
 function buildRoof(L: BuildingLayout): THREE.Group {

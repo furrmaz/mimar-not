@@ -1,6 +1,6 @@
 {
   "name": "mimar-not",
-  "version": "0.7.2",
+  "version": "0.9.0",
   "description": "Mimarın müşteri görüşmesi notlarından Claude ile kat planı, kesit, cephe ve 3D model üreten uygulama",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
@@ -16,7 +16,8 @@
     "build:cloud": "esbuild cloud/index.ts --bundle --platform=node --format=cjs --target=node22 --outfile=cloud-dist/server.cjs --log-level=warning",
     "build:web-cloud": "VITE_STANDALONE=1 VITE_CLOUD_URL=same-origin vite build --outDir dist-web",
     "cloud:start": "node cloud-dist/server.cjs",
-    "test:cloud": "tsx cloud/test.ts"
+    "test:cloud": "tsx cloud/test.ts",
+    "test:layout": "tsx scripts/check-layouts.ts"
   },
   "license": "UNLICENSED",
   "devDependencies": {
