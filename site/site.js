@@ -57,11 +57,6 @@ Modern ama sıcak, ahşap + taş. Beşik çatı.`;
     onScroll();
   }
 
-  // --- Model ↔ render karşılaştırma kaydırıcısı
-  const cmp = document.getElementById("compare");
-  const range = document.getElementById("compareRange");
-  if (cmp && range) range.addEventListener("input", () => cmp.style.setProperty("--pos", `${range.value}%`));
-
   // --- Kaydırınca belirme
   const els = document.querySelectorAll("main > section:not(.hero) > *, .grid article, .steps li, .plan");
   if ("IntersectionObserver" in window) {
