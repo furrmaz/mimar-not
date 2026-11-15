@@ -3,6 +3,7 @@
 import type { Program } from "../shared/schema";
 import type { BuildingLayout, FloorLayout, Opening, WallPiece } from "./layout";
 import { near } from "./layout";
+import { slabCells } from "./massing";
 
 const B64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 
@@ -109,8 +110,15 @@ export function buildIFC(L: BuildingLayout, program: Program, author = ""): stri
     const contained: string[] = [];
 
     // Döşeme
-    const slab = f.add(`IFCSLAB(${f.guid()},$,${str(fl.name + " döşemesi")},$,$,${place(stPl)},${box(L.W / 2, L.D / 2, L.W + L.extWall, L.D + L.extWall, L.slab, -L.slab)},$,.FLOOR.)`);
-    contained.push(slab);
+    if (L.massing) {
+      // girintili kütle: döşeme, katın ve altındaki katın hacimleri kadar (hücreler)
+      slabCells(L, fl, false).forEach((c, k) => {
+        contained.push(f.add(`IFCSLAB(${f.guid()},$,${str(`${fl.name} döşemesi ${k + 1}`)},$,$,${place(stPl)},${box(c.x + c.w / 2, c.y + c.h / 2, c.w, c.h, L.slab, -L.slab)},$,.FLOOR.)`));
+      });
+    } else {
+      const slab = f.add(`IFCSLAB(${f.guid()},$,${str(fl.name + " döşemesi")},$,$,${place(stPl)},${box(L.W / 2, L.D / 2, L.W + L.extWall, L.D + L.extWall, L.slab, -L.slab)},$,.FLOOR.)`);
+      contained.push(slab);
+    }
 
     // Duvarlar + boşluklar
     for (const w of fl.wallLines) contained.push(...wall(fl, w, stPl));

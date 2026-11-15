@@ -1,5 +1,6 @@
 // Asgari mahal ölçüleri ön kontrolü (Planlı Alanlar İmar Yönetmeliği md. 29 esas alınarak sadeleştirilmiş).
 import type { BuildingLayout, PlacedRoom } from "./layout";
+import { floorFootprintArea } from "./massing";
 
 export interface RoomIssue {
   floor: string;
@@ -51,8 +52,8 @@ export function areaTable(L: BuildingLayout) {
   const rows: AreaRow[] = L.floors.map((fl) => ({
     floor: fl.name,
     net: fl.rooms.reduce((s, r) => s + r.rect.w * r.rect.h, 0),
-    gross: (L.W + L.extWall) * (L.D + L.extWall),
-    outdoor: fl.outdoor.reduce((s, o) => s + o.area, 0),
+    gross: (L.W + L.extWall) * (L.D + L.extWall) * (floorFootprintArea(L, fl) / (L.W * L.D)),
+    outdoor: fl.outdoor.filter((o) => o.carved !== "avlu").reduce((s, o) => s + o.area, 0),
     rooms: fl.rooms.filter((r) => r.band !== "hall" && r.type !== "merdiven").length,
   }));
   const total = rows.reduce((t, r) => ({ floor: "Toplam", net: t.net + r.net, gross: t.gross + r.gross, outdoor: t.outdoor + r.outdoor, rooms: t.rooms + r.rooms }), { floor: "Toplam", net: 0, gross: 0, outdoor: 0, rooms: 0 });

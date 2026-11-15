@@ -13,7 +13,7 @@ import { download, fromProjectFile, generateProgram, lastGen, loadProjects, newP
 import { SAMPLE_NOTES, SAMPLE_PROGRAM } from "./sample";
 import { useDictation } from "./useDictation";
 import { AreasPanel, IssueList } from "./components/AreasPanel";
-import { AdjacencyCard, VariantPicker } from "./components/Variants";
+import { AdjacencyCard, MassingPicker, VariantPicker } from "./components/Variants";
 import { PlanEditOverlay } from "./components/PlanEditor";
 import { buildIFC } from "./geometry/ifc";
 import { UpdateButton } from "./components/UpdateButton";
@@ -463,6 +463,7 @@ export default function App() {
                 {tab === "plan" && (
                   <>
                     <VariantPicker program={view} onChange={setView} />
+                    {!layout.apartment && <MassingPicker program={view} layout={layout} onChange={setView} />}
                     <div className="subtabs">
                       {layout.floors.map((f, i) => (
                         <button key={f.level} className={floorIdx === i ? "active" : ""} onClick={() => setFloorIdx(i)}>{f.name}</button>
@@ -472,7 +473,7 @@ export default function App() {
                         {editPlan ? "Düzenlemeyi bitir" : "✎ Sınırları düzenle"}
                       </button>
                       {(view.design?.cols || view.design?.frontDepth != null) && (
-                        <button onClick={() => setView({ ...view, design: { variant: view.design?.variant } })} title="Elle yapılan sınır değişikliklerini geri al">Otomatiğe dön</button>
+                        <button onClick={() => setView({ ...view, design: { variant: view.design?.variant, massing: view.design?.massing } })} title="Elle yapılan sınır değişikliklerini geri al">Otomatiğe dön</button>
                       )}
                     </div>
                     {editPlan && <div className="muted small" style={{ marginBottom: 8 }}>Turuncu kesikli çizgileri sürükleyin: dikey olanlar yan yana odaların sınırı, yatay olan hol bandının yeri (tüm katlarda birlikte kayar). 5 cm adımla oturur.</div>}

@@ -316,3 +316,9 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--line); border-bott
 details.advanced { border-top: 1px solid var(--line); padding-top: 8px; }
 details.advanced summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 @media (max-width: 640px) { .account-modal form.grid-fields { grid-template-columns: 1fr; } }
+
+.massing-list { display: grid; gap: 6px; margin-bottom: 8px; }
+.massing-item { display: block; cursor: pointer; }
+.massing-item .pill { margin-left: 6px; }
+.massing-nums { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 6px; }
+.massing-nums input { width: 64px; margin-left: 4px; }

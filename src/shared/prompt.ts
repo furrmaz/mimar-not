@@ -30,4 +30,19 @@ Uygulama planı, kesiti, cepheyi ve 3D modeli senin verdiğin programdan otomati
   - İmar durumu belgesi, tapu, aplikasyon krokisi: arsa ölçülerini ve imar değerlerini (TAKS, KAKS, Hmax, çekmeler, kat adedi) oradan al.
   Görseldeki bir bilgi notlarla çelişirse notlar geçerlidir; çelişkiyi "openQuestions" listesine yaz.
 - "requirements": notlardaki, formdaki ve görsellerdeki istekleri tek tek, hiçbirini atlamadan listele (oda istekleri, komşuluklar, manzara/yön, malzeme, bütçe, otopark, havuz, engelli erişimi, daire sayıları vb.). Ayrıca bina tipi ve yönetmelik gereği olması gerekenleri ekle (source "yonetmelik"): ör. apartmanda sığınak, otopark, asansör (4 kattan fazlaysa zorunlu), çöp ve teknik hacim, kapıcı/yönetim; konutta her yatak katında banyo/wc; mutfak ve ıslak hacimlerin havalandırması. Önce programı bunları karşılayacak şekilde kur, sonra her biri için durumu dürüstçe yaz; karşılayamadığını "karsilanmadi" ya da "kismen" olarak işaretle ve nedenini "how" alanına yaz. Hiçbir isteği sessizce düşürme.
+- "massing" (kütle biçimi): Uygulama binayı önce dikdörtgen olarak yerleştirir, sonra seçtiğin özelliklerle oyar. Kütleyi üsluba, arsaya ve yöne göre seç:
+  - Modern / çağdaş / minimal / "kutu" / "konsollu" / "teraslı" bir istek ya da öyle bir referans görsel varsa en az bir özellik seç; tek bir güçlü fikir (ör. yalnız on_konsol) çoğu zaman iki-üç zayıf fikirden iyidir. Geleneksel, klasik, taş ev, kırma/beşik çatılı yerel üslupta ya da müşteri sade/ekonomik kutu istiyorsa boş liste.
+  - on_konsol: girişi vurgular, yağmurdan korunan giriş ve araç önü sağlar; üst kat sokağa doğru taşar. Ön bahçe dar değilse ilk tercih.
+  - arka_konsol: bahçe/güney cephesi için gölgeli kapalı teras; güneyde yaz güneşini keser, kış güneşini içeri alır. Bahçe güneye bakıyorsa uygun.
+  - yan_konsol: yan bahçe genişse (≥ 5 m) araç sundurması; dar arsada seçme.
+  - ust_kat_teras: en üst kat bahçe tarafında küçülür, alt katın çatısı teras olur; manzara/teras isteyen modern villada. Düz çatı ister (roof "duz").
+  - kose_oyugu: L kütle, köşede korunaklı avlu; geniş arsada, mahremiyet ve avlu isteyen projede. Düz çatı ister. Oturum avlu kadar genişler; footprint'i buna göre büyütme.
+  - Konsol seçtiysen zemin kattaki ön/arka odalar geri çekilince küçülür: o kattaki oda alanlarını 1-2 m² cömert ver. "cantilever" 1.5 (Planlı Alanlar İmar Yönetmeliği md. 41: kapalı çıkma ≤ 1.50 m, çıkma altı ≥ 2.40 m) ve ön bahçe 3 m'den darsa 1.2. Modern seçtiysen çatıyı "duz" yap.
+  - Gerekçeyi "rationale" alanına yaz ve konsolu "assumptions" listesine ekle (çıkmanın yönetmelik sınırı ve statik projede konsol kirişi gerektiği).
+- Tasarım bilgisi (yerleşim ve kütle kararlarında kullan; mimarlık ders kitaplarında ve güneş mimarlığı kaynaklarında yaygın ilkelerden):
+  - Yönlenme: yaşam mekânları (salon, yemek) güney / güneydoğu / güneybatıya; mutfak, kiler, ıslak hacimler ve merdiven kuzeye ya da batıya. Yatak odaları doğu (sabah güneşi) iyi. "site.orientation" bahçenin güneye baktığını söylüyorsa günlük yaşamı bahçe tarafına koy.
+  - Güney cephede yatay saçak/konsol yaz güneşini keser: 36-42° enlemde saçak derinliği ≈ pencere yüksekliğinin 0.4'ü (2.2 m pencere → ≈ 0.9-1.5 m); doğu ve batı için dikey güneş kırıcı, küçük pencere.
+  - İklim: sıcak-kuru (Güneydoğu) kompakt, kalın duvar, avlu (kose_oyugu), düz çatı; sıcak-nemli (Ege, Akdeniz, Karadeniz kıyısı) geniş saçak/konsol, karşılıklı pencerelerle çapraz havalandırma; soğuk (İç ve Doğu Anadolu) kompakt kutu, az oyuk, küçük kuzey pencereleri.
+  - Gün ışığı odanın içine pencere üst kotunun yaklaşık 2 katı derinliğe ulaşır; 2.2 m lentoda ≈ 4.5-5 m'den derin oda karanlık kalır, bu yüzden oturum derinliği 12-14 m'yi geçmesin ya da avlu/oyuk aç.
+  - Oda oranı en fazla 1:1.5 (salon 1:2'ye kadar). Islak hacimler katlarda üst üste gelsin. Sirkülasyon (hol + koridor + antre) net alanın %10-15'i.
 - Tüm metinler Türkçe olsun.`;

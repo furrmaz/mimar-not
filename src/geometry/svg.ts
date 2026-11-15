@@ -6,6 +6,7 @@ import { parkingStalls, zoningCheck } from "./zoning";
 import type { OfficeInfo } from "../office";
 import { furnishFloor, furnitureSymbol, type Prim } from "./furniture";
 import { legacyStairInfo, stairGeom, type StairInfo } from "./stair";
+import { facadeFaces, floorRects, openingDepth, openingOnFacade, spansAtX } from "./massing";
 
 const S = 50; // px / m
 const INK = "#1d1d1f";
@@ -120,6 +121,12 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
     parts.push(`<rect x="${X(r.x)}" y="${Y(r.y + r.h)}" width="${r.w * S}" height="${r.h * S}" fill="${ZONE_COLORS.dis}" stroke="${THIN}" stroke-width="1" stroke-dasharray="6 3"/>`);
     parts.push(`<rect x="${X(r.x) + 3}" y="${Y(r.y + r.h) + 3}" width="${r.w * S - 6}" height="${r.h * S - 6}" fill="none" stroke="${THIN}" stroke-width="0.6"/>`);
     parts.push(text(X(r.x + r.w / 2), Y(r.y + r.h / 2) + 4, `${o.name} · ${o.area.toFixed(1)} m²`, 11));
+  }
+
+  // Kütle oyuğundan kalan boşluk (alt katta avlu)
+  for (const v of floor.voids ?? []) {
+    parts.push(`<rect x="${X(v.x)}" y="${Y(v.y + v.h)}" width="${v.w * S}" height="${v.h * S}" fill="none" stroke="${THIN}" stroke-width="0.8" stroke-dasharray="3 4"/>`);
+    parts.push(text(X(v.x + v.w / 2), Y(v.y + v.h / 2) + 4, "Boşluk", 10, { fill: THIN }));
   }
 
   // Oda zeminleri
@@ -378,15 +385,30 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
   const floorsSorted = [...L.floors].sort((a, b) => a.z - b.z);
   const lowest = floorsSorted[0];
   // temel
-  for (const yy of [0, L.D]) {
+  // kesit hattında kapalı hacim aralıkları (girintili kütlede katlar farklı derinlikte)
+  const spans = (fs: FloorLayout[]): [number, number][] => (L.massing ? spansAtX(fs.flatMap((q) => floorRects(q, L)), L.cutX) : [[0, L.D]]);
+  const footY = L.massing ? spans([lowest]).flatMap(([a, b]) => [a, b]) : [0, L.D];
+  for (const yy of footY) {
     p.push(`<rect x="${X(yy - 0.45)}" y="${Z(lowest.z - L.slab)}" width="${0.9 * S}" height="${0.6 * S}" fill="#9a9a9a" stroke="${INK}" stroke-width="0.8"/>`);
   }
 
   for (const f of floorsSorted) {
     const z0 = f.z;
     const clear = L.H - L.slab;
-    // döşeme (kesilen, koyu)
-    p.push(`<rect x="${X(-t / 2)}" y="${Z(z0)}" width="${(L.D + t) * S}" height="${L.slab * S}" fill="${INK}"/>`);
+    // döşeme (kesilen, koyu): bu katın ve altındaki katın hacimleri (konsol altı, teras döşemesi)
+    const fi = floorsSorted.indexOf(f);
+    for (const [a, b] of spans(fi > 0 ? [f, floorsSorted[fi - 1]] : [f]))
+      p.push(`<rect x="${X(a - t / 2)}" y="${Z(z0)}" width="${(b - a + t) * S}" height="${L.slab * S}" fill="${INK}"/>`);
+    // oyulmuş teras korkulukları
+    for (const o of f.outdoor) {
+      if (o.carved !== "teras" || L.cutX < o.rect.x || L.cutX > o.rect.x + o.rect.w) continue;
+      for (const sd of o.rails ?? []) {
+        if (sd !== "front" && sd !== "back") continue;
+        const yy = sd === "front" ? o.rect.y : o.rect.y + o.rect.h;
+        p.push(`<line x1="${X(yy)}" y1="${Z(z0)}" x2="${X(yy)}" y2="${Z(z0 + 1.1)}" stroke="${INK}" stroke-width="1.4"/>`);
+      }
+      p.push(text(X(o.rect.y + o.rect.h / 2), Z(z0 + 0.5), o.name, 10, { fill: THIN }));
+    }
     // kesilen duvarlar
     for (const w of f.wallLines) {
       if (w.orient !== "h" || L.cutX < w.a || L.cutX > w.b) continue;
@@ -411,6 +433,7 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
     }
     // balkon çıkması
     for (const o of f.outdoor) {
+      if (o.carved) continue;
       const front = o.rect.y < 0;
       const base = front ? 0 : L.D, ey = front ? o.rect.y : o.rect.y + o.rect.h;
       p.push(`<rect x="${X(Math.min(base, ey))}" y="${Z(z0)}" width="${Math.abs(ey - base) * S}" height="${0.18 * S}" fill="${o.rect.x <= L.cutX && o.rect.x + o.rect.w >= L.cutX ? INK : "#888"}"/>`);
@@ -446,9 +469,10 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
 
   // tavan / çatı döşemesi
   const top = L.totalHeight;
-  p.push(`<rect x="${X(-t / 2)}" y="${Z(top)}" width="${(L.D + t) * S}" height="${L.slab * S}" fill="${INK}"/>`);
+  const topSpans = spans([floorsSorted[floorsSorted.length - 1]]);
+  for (const [a, b] of topSpans) p.push(`<rect x="${X(a - t / 2)}" y="${Z(top)}" width="${(b - a + t) * S}" height="${L.slab * S}" fill="${INK}"/>`);
   if (L.roof === "duz") {
-    for (const yy of [0, L.D]) p.push(`<rect x="${X(yy - t / 2)}" y="${Z(top + L.roofHeight)}" width="${t * S}" height="${L.roofHeight * S}" fill="${INK}"/>`);
+    for (const yy of topSpans.flatMap(([a, b]) => [a, b])) p.push(`<rect x="${X(yy - t / 2)}" y="${Z(top + L.roofHeight)}" width="${t * S}" height="${L.roofHeight * S}" fill="${INK}"/>`);
   } else {
     const oh = 0.6;
     const rise = L.roofHeight;
@@ -505,43 +529,70 @@ export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade
 
   const aboveGround = L.floors.filter((f) => f.z >= 0);
   const wallBottom = Math.max(groundZ, Math.min(...aboveGround.map((f) => f.z), 0) - 0.3);
-  // cephe yüzeyi
-  p.push(`<rect x="${U(0)}" y="${Z(top)}" width="${len * S}" height="${(top - wallBottom) * S}" fill="#f4efe6" stroke="${INK}" stroke-width="1.6"/>`);
-  // zemin kat taş kaplama bandı
-  p.push(`<rect x="${U(0)}" y="${Z(Math.min(L.H, top) - L.slab)}" width="${len * S}" height="${(Math.min(L.H, top) - L.slab - wallBottom) * S}" fill="url(#stone)" opacity="0.55"/>`);
   p.push(`<defs><pattern id="stone" width="36" height="18" patternUnits="userSpaceOnUse"><rect width="36" height="18" fill="#e3dccf"/><path d="M0 9 H36 M12 0 V9 M30 9 V18" stroke="#c9bfae" stroke-width="1" fill="none"/></pattern><pattern id="wood" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#c9a27a"/><line x1="0" y1="0" x2="0" y2="8" stroke="#a9825a" stroke-width="1"/></pattern></defs>`);
-  // kat döşeme çizgileri
-  for (const f of aboveGround) if (f.z > 0) p.push(`<rect x="${U(0)}" y="${Z(f.z)}" width="${len * S}" height="${L.slab * S}" fill="#d8d0c2"/>`);
+  if (!L.massing) {
+    // cephe yüzeyi
+    p.push(`<rect x="${U(0)}" y="${Z(top)}" width="${len * S}" height="${(top - wallBottom) * S}" fill="#f4efe6" stroke="${INK}" stroke-width="1.6"/>`);
+    // zemin kat taş kaplama bandı
+    p.push(`<rect x="${U(0)}" y="${Z(Math.min(L.H, top) - L.slab)}" width="${len * S}" height="${(Math.min(L.H, top) - L.slab - wallBottom) * S}" fill="url(#stone)" opacity="0.55"/>`);
+    // kat döşeme çizgileri
+    for (const f of aboveGround) if (f.z > 0) p.push(`<rect x="${U(0)}" y="${Z(f.z)}" width="${len * S}" height="${L.slab * S}" fill="#d8d0c2"/>`);
+  }
 
-  // açıklıklar
-  const onFacade = (o: Opening) =>
-    facade === "front" ? o.orient === "h" && near(o.line, 0)
-      : facade === "back" ? o.orient === "h" && near(o.line, L.D)
-        : facade === "left" ? o.orient === "v" && near(o.line, 0)
-          : o.orient === "v" && near(o.line, L.W);
+  const drawOpening = (f: FloorLayout, o: Opening) => {
+    const u = o.orient === "h" ? toU(o.center, o.line) : toU(o.line, o.center);
+    const x0 = U(u - o.width / 2);
+    const zt = Z(f.z + o.head), zb = Z(f.z + o.sill);
+    const w = o.width * S, h = zb - zt;
+    if (o.kind === "entrance") {
+      const garage = o.width > 2;
+      p.push(`<rect x="${x0}" y="${zt}" width="${w}" height="${h}" fill="${garage ? "#9aa0a6" : "url(#wood)"}" stroke="${INK}" stroke-width="1.4"/>`);
+      if (garage) for (let i = 1; i < 6; i++) p.push(`<line x1="${x0}" y1="${zt + (h * i) / 6}" x2="${x0 + w}" y2="${zt + (h * i) / 6}" stroke="#6b7177" stroke-width="0.8"/>`);
+      else {
+        if (!L.massing) p.push(`<rect x="${x0 - 0.3 * S}" y="${zt - 0.25 * S}" width="${w + 0.6 * S}" height="${0.12 * S}" fill="#5b5b5f"/>`);
+        p.push(`<circle cx="${x0 + w - 8}" cy="${zt + h / 2}" r="2.5" fill="${INK}"/>`);
+      }
+    } else {
+      p.push(`<rect x="${x0}" y="${zt}" width="${w}" height="${h}" fill="#bcd3e6" stroke="${INK}" stroke-width="1.3"/>`);
+      p.push(`<rect x="${x0 + 3}" y="${zt + 3}" width="${w - 6}" height="${h - 6}" fill="none" stroke="#5b6b78" stroke-width="0.6"/>`);
+      if (o.width > 1.2) p.push(`<line x1="${x0 + w / 2}" y1="${zt}" x2="${x0 + w / 2}" y2="${zb}" stroke="${INK}" stroke-width="1"/>`);
+      if (o.sill > 0.3) p.push(`<rect x="${x0 - 4}" y="${zb}" width="${w + 8}" height="4" fill="#8d8d90"/>`);
+    }
+  };
+
+  const groundLevel = aboveGround[0]?.level;
   for (const f of aboveGround) {
-    for (const o of f.openings.filter(onFacade)) {
-      const u = o.orient === "h" ? toU(o.center, o.line) : toU(o.line, o.center);
-      const x0 = U(u - o.width / 2);
-      const zt = Z(f.z + o.head), zb = Z(f.z + o.sill);
-      const w = o.width * S, h = zb - zt;
-      if (o.kind === "entrance") {
-        const garage = o.width > 2;
-        p.push(`<rect x="${x0}" y="${zt}" width="${w}" height="${h}" fill="${garage ? "#9aa0a6" : "url(#wood)"}" stroke="${INK}" stroke-width="1.4"/>`);
-        if (garage) for (let i = 1; i < 6; i++) p.push(`<line x1="${x0}" y1="${zt + (h * i) / 6}" x2="${x0 + w}" y2="${zt + (h * i) / 6}" stroke="#6b7177" stroke-width="0.8"/>`);
-        else {
-          p.push(`<rect x="${x0 - 0.3 * S}" y="${zt - 0.25 * S}" width="${w + 0.6 * S}" height="${0.12 * S}" fill="#5b5b5f"/>`);
-          p.push(`<circle cx="${x0 + w - 8}" cy="${zt + h / 2}" r="2.5" fill="${INK}"/>`);
+    const ops = f.openings.filter((o) => openingOnFacade(L, f, o, facade));
+    if (!L.massing) for (const o of ops) drawOpening(f, o);
+    else {
+      // girintili kütle: katın bu cepheye bakan yüzleri uzaktan yakına; geri çekilen yüzler koyu ve üstü gölgeli
+      const zb = f.level === groundLevel ? wallBottom : f.z;
+      const zt = f.z + L.H;
+      const isTopF = f === aboveGround[aboveGround.length - 1];
+      for (const fc of facadeFaces(L, f, facade)) {
+        const x = U(fc.u0), w = (fc.u1 - fc.u0) * S;
+        const recessed = fc.depth > 0.05;
+        p.push(`<rect x="${x}" y="${Z(zt)}" width="${w}" height="${(zt - zb) * S}" fill="${recessed ? "#e2dbcd" : "#f4efe6"}" stroke="${INK}" stroke-width="${recessed ? 1 : 1.6}"/>`);
+        if (f.level === groundLevel) p.push(`<rect x="${x}" y="${Z(zt - L.slab)}" width="${w}" height="${(zt - L.slab - zb) * S}" fill="url(#stone)" opacity="${recessed ? 0.4 : 0.55}"/>`);
+        if (f.z > 0 || !isTopF) p.push(`<rect x="${x}" y="${Z(zt)}" width="${w}" height="${L.slab * S}" fill="#d8d0c2"/>`);
+        if (recessed && !isTopF) p.push(`<rect x="${x}" y="${Z(zt - L.slab)}" width="${w}" height="${Math.min(0.6, fc.depth * 0.4) * S}" fill="rgba(40,35,30,0.16)"/>`);
+        for (const o of ops) {
+          const u = o.orient === "h" ? toU(o.center, o.line) : toU(o.line, o.center);
+          if (Math.abs(openingDepth(L, o, facade) - fc.depth) < 0.05 && u >= fc.u0 - 0.01 && u <= fc.u1 + 0.01) drawOpening(f, o);
         }
-      } else {
-        p.push(`<rect x="${x0}" y="${zt}" width="${w}" height="${h}" fill="#bcd3e6" stroke="${INK}" stroke-width="1.3"/>`);
-        p.push(`<rect x="${x0 + 3}" y="${zt + 3}" width="${w - 6}" height="${h - 6}" fill="none" stroke="#5b6b78" stroke-width="0.6"/>`);
-        if (o.width > 1.2) p.push(`<line x1="${x0 + w / 2}" y1="${zt}" x2="${x0 + w / 2}" y2="${zb}" stroke="${INK}" stroke-width="1"/>`);
-        if (o.sill > 0.3) p.push(`<rect x="${x0 - 4}" y="${zb}" width="${w + 8}" height="4" fill="#8d8d90"/>`);
+      }
+      // oyulmuş teras korkulukları
+      for (const o of f.outdoor) {
+        if (o.carved !== "teras" || !o.rails?.includes(facade)) continue;
+        const r = o.rect;
+        const ua = facade === "front" || facade === "back" ? toU(r.x, 0) : toU(0, r.y), ub = facade === "front" || facade === "back" ? toU(r.x + r.w, 0) : toU(0, r.y + r.h);
+        const u0 = Math.min(ua, ub), u1 = Math.max(ua, ub);
+        p.push(`<rect x="${U(u0)}" y="${Z(f.z + 1.1)}" width="${(u1 - u0) * S}" height="${1.1 * S}" fill="rgba(160,190,210,0.35)" stroke="${INK}" stroke-width="1.2"/>`);
       }
     }
     // balkonlar
     for (const o of f.outdoor) {
+      if (o.carved) continue;
       if ((facade === "back" && o.rect.y >= 0) || (facade === "front" && o.rect.y < 0)) {
         const ua = toU(o.rect.x + o.rect.w, 0), ub = toU(o.rect.x, 0);
         const u0 = Math.min(ua, ub), u1 = Math.max(ua, ub);
@@ -562,7 +613,12 @@ export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade
   const roofFill = "#7b4a36";
   const ridgeAlongFacade = facade === "front" || facade === "back"; // mahya x yönünde
   const zt = top;
-  if (L.roof === "duz") {
+  if (L.roof === "duz" && L.massing && aboveGround.length) {
+    for (const fc of facadeFaces(L, aboveGround[aboveGround.length - 1], facade)) {
+      p.push(`<rect x="${U(fc.u0)}" y="${Z(zt + rise)}" width="${(fc.u1 - fc.u0) * S}" height="${rise * S}" fill="${fc.depth > 0.05 ? "#ded7ca" : "#e9e3d8"}" stroke="${INK}" stroke-width="1.4"/>`);
+      p.push(`<rect x="${U(fc.u0 - 0.05)}" y="${Z(zt + rise) - 5}" width="${(fc.u1 - fc.u0 + 0.1) * S}" height="5" fill="#8d8d90"/>`);
+    }
+  } else if (L.roof === "duz") {
     p.push(`<rect x="${U(-0.05)}" y="${Z(zt + rise)}" width="${(len + 0.1) * S}" height="${rise * S}" fill="#e9e3d8" stroke="${INK}" stroke-width="1.4"/>`);
     p.push(`<rect x="${U(-0.1)}" y="${Z(zt + rise) - 5}" width="${(len + 0.2) * S}" height="5" fill="#8d8d90"/>`);
   } else if (ridgeAlongFacade) {

@@ -42,6 +42,7 @@ function programSummary(p: Program) {
     roof: p.roof,
     materials: p.materials,
     facade: p.facade,
+    massing: p.design?.massing ?? p.massing,
     floors,
     blocks: blocks.length ? blocks.map((b) => ({ name: b.name, floors: b.floors?.length ?? 0, sameAs: b.sameAs })) : undefined,
     site: p.site,

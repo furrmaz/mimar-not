@@ -6,6 +6,7 @@
 import type { Adjacency, DesignOptions, Program, Room, RoomType, Zone } from "../shared/schema";
 import type { ApFloor, UnitSlot } from "./blocks";
 import { legacyStairInfo, stairCalc, type StairInfo } from "./stair";
+import { applyMassing, effectiveMassing, type CarvedKind, type MassFeature, type OpenEdge, type Side } from "./massing";
 
 export interface Rect {
   x: number;
@@ -60,7 +61,17 @@ export interface FloorLayout {
   openings: Opening[];
   walls: WallPiece[]; // açıklıklar düşülmüş duvar parçaları
   wallLines: WallPiece[]; // açıklıksız tam duvar çizgileri
-  outdoor: { name: string; area: number; rect: Rect; type: string }[];
+  outdoor: {
+    name: string; area: number; rect: Rect; type: string;
+    /** Kütle oyumuyla bina oturumunun içinde oluşan dış mekân: sundurma (üstü kapalı), teras (alt katın çatısı), avlu (açık) */
+    carved?: CarvedKind;
+    /** Korkuluk gereken kenarlar (oyulmuş teraslarda) */
+    rails?: Side[];
+  }[];
+  /** Kütle oyumuyla boş kalan (altında da hacim olmayan) alanlar */
+  voids?: Rect[];
+  /** Açık plan kenarları (duvarsız komşu mekânlar) */
+  openEdges?: OpenEdge[];
   /** Sürüklenebilir sütun sınırları (iç sınırların x değerleri) */
   cols: { band: "front" | "back"; key: string; xs: number[] }[];
   /** Dubleks dairelerin iç merdivenleri */
@@ -91,6 +102,8 @@ export interface BuildingLayout {
   apartment?: boolean;
   /** Merdiven hesabı ve yönü (yoksa eski hol bandı merdiveni) */
   stairInfo?: StairInfo;
+  /** Uygulanan kütle artikülasyonu (yoksa sade dikdörtgen kutu) */
+  massing?: { features: MassFeature[]; notes: string[] };
 }
 
 /** Açık otopark / araç park yeri (bina oturumuna ve kat planına girmez). */
@@ -132,7 +145,14 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
   if (program.floors.some((f) => (f as ApFloor).units?.length)) return apartmentLayout(program, design);
   if (!(design as UnitDesign).unitMode) {
     const L = houseLayout(program, design);
-    if (L) return L;
+    if (L) {
+      const spec = effectiveMassing(program, design);
+      if (spec.features.length) {
+        const r = applyMassing(L, program, spec, { ext: EXT, int: INT, groundLevel: groundLevelOf(program), cutWalls: cutWallLines, subtract: subtractOpenings });
+        if (!L.massing && r.notes.length) L.massing = { features: [], notes: r.notes };
+      }
+      return L;
+    }
   }
   const L = legacyLayout(program, design);
   if (L.stair) L.stairInfo = legacyStairInfo(L.stair, L.H);
@@ -1137,10 +1157,26 @@ function pickCut(floors: FloorLayout[], W: number, x0: number) {
 
 const CORRIDOR = 1.25;
 
+/** Kütle oyumu için banda konan yer tutucu mahal (yerleşimden sonra dış mekâna çevrilir). */
+export const POCKET = { court: "__avlu__", terrace: "__teras__" } as const;
+export const isPocket = (r: { name: string }) => r.name === POCKET.court || r.name === POCKET.terrace;
+
 function houseLayout(program: Program, design: DesignOptions): BuildingLayout | null {
   const variant = design.variant ?? 0;
-  const W = round2(program.footprint.width);
-  const D = round2(program.footprint.depth);
+  const mspec = effectiveMassing(program, design);
+  const flatRoof = program.roof === "duz";
+  const aboveFloors = program.floors.filter((f) => f.level >= groundLevelOf(program));
+  const wantCourt = flatRoof && mspec.features.includes("kose_oyugu");
+  const wantTerrace = flatRoof && aboveFloors.length > 1 && mspec.features.includes("ust_kat_teras");
+  const courtW = Math.min(4.5, Math.max(1.8, mspec.notchDepth ?? 2.6));
+  const terraceW = Math.min(4.5, Math.max(1.8, mspec.terraceDepth ?? 2.6));
+  // L kütle: oyulan köşe kadar oturum genişler (kat alanı korunur)
+  // konsol: zemin kat geri çekilince odalar küçülmesin diye oturum biraz büyür (fark üst katta çıkma olur)
+  const cant = Math.min(3, Math.max(1, mspec.cantilever ?? 1.5));
+  const multiAbove = aboveFloors.length > 1;
+  const kon = (k: string) => multiAbove && mspec.features.includes(k as never);
+  const W = round2(program.footprint.width + (wantCourt ? courtW * 0.85 : 0) + (kon("yan_konsol") ? (cant + 0.5) * 0.6 : 0));
+  const D = round2(program.footprint.depth + (kon("on_konsol") ? cant * 0.6 : 0) + (kon("arka_konsol") ? cant * 0.6 : 0));
   const H = program.floorHeight;
   const multi = program.floors.length > 1;
   if (W < 6 || D < 6.5) return null;
@@ -1160,6 +1196,7 @@ function houseLayout(program: Program, design: DesignOptions): BuildingLayout | 
 
   // Boydan boya uç mekân (salon): kat alanından payı oranında genişlik
   const ends = assignments.map((a) => {
+    if (wantCourt) return null; // köşe oyuğu sağ uçta; boydan boya salon yerine bantlar köşeye kadar uzanır
     const all = [...a.front, ...a.back];
     if (all.length < 4) return null;
     const cand = all.filter((r) => r.type === "salon").sort((p, q) => q.area - p.area)[0];
@@ -1224,6 +1261,37 @@ function houseLayout(program: Program, design: DesignOptions): BuildingLayout | 
     const bw = xEnd - (stair && stairBand === "back" ? stair.w : 0);
     fitWidths(a, fw, bw, frontDepth, D - frontDepth - hallDepth);
   });
+
+  // Kütle oyukları: arka bandın sağ ucuna yer tutucu sütun (köşe avlusu bütün katlarda, teras en üst katta)
+  if (wantCourt || wantTerrace) {
+    const bd = D - frontDepth - hallDepth;
+    const topIdx = program.floors.indexOf(aboveFloors[aboveFloors.length - 1]);
+    assignments.forEach((a, i) => {
+      if (program.floors[i].level < groundLevelOf(program)) return;
+      const xEnd = W - (ends[i]?.w ?? 0);
+      const B = xEnd - (stair && stairBand === "back" ? stair.w : 0);
+      const need = a.back.reduce((s, r) => s + Math.max(MIN_WIDTH[r.type] ?? 2.4, (r.area * 0.8) / Math.max(1, bd)), 0);
+      let free = B - need;
+      const add = (name: string, w: number) => {
+        const pw = Math.min(w, free);
+        if (pw < 1.8) return;
+        const T = sumArea(a.back);
+        const area = T > 0 ? (pw * T) / Math.max(0.5, B - pw) : pw * bd;
+        a.back.push({ name, type: "diger", zone: "dis", area: round2(Math.max(2, area)), note: "" });
+        free -= pw;
+      };
+      if (wantCourt) add(POCKET.court, courtW);
+      if (wantTerrace && i === topIdx) {
+        // teras avlunun yanında (avlu sağ köşede kalır)
+        const n = a.back.length;
+        add(POCKET.terrace, terraceW);
+        if (a.back.length > n && a.back[n - 1] && a.back[n - 1].name === POCKET.court) {
+          const [t] = a.back.splice(n, 1);
+          a.back.splice(n - 1, 0, t);
+        }
+      }
+    });
+  }
 
   const floors = program.floors.map((f, i) =>
     houseFloor(f.level, f.name, assignments[i], ends[i], {
@@ -1315,7 +1383,7 @@ function houseFloor(level: number, name: string, asg: Assignment, end: { room: R
   let wallLines = buildWallLines(wallRooms, W, D);
   wallLines = cutWallLines(wallLines, openEdges);
   const walls = subtractOpenings(wallLines, openings);
-  return { level, name, z: level * ctx.H, rooms: placed, openings, walls, wallLines, outdoor, cols };
+  return { level, name, z: level * ctx.H, rooms: placed, openings, walls, wallLines, outdoor, cols, openEdges };
 }
 
 /** İç duvar çizgilerinden verilen kenar parçalarını çıkarır (açık plan). */

@@ -9,6 +9,7 @@ import { blockView } from "../src/geometry/blocks";
 import { SAMPLE_PROGRAM } from "../src/sample";
 import { SITE_PROGRAM } from "../src/sample-site";
 import type { Program, Room, RoomType, Zone } from "../src/shared/schema";
+import { MASS_FEATURES, openingFacing } from "../src/geometry/massing";
 
 let failures = 0;
 let checks = 0;
@@ -62,7 +63,10 @@ function checkFloor(L: BuildingLayout, fl: FloorLayout, ctx: string, groundLevel
       const o = inter(rooms[i].rect, rooms[j].rect);
       if (o > 0.05) fail(ctx, `${rooms[i].name} ile ${rooms[j].name} üst üste (${o.toFixed(2)} m²)`);
     }
-  const cover = rooms.reduce((s, r) => s + r.rect.w * r.rect.h, 0) + (fl.stairs ?? []).reduce((s, r) => s + r.w * r.h, 0);
+  const carved = fl.outdoor.filter((o) => o.carved).map((o) => o.rect).concat(fl.voids ?? []);
+  for (const c of carved) for (const r of rooms) if (inter(c, r.rect) > 0.05) fail(ctx, `${r.name} oyulan alanla çakışıyor`);
+  if (L.massing) for (const o of fl.openings) if (o.exterior && !openingFacing(fl, L, o)) fail(ctx, `${o.kind} dış duvarda değil (${o.orient} ${o.line.toFixed(2)} / ${o.center.toFixed(2)})`);
+  const cover = rooms.reduce((s, r) => s + r.rect.w * r.rect.h, 0) + (fl.stairs ?? []).reduce((s, r) => s + r.w * r.h, 0) + carved.reduce((s, r) => s + r.w * r.h, 0);
   if (Math.abs(cover - L.W * L.D) > L.W * L.D * 0.02) fail(ctx, `mahaller kat alanını doldurmuyor (${cover.toFixed(1)} / ${(L.W * L.D).toFixed(1)} m²)`);
 
   // erişim: zemin katta girişin olduğu mahalden, diğer katlarda merdivenden
@@ -173,6 +177,39 @@ for (let i = 0; i < N; i++) {
   }
   checkProgram(p, `r${i}`);
 }
+
+// ---- kütle artikülasyonu: konsol, teras, köşe oyuğu (düz çatı)
+const COMBOS = [["on_konsol"], ["arka_konsol"], ["yan_konsol"], ["ust_kat_teras"], ["kose_oyugu"], ["on_konsol", "ust_kat_teras"], ["kose_oyugu", "on_konsol"], [...MASS_FEATURES]];
+const appliedCount = new Map<string, number>();
+function baseFails(base: Program, variant: number) {
+  const before = failures, c = checks;
+  const L = buildLayout({ ...base, roof: "duz" } as Program, { variant });
+  const ground = L.floors.find((f) => f.level >= 0)?.level ?? L.floors[0].level;
+  const quiet = console.log;
+  console.log = () => {};
+  for (const fl of L.floors) checkFloor(L, fl, "taban", ground);
+  console.log = quiet;
+  const bad = failures > before;
+  failures = before; checks = c;
+  return bad;
+}
+const M = Number(process.env.M ?? 40);
+console.log(`Kütle: ${M} program × ${COMBOS.length} birleşim`);
+for (let i = 0; i < M; i++) {
+  const base = randomHouse(1000 + i);
+  for (const c of COMBOS) {
+    const p = { ...base, roof: "duz", massing: { features: c, cantilever: 1.5, terraceDepth: 2.6, notchDepth: 2.6, rationale: "" } } as Program;
+    for (const v of VARIANTS) {
+      // yerleşim motorunun kütlesiz hâlinde zaten sorunlu olan programlar (ör. tek katlı dar wc) burada sayılmaz
+      if (baseFails(base, v.id)) continue;
+      const L = buildLayout(p, { variant: v.id });
+      for (const f of L.massing?.features ?? []) appliedCount.set(f, (appliedCount.get(f) ?? 0) + 1);
+      const ground = L.floors.find((f) => f.level >= 0)?.level ?? L.floors[0].level;
+      for (const fl of L.floors) checkFloor(L, fl, `m${i} ${c.join("+")} ${v.short} ${fl.name}`, ground);
+    }
+  }
+}
+console.log("Uygulanan kütle özellikleri:", Object.fromEntries(appliedCount));
 
 devs.sort((a, b) => a - b);
 const q = (k: number) => devs[Math.floor((devs.length - 1) * k)] * 100;

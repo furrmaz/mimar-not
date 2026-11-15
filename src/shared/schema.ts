@@ -98,6 +98,21 @@ export const FacadeSchema = z
   .describe("Cephenin görsel dili: referans görsel varsa ondan birebir oku; yoksa üsluptan çıkar. 3D model ve gerçekçi render bunu kullanır");
 export type Facade = z.infer<typeof FacadeSchema>;
 
+export const MassingSchema = z
+  .object({
+    features: z
+      .array(z.string())
+      .describe(
+        "Kütle artikülasyonu; yalnız şunlardan seç (birden çok olabilir, sade kutu için boş liste): on_konsol (zemin kat sokak cephesinde geri çekilir, üst kat konsol olarak taşar, altı giriş sundurması), arka_konsol (zemin kat bahçe tarafında geri çekilir, altı gölgeli kapalı teras), yan_konsol (zemin kat bir yandan geri çekilir, üst kat yana taşar; araç sundurması), ust_kat_teras (en üst kat bahçe tarafında geri çekilir, alt katın çatısı teras olur; düz çatı ister), kose_oyugu (bahçe köşesi bütün katlarda oyulur, L kütle + avlu; düz çatı ister)",
+      ),
+    cantilever: z.number().describe("Konsol / kapalı çıkma derinliği (m); yönetmelik sınırı 1.5, tipik 1.2-1.5; arsa izin veriyorsa ve zemin kat geri çekiliyorsa 2.4'e kadar"),
+    terraceDepth: z.number().describe("Kademeli teras derinliği (m), tipik 2.4-3.0"),
+    notchDepth: z.number().describe("Köşe oyuğu derinliği (m), tipik 2.4-3.5"),
+    rationale: z.string().describe("Kütle kararının 1 cümlelik gerekçesi (üslup, manzara, güneş, giriş, imar)"),
+  })
+  .describe("Binanın kütle biçimi: modern/çağdaş üslupta girintili-çıkıntılı kütle; geleneksel/klasik üslupta ya da müşteri sade kutu istiyorsa boş liste. Uygulama planı, kesiti, cepheyi ve 3D'yi buna göre oyar");
+export type Massing = z.infer<typeof MassingSchema>;
+
 export const ProgramSchema = z.object({
   projectName: z.string(),
   clientName: z.string().describe("Müşteri adı; notlarda yoksa boş metin"),
@@ -133,6 +148,7 @@ export const ProgramSchema = z.object({
     })
     .describe("Üsluptan (ve varsa referans görsellerden) çıkarılan cephe malzemeleri; 3D ve cephe çizimleri bunu kullanır"),
   facade: FacadeSchema,
+  massing: MassingSchema,
   floors: z.array(FloorSchema),
   adjacencies: z
     .array(
@@ -171,9 +187,13 @@ export interface DesignOptions {
   frontDepth?: number;
   /** "<kat>-<bant>" → sütun sınırlarının x koordinatları */
   cols?: Record<string, number[]>;
+  /** Mimarın seçtiği kütle biçimi (programdakini geçersiz kılar) */
+  massing?: Massing;
 }
 export type Requirement = z.infer<typeof ProgramSchema>["requirements"][number];
-export type Program = Omit<z.infer<typeof ProgramSchema>, "floors" | "unitTypes" | "blocks" | "blockSpacing" | "facade" | "requirements" | "imageReadings"> & {
+export type Program = Omit<z.infer<typeof ProgramSchema>, "floors" | "unitTypes" | "blocks" | "blockSpacing" | "facade" | "requirements" | "imageReadings" | "massing"> & {
+  /** Eski proje dosyalarında yoktur (sade kutu) */
+  massing?: Massing;
   /** Eski proje dosyalarında yoktur */
   facade?: Facade;
   requirements?: Requirement[];
@@ -239,9 +259,23 @@ export function normalizeFacade(f: Partial<Facade> | undefined, m: Materials = D
     cornice: Boolean(f?.cornice),
   };
 }
+const MASS_KEYS = ["on_konsol", "arka_konsol", "yan_konsol", "ust_kat_teras", "kose_oyugu"];
+/** Kütle özelliklerini doğrular (bilinmeyenleri atar). */
+export function normalizeMassing(m: Partial<Massing> | undefined): Massing {
+  const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : d);
+  const norm = (t: string) => String(t).toLocaleLowerCase("tr").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ö/g, "o").replace(/ü/g, "u").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/[\s-]+/g, "_").trim();
+  return {
+    features: Array.from(new Set((Array.isArray(m?.features) ? m!.features : []).map(norm).filter((f) => MASS_KEYS.includes(f)))),
+    cantilever: Math.min(3, num(m?.cantilever, 1.5)),
+    terraceDepth: Math.min(4.5, num(m?.terraceDepth, 2.6)),
+    notchDepth: Math.min(4.5, num(m?.notchDepth, 2.6)),
+    rationale: String(m?.rationale ?? ""),
+  };
+}
 export function normalizeProgram(w: ProgramWire): Program {
   return {
     ...w,
+    massing: normalizeMassing(w.massing),
     facade: normalizeFacade(w.facade, w.materials),
     floors: w.floors.map((f) => ({ ...f, rooms: f.rooms.map(fixRoom) })),
     unitTypes: w.unitTypes.map((u) => ({ ...u, rooms: u.rooms.map(fixRoom) })),
