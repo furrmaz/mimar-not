@@ -12,7 +12,7 @@ Windows / Android / tarayıcı  ──►  Planhane sunucusu (sizin)  ──► 
 
 1. **Anthropic (Claude)**: <https://platform.claude.com> → hesap açın, kredi yükleyin, **Settings → Keys** bölümünden bir API anahtarı oluşturun. **Settings → Limits** bölümünden aylık harcama sınırı koyun (ör. 200 $); beklenmedik bir durumda faturanız bu sınırı aşmaz.
 2. **Higgsfield (gerçekçi render, isteğe bağlı)**: <https://cloud.higgsfield.ai> → API Keys → Key ID ve Secret. Bakiye yükleyin. Boş bırakırsanız render kapalı olur.
-3. **Yönetici parolası**: en az 12 karakterlik, tahmin edilemez bir parola belirleyin (`ADMIN_TOKEN`).
+3. **Yönetici girişi**: yönetim paneli için bir kullanıcı adı ve en az 12 karakterlik, tahmin edilemez bir parola belirleyin (`ADMIN_USER` + `ADMIN_PASSWORD_HASH`; kendi sunucunuzda `sudo bash deploy/set-admin.sh` bunu sizin için yapar). Eski usul tek parola `ADMIN_TOKEN` hâlâ çalışır.
 
 ## 2. Sunucuyu yayına alma
 
@@ -56,7 +56,8 @@ Sonunda site, panel adresi ve yönetici parolası ekrana yazılır ve `/root/mim
 | Değişken | Açıklama |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API anahtarı (zorunlu) |
-| `ADMIN_TOKEN` | Yönetim paneli parolası, en az 12 karakter (zorunlu) |
+| `ADMIN_USER`, `ADMIN_PASSWORD_HASH` | Yönetim paneli kullanıcı adı ve parola özeti (`scrypt:…:…`). Özet: `echo -n 'parola' \| node cloud-dist/server.cjs hash-password`; sunucuda `sudo bash deploy/set-admin.sh` sorar ve yazar. Özet yerine düz `ADMIN_PASSWORD` da verilebilir |
+| `ADMIN_TOKEN` | Eski usul tek parola, en az 12 karakter. Kullanıcı adı tanımlıysa boş bırakın (biri tanımlı olmalı) |
 | `DATA_DIR` | Veritabanı klasörü; Docker'da `/data` (kalıcı disk) |
 | `HF_API_KEY_ID`, `HF_API_KEY_SECRET` | Higgsfield anahtarı (render için) |
 | `PAY_BANK`, `PAY_HOLDER`, `PAY_IBAN` | Havale bilgileri: banka, hesap sahibi, IBAN |

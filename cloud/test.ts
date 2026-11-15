@@ -5,6 +5,7 @@ import path from "node:path";
 import { openDB } from "./db";
 import { writeRenderPrompt } from "../src/shared/renderprompt";
 import { createCloudApp } from "./server";
+import { hashAdminPassword } from "./adminauth";
 import { SAMPLE_PROGRAM } from "../src/sample";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mn-"));
@@ -128,6 +129,41 @@ const wait = async (tok: string, id: string) => { for (;;) { await new Promise((
   // kapatma
   await call(`/api/admin/users/${uid}/update`, { admin: true, body: { disabled: true } });
   ok((await call("/api/auth/login", { body: { email: "mimar@ofis.com", password: r.j.password } })).s === 403, "kapalı hesap giremez");
+  // yönetici: ADMIN_TOKEN ile form girişi (kullanıcı adı tanımsız) ve çerez
+  {
+    const info = await call("/api/admin/login");
+    ok(info.j.userLogin === false && info.j.tokenLogin === true, "giriş bilgisi: yalnız token");
+    const bad = await fetch(base + "/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "yanlis-parola-xx" }) });
+    ok(bad.status === 401, "yanlış token formu 401");
+    const g = await fetch(base + "/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "admin-secret-123" }) });
+    const ck = (g.headers.get("set-cookie") ?? "").split(";")[0];
+    ok(g.ok && ck.startsWith("pn_admin=") && /HttpOnly/.test(g.headers.get("set-cookie") ?? ""), "token ile giriş çerez verdi");
+    ok((await fetch(base + "/api/admin/stats", { headers: { Cookie: ck } })).ok, "çerezle istatistik");
+  }
+  // yönetici: kullanıcı adı + parola, ADMIN_TOKEN kapalı
+  {
+    const app2 = createCloudApp({ db, anthropicKey: "x", adminToken: "", adminLogin: { user: "Furkan", hash: hashAdminPassword("cok-gizli-parola-42") }, payment: { bank: "", holder: "", iban: "", email: "", whatsapp: "", company: "", address: "" }, claudeClient: fake });
+    const s2 = app2.listen(0);
+    const b2 = `http://127.0.0.1:${(s2.address() as { port: number }).port}`;
+    const login = (username: string, password: string) => fetch(b2 + "/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+    ok((await (await fetch(b2 + "/api/admin/login")).json()).userLogin === true, "giriş bilgisi: kullanıcı adı");
+    ok((await fetch(b2 + "/api/admin/stats", { headers: { "X-Admin-Token": "admin-secret-123" } })).status === 401, "token kapalıyken başlık reddedildi");
+    ok((await login("Furkan", "yanlis-parola-xx")).status === 401, "yanlış parola 401");
+    ok((await login("baska", "cok-gizli-parola-42")).status === 401, "yanlış kullanıcı 401");
+    ok((await login("", "admin-secret-123")).status === 401, "token kapalıyken token ile giriş yok");
+    const g = await login("furkan", "cok-gizli-parola-42");
+    const ck = (g.headers.get("set-cookie") ?? "").split(";")[0];
+    ok(g.ok && ck.length > 20, "kullanıcı adı + parola ile giriş");
+    ok((await fetch(b2 + "/api/admin/stats", { headers: { Cookie: ck } })).ok, "oturum çereziyle istatistik");
+    ok((await fetch(b2 + "/api/admin/stats", { headers: { Cookie: ck.slice(0, -2) + "xx" } })).status === 401, "bozuk çerez 401");
+    // başka parola özetiyle çalışan sunucu bu çerezi kabul etmez (parola değişince oturumlar düşer)
+    const app3 = createCloudApp({ db, anthropicKey: "x", adminToken: "", adminLogin: { user: "Furkan", hash: hashAdminPassword("cok-gizli-parola-43") }, payment: { bank: "", holder: "", iban: "", email: "", whatsapp: "", company: "", address: "" }, claudeClient: fake });
+    const s3 = app3.listen(0);
+    ok((await fetch(`http://127.0.0.1:${(s3.address() as { port: number }).port}/api/admin/stats`, { headers: { Cookie: ck } })).status === 401, "parola değişince eski oturum geçersiz");
+    const out = await fetch(b2 + "/api/admin/logout", { method: "POST" });
+    ok(/Max-Age=0/.test(out.headers.get("set-cookie") ?? ""), "çıkış çerezi siler");
+    s2.close(); s3.close();
+  }
   srv.close();
   process.exit();
 })();

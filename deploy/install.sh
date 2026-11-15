@@ -132,6 +132,7 @@ Site:            $URL
 Web uygulaması:  $URL/app/
 Yönetim paneli:  $URL/admin/
 Yönetici parolası (ADMIN_TOKEN): $ADMIN
+Kullanıcı adı + parola belirlemek için: sudo bash $DIR/deploy/set-admin.sh
 Ayarlar:         $DIR/deploy/.env
 Güncelleme:      sudo bash $DIR/deploy/install.sh
 Kayıtlar:        cd $DIR/deploy && docker compose logs -f app

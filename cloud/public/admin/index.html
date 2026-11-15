@@ -42,8 +42,12 @@
 <body>
 <div id="login" hidden>
   <h2 style="margin-top:0">Planhane Yönetim</h2>
-  <p class="muted small">Sunucudaki ADMIN_TOKEN değerini girin.</p>
-  <form id="loginForm"><input id="tok" type="password" placeholder="Yönetici parolası" autocomplete="current-password" /><button class="primary" style="width:100%">Giriş</button></form>
+  <p class="muted small" id="loginHint">Yönetici kullanıcı adı ve parolanızı girin.</p>
+  <form id="loginForm">
+    <input id="user" name="username" placeholder="Kullanıcı adı" autocomplete="username" autocapitalize="none" spellcheck="false" />
+    <input id="pw" name="password" type="password" placeholder="Parola" autocomplete="current-password" />
+    <button class="primary" style="width:100%">Giriş</button>
+  </form>
   <div id="loginErr" class="msg err" hidden></div>
 </div>
 
@@ -72,23 +76,37 @@ const dt = (t) => (t ? new Date(t).toLocaleString("tr-TR") : "–");
 const tl = (n) => `${Number(n || 0).toLocaleString("tr-TR")} TL`;
 const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
 const ST = { trial: "Deneme", active: "Abone", frozen: "Donduruldu", expired: "Süresi doldu", disabled: "Kapalı" };
-let token = sessionStorage.getItem("mn.admin") || "";
+sessionStorage.removeItem("mn.admin"); // eski sürümün sakladığı parola
 let plans = [];
 let all = [];
 
 async function api(path, body) {
-  const r = await fetch(path, { method: body ? "POST" : "GET", headers: { "X-Admin-Token": token, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(path, { method: body ? "POST" : "GET", credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
-  if (r.status === 401) { showLogin(j.error); throw new Error(j.error); }
+  if (r.status === 401) { showLogin(); throw new Error(j.error); }
   if (!r.ok) throw new Error(j.error || `Hata ${r.status}`);
   return j;
 }
-function showLogin(e) { $("#app").hidden = true; $("#detail").hidden = true; $("#login").hidden = false; if (e && token) { $("#loginErr").hidden = false; $("#loginErr").textContent = e; } }
-$("#loginForm").onsubmit = async (e) => { e.preventDefault(); token = $("#tok").value.trim(); sessionStorage.setItem("mn.admin", token); await load(); };
-$("#logout").onclick = () => { token = ""; sessionStorage.removeItem("mn.admin"); showLogin(); };
+function showLogin(e) {
+  $("#app").hidden = true; $("#detail").hidden = true; $("#login").hidden = false;
+  $("#loginErr").hidden = !e; $("#loginErr").textContent = e || "";
+  fetch("/api/admin/login").then((r) => r.json()).then((i) => {
+    if (!i.userLogin) { $("#user").hidden = true; $("#loginHint").textContent = i.tokenLogin ? "Kullanıcı adı henüz tanımlanmadı. Sunucudaki ADMIN_TOKEN değerini parola olarak girin." : "Yönetici girişi sunucuda tanımlanmamış."; }
+    ($("#user").hidden ? $("#pw") : $("#user")).focus();
+  }).catch(() => {});
+}
+$("#loginForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await fetch("/api/admin/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: $("#user").value.trim(), password: $("#pw").value }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { $("#loginErr").hidden = false; $("#loginErr").textContent = j.error || `Hata ${r.status}`; return; }
+  $("#pw").value = ""; $("#loginErr").hidden = true;
+  await load().catch(() => {});
+};
+$("#logout").onclick = async () => { await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" }).catch(() => {}); showLogin(); };
 $("#refresh").onclick = () => load();
 $("#backup").onclick = async () => {
-  const r = await fetch("/api/admin/backup", { headers: { "X-Admin-Token": token } });
+  const r = await fetch("/api/admin/backup", { credentials: "same-origin" });
   if (!r.ok) return alert("Yedek alınamadı");
   const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `mimarnot-yedek-${new Date().toISOString().slice(0, 10)}.db`; a.click();
 };
@@ -187,7 +205,7 @@ async function openUser(id, note) {
   $("#saveNote").onclick = () => act(() => api(`/api/admin/users/${id}/update`, { note: $("#unote").value }), "Not kaydedildi.");
 }
 
-token ? load().catch(() => {}) : showLogin();
+load().catch(() => {});
 </script>
 </body>
 </html>

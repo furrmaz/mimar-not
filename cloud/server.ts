@@ -12,13 +12,17 @@ import { claudeCost, entitlement, loadPlans, loadTrial, type Plan } from "./plan
 import { generateWithClaude, GenerateError, DEFAULT_MODEL, type GenerateRequest } from "../src/shared/generate";
 import { renderWithHiggsfield, RENDER_MODELS, type RenderRequest } from "../src/shared/render";
 import { writeRenderPrompt } from "../src/shared/renderprompt";
+import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminSessions, checkAdminPassword, readCookie } from "./adminauth";
 
 export interface CloudOptions {
   db: DB;
   anthropicKey: string;
   model?: string;
   higgsfield?: { keyId: string; secret: string };
+  /** Eski usul tek parola (X-Admin-Token başlığı ya da giriş formu). Boşsa kapalı. */
   adminToken: string;
+  /** Kullanıcı adı + parola girişi (parola scrypt özeti, bkz. adminauth.ts) */
+  adminLogin?: { user: string; hash: string };
   /** Havale/EFT bilgileri ve iletişim (abone ol ekranında gösterilir) */
   payment: { bank: string; holder: string; iban: string; email: string; whatsapp: string; company: string; address: string };
   /** Test için Claude istemcisi üretimi */
@@ -299,11 +303,37 @@ export function createCloudApp(o: CloudOptions) {
   });
 
   // ---------- yönetim ----------
+  const adminSess = adminSessions(`${o.adminLogin?.user ?? ""}|${o.adminLogin?.hash ?? ""}|${o.adminToken}`);
+  const adminLoginLimit = limiter(10, 15 * 60_000);
+  const adminCookie = (req: Request, value: string, maxAgeMs: number) =>
+    `${ADMIN_COOKIE}=${value}; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(maxAgeMs / 1000)}${req.secure ? "; Secure" : ""}`;
   const admin = (req: Request, res: Response, next: NextFunction) => {
     const t = req.get("x-admin-token") ?? "";
-    if (!o.adminToken || !t || !safeEq(t, o.adminToken)) { res.status(401).json({ error: "Yönetici parolası hatalı." }); return; }
-    next();
+    if (t && o.adminToken && safeEq(t, o.adminToken)) { next(); return; }
+    const c = readCookie(req.get("cookie"), ADMIN_COOKIE);
+    if (c && adminSess.verify(c) !== null) { next(); return; }
+    res.status(401).json({ error: c ? "Oturumun süresi doldu, yeniden giriş yapın." : "Giriş yapın." });
   };
+
+  app.get("/api/admin/login", (_req, res) => {
+    res.json({ userLogin: Boolean(o.adminLogin), tokenLogin: Boolean(o.adminToken) });
+  });
+  app.post("/api/admin/login", (req, res) => {
+    const user = String(req.body?.username ?? "").trim();
+    const pw = String(req.body?.password ?? "");
+    if (!adminLoginLimit(req.ip ?? "?")) { res.status(429).json({ error: "Çok fazla deneme. 15 dakika sonra tekrar deneyin." }); return; }
+    let who: string | null = null;
+    if (o.adminLogin && user && pw && user.toLowerCase() === o.adminLogin.user.toLowerCase() && checkAdminPassword(pw, o.adminLogin.hash)) who = o.adminLogin.user;
+    // Kullanıcı adı tanımlanmadıysa eski ADMIN_TOKEN parola alanından girilebilir
+    else if (o.adminToken && pw && (!o.adminLogin || !user) && safeEq(pw, o.adminToken)) who = "token";
+    if (!who) { res.status(401).json({ error: o.adminLogin ? "Kullanıcı adı ya da parola hatalı." : "Yönetici parolası hatalı." }); return; }
+    res.setHeader("Set-Cookie", adminCookie(req, adminSess.issue(who), ADMIN_SESSION_MS));
+    res.json({ ok: true, user: who });
+  });
+  app.post("/api/admin/logout", (req, res) => {
+    res.setHeader("Set-Cookie", adminCookie(req, "", 0));
+    res.json({ ok: true });
+  });
   const adminUser = (u: UserRow) => {
     const e = entitlement(db, u, plans());
     const cost = db.prepare("SELECT COALESCE(SUM(cost_usd),0) AS c FROM usage WHERE user_id=? AND at>=?").get(u.id, e.periodStart) as { c: number };
