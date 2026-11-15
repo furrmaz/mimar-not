@@ -91,7 +91,11 @@ src/App.tsx              Arayüz
 
 ## Yerleşim yöntemi (sınırlar)
 
-Her kat üç banda ayrılır: sokak tarafı (gündüz mekânları), ortada hol + U merdiven (katlar arasında hizalı), bahçe tarafı (gece mekânları). Bant derinlikleri katların alan paylarından, oda genişlikleri alanlardan hesaplanır; ebeveyn odası, giyinme ve banyosu birlikte tutulur. Bu bir **eskiz** üreticisidir: dikdörtgen oturumlu, bant tipli planlar üretir. Serbest formlu planlar, statik aks sistemi ve mevzuatın tüm ayrıntıları (emsal harici alanlar, otopark, sığınak vb.) kapsam dışıdır.
+Her kat üç banda ayrılır: sokak tarafı (gündüz mekânları), ortada 1.25 m'lik dar koridor, bahçe tarafı (gece mekânları). v0.9 itibarıyla merdiven koridora dik, kendi bant kolonunda durur (U dönüşlü, rıht ≤ 18 cm, 2r + b ≈ 63 cm; sahanlık cephede), katlar arasında hizalıdır. Salon iki bandı kaplayan uç oda olabilir, açık mutfak salonla aynı hacimde çizilir, ebeveyn yatak – giyinme – ebeveyn banyosu süit sırasıyla dizilir. Apartmanda daire genişlikleri alanına göre ayarlanır, asansörlü çekirdekte kat holü merdiven ve asansöre doğrudan bağlanır. Plan ve DXF'te üç sıra dış ölçü zinciri (açıklıklar, odalar, toplam) ve kuzey oku vardır.
+
+`npm run test:layout` rastgele programlarla planları denetler (her mekâna kapıdan ulaşılabilirlik, ıslak hacimden geçmeme, asgari genişlik, çakışma, merdivenin katlar arasında hizası). `N=300` ile daha çok örnek, `SHOW=1` ile sorunlu planların ayrıntısı.
+
+Bu bir **eskiz** üreticisidir: dikdörtgen oturumlu, bant tipli planlar üretir. Serbest formlu planlar, statik aks sistemi ve mevzuatın tüm ayrıntıları (emsal harici alanlar, otopark, sığınak vb.) kapsam dışıdır.
 
 ## Model
 

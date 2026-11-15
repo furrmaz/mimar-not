@@ -69,7 +69,7 @@ const wait = async (tok: string, id: string) => { for (;;) { await new Promise((
   r = await call(`/api/admin/users/${uid}/activate`, { admin: true, body: { plan: "profesyonel", months: 3, note: "dekont 123" } });
   ok(r.s === 200 && r.j.status === "active" && r.j.limits.generate === 80 && r.j.used.generate === 0, "abonelik açıldı, dönem sıfırlandı");
   r = await call(`/api/admin/users/${uid}`, { admin: true });
-  ok(r.j.payments[0].amount_try === 5970, "ödeme kaydı 3×1990");
+  ok(r.j.payments[0].amount_try === 7470, "ödeme kaydı 3×2490");
   // abone iken üretim + iptal
   delay = 3000;
   r = await call("/api/jobs/generate", { tok, body: { notes: "2 katlı villa, 3 yatak odası" } });
@@ -100,6 +100,31 @@ const wait = async (tok: string, id: string) => { for (;;) { await new Promise((
   r = await call(`/api/admin/users/${uid}/reset-password`, { admin: true, body: {} });
   ok((await call("/api/me", { tok })).s === 401, "sıfırlamada oturum kapandı");
   ok((await call("/api/auth/login", { body: { email: "mimar@ofis.com", password: r.j.password } })).s === 200, "yeni parolayla giriş");
+  // dondurma: kalan süre korunur, üretim engellenir, açılınca süre ileri kayar
+  {
+    const before = (await call(`/api/admin/users/${uid}`, { admin: true })).j.user;
+    const tok2 = (await call("/api/auth/login", { body: { email: "mimar@ofis.com", password: r.j.password } })).j.token;
+    let f = await call(`/api/admin/users/${uid}/update`, { admin: true, body: { freeze: true, freezeNote: "tatil" } });
+    ok(f.j.status === "frozen" && f.j.frozenNote === "tatil" && Math.abs(f.j.frozenLeft - (before.planUntil - Date.now())) < 5000, "üyelik donduruldu, kalan süre korunuyor");
+    ok((await call("/api/me", { tok: tok2 })).j.status === "frozen", "kullanıcı dondurulmuş durumu görür");
+    const g = await call("/api/jobs/generate", { tok: tok2, body: { notes: "2 katlı villa, 3 yatak odası" } });
+    ok(g.s === 403 && g.j.code === "frozen" && /donduruldu/.test(g.j.error), "dondurulmuşken üretim engellendi: " + g.j.error);
+    ok((await call("/api/admin/stats", { admin: true })).j.frozen === 1, "istatistikte dondurulan sayısı");
+    db.prepare("UPDATE users SET frozen_at=frozen_at-? WHERE id=?").run(10 * 86_400_000, uid); // 10 gün önce dondurulmuş gibi
+    f = await call(`/api/admin/users/${uid}/update`, { admin: true, body: { freeze: false } });
+    const shift = f.j.planUntil - before.planUntil;
+    ok(f.j.status === "active" && Math.abs(shift - 10 * 86_400_000) < 60_000 && f.j.planStart - before.planStart === shift, `dondurma kaldırıldı, bitiş ${Math.round(shift / 86_400_000)} gün ileri kaydı`);
+    // ödeme işlenince dondurma da kalkar
+    await call(`/api/admin/users/${uid}/update`, { admin: true, body: { freeze: true } });
+    f = await call(`/api/admin/users/${uid}/activate`, { admin: true, body: { plan: "profesyonel", months: 1 } });
+    ok(f.j.status === "active", "ödeme dondurulmuş üyeliği açtı");
+    // deneme kullanıcısı da dondurulabilir
+    const oid = (await call("/api/admin/users?q=b@c.de", { admin: true })).j[0].id;
+    f = await call(`/api/admin/users/${oid}/update`, { admin: true, body: { freeze: true } });
+    ok(f.j.status === "frozen" && f.j.frozenLeft > 6 * 86_400_000, "deneme dondurulabildi");
+    f = await call(`/api/admin/users/${oid}/update`, { admin: true, body: { freeze: false } });
+    ok(f.j.status === "trial", "deneme dondurması kaldırıldı");
+  }
   // kapatma
   await call(`/api/admin/users/${uid}/update`, { admin: true, body: { disabled: true } });
   ok((await call("/api/auth/login", { body: { email: "mimar@ofis.com", password: r.j.password } })).s === 403, "kapalı hesap giremez");

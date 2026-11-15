@@ -13,7 +13,7 @@ const loadPref = (): Pref => {
   const d: Pref = { modelId: RENDER_MODELS[0].id, customPath: "", hi: true, useRefs: true, aspect: "auto", autoPrompt: true, v: 2 };
   try {
     const p = { ...d, ...JSON.parse(localStorage.getItem(PREF) ?? "{}") } as Pref;
-    // v0.8.0: varsayılan model açıyı koruyan Qwen Edit, oran görünümle aynı
+    // v0.11.0: varsayılan model açıyı koruyan Qwen Edit, oran görünümle aynı
     if (p.v !== 2) return { ...p, modelId: d.modelId, aspect: "auto", autoPrompt: true, v: 2 };
     return p;
   } catch { return d; }

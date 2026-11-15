@@ -15,9 +15,9 @@ export interface Plan {
 }
 
 export const DEFAULT_PLANS: Plan[] = [
-  { id: "baslangic", label: "Başlangıç", priceTry: 990, generate: 25, render: 10, features: ["Ayda 25 proje üretimi / düzeltme", "Ayda 10 gerçekçi render", "Tüm çizimler, DXF, IFC, PDF", "Windows, Android ve web"] },
-  { id: "profesyonel", label: "Profesyonel", priceTry: 1990, generate: 80, render: 40, highlight: true, features: ["Ayda 80 proje üretimi / düzeltme", "Ayda 40 gerçekçi render", "Çok bloklu site projeleri", "Öncelikli destek"] },
-  { id: "ofis", label: "Ofis", priceTry: 4490, generate: 250, render: 120, features: ["Ayda 250 proje üretimi / düzeltme", "Ayda 120 gerçekçi render", "Aynı hesapla birden çok cihaz", "Telefonla destek"] },
+  { id: "baslangic", label: "Başlangıç", priceTry: 1490, generate: 25, render: 10, features: ["Ayda 25 proje üretimi / düzeltme", "Ayda 10 gerçekçi render", "Tüm çizimler, DXF, IFC, PDF", "Windows, Android ve web"] },
+  { id: "profesyonel", label: "Profesyonel", priceTry: 2490, generate: 80, render: 40, highlight: true, features: ["Ayda 80 proje üretimi / düzeltme", "Ayda 40 gerçekçi render", "Çok bloklu site projeleri", "Öncelikli destek"] },
+  { id: "ofis", label: "Ofis", priceTry: 3990, generate: 250, render: 120, features: ["Ayda 250 proje üretimi / düzeltme", "Ayda 120 gerçekçi render", "Aynı hesapla birden çok cihaz", "Telefonla destek"] },
 ];
 
 export const TRIAL = { days: 7, generate: 3, render: 2 };
@@ -44,7 +44,7 @@ export function loadTrial() {
 const DAY = 86_400_000;
 const PERIOD = 30 * DAY;
 
-export type Status = "trial" | "active" | "expired" | "disabled";
+export type Status = "trial" | "active" | "frozen" | "expired" | "disabled";
 
 export interface Entitlement {
   status: Status;
@@ -56,6 +56,16 @@ export interface Entitlement {
   until: number;
   limits: { generate: number; render: number };
   used: { generate: number; render: number };
+  /** Dondurulmuşsa: dondurma anı ve korunan kalan süre (ms) */
+  frozenAt?: number;
+  frozenLeft?: number;
+}
+
+/** Dondurma anında kalan abonelik ya da deneme süresi (ms). Açılınca bu süre geri verilir. */
+export function frozenRemaining(u: UserRow): number {
+  if (!u.frozen_at) return 0;
+  if (u.plan_until) return Math.max(0, u.plan_until - u.frozen_at);
+  return Math.max(0, u.trial_until - u.frozen_at);
 }
 
 export function entitlement(db: DB, u: UserRow, plans: Plan[], now = Date.now()): Entitlement {
@@ -64,8 +74,13 @@ export function entitlement(db: DB, u: UserRow, plans: Plan[], now = Date.now())
   let status: Status;
   let periodStart: number, periodEnd: number, until: number;
   let limits = { generate: 0, render: 0 };
+  let frozen: { frozenAt?: number; frozenLeft?: number } = {};
   if (u.disabled) {
     status = "disabled"; periodStart = now; periodEnd = now; until = now;
+  } else if (u.frozen_at) {
+    status = "frozen"; periodStart = now; periodEnd = now;
+    frozen = { frozenAt: u.frozen_at, frozenLeft: frozenRemaining(u) };
+    until = now + frozen.frozenLeft!;
   } else if (plan && u.plan_until && u.plan_until > now) {
     status = "active";
     const start = u.plan_start ?? now;
@@ -84,7 +99,7 @@ export function entitlement(db: DB, u: UserRow, plans: Plan[], now = Date.now())
   const row = db
     .prepare("SELECT SUM(kind='generate') AS g, SUM(kind='render') AS r FROM usage WHERE user_id=? AND ok=1 AND at>=? AND at<?")
     .get(u.id, periodStart, Math.max(periodEnd, now + 1)) as { g: number | null; r: number | null };
-  return { status, plan, periodStart, periodEnd, until, limits, used: { generate: row.g ?? 0, render: row.r ?? 0 } };
+  return { status, plan, periodStart, periodEnd, until, limits, used: { generate: row.g ?? 0, render: row.r ?? 0 }, ...frozen };
 }
 
 /** Claude fiyatları (USD / 1M token), maliyet kaydı için. */

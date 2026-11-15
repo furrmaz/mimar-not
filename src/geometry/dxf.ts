@@ -1,7 +1,8 @@
 // AutoCAD için DXF (AC1009 / R12 ASCII) dışa aktarma.
 // Tek dosyada: tüm kat planları, A-A kesiti, 4 cephe ve vaziyet planı; katmanlara ayrılmış.
 // Model uzayında çizimler yan yana dizilir; birim seçilebilir (m / cm / mm).
-import type { BuildingLayout, Opening } from "./layout";
+import type { BuildingLayout, Opening, Rect } from "./layout";
+import { legacyStairInfo, stairGeom } from "./stair";
 import { near } from "./layout";
 import type { Program } from "../shared/schema";
 import { parkingStalls, zoningCheck } from "./zoning";
@@ -203,17 +204,16 @@ function drawPlan(d: Dxf, L: BuildingLayout, fl: BuildingLayout["floors"][number
         else { const [cx, cy] = P(p.cx, p.cy); d.circle("MN-MOBILYA", cx, cy, p.r); }
       }
   if (L.stair) {
-    const st = L.stair;
-    const [x, y] = P(st.x, st.y);
-    const fw = (st.h - 0.15) / 2;
-    const landing = 1.1;
-    const run = st.w - landing;
-    const n = Math.max(3, Math.floor(run / 0.28));
-    for (const y0 of [y, y + fw + 0.15]) {
-      d.rect("MN-MERDIVEN", x + landing, y0, run, fw);
-      for (let i = 1; i < n; i++) d.line("MN-MERDIVEN", x + landing + (run * i) / n, y0, x + landing + (run * i) / n, y0 + fw);
+    const g = stairGeom(L.stair, L.stairInfo ?? legacyStairInfo(L.stair, L.H), L.H);
+    const rr = (r: Rect) => { const [x, y] = P(r.x, r.y); d.rect("MN-MERDIVEN", x, y, r.w, r.h); };
+    rr(g.landing);
+    for (const f of g.flights) {
+      rr(f.rect);
+      for (const [x1, y1, x2, y2] of f.lines) { const [a1, b1] = P(x1, y1); const [a2, b2] = P(x2, y2); d.line("MN-MERDIVEN", a1, b1, a2, b2); }
     }
-    d.poly("MN-MERDIVEN", [[x + st.w - 0.2, y + fw / 2], [x + 0.55, y + fw / 2], [x + 0.55, y + fw * 1.5 + 0.15], [x + st.w - 0.4, y + fw * 1.5 + 0.15]]);
+    d.poly("MN-MERDIVEN", g.path.map(([x, y]) => P(x, y)));
+    const [lx, ly] = P(g.labelAt[0], g.labelAt[1]);
+    d.text("MN-MERDIVEN", lx, ly, 0.12, g.label);
   }
   for (const st of fl.stairs ?? []) {
     const [x, y] = P(st.x, st.y);
@@ -250,10 +250,19 @@ function drawPlan(d: Dxf, L: BuildingLayout, fl: BuildingLayout["floors"][number
   d.dim(ox, oy, ox + L.W, oy, -1.6);
   const front = fl.rooms.filter((r) => near(r.rect.y, 0)).sort((a, b) => a.rect.x - b.rect.x);
   const xs = Array.from(new Set([0, ...front.map((r) => +(r.rect.x + r.rect.w).toFixed(3))])).sort((a, b) => a - b);
-  for (let i = 0; i < xs.length - 1; i++) d.dim(ox + xs[i], oy, ox + xs[i + 1], oy, -0.9);
+  for (let i = 0; i < xs.length - 1; i++) d.dim(ox + xs[i], oy, ox + xs[i + 1], oy, -1.0);
+  // pencere/kapı aralık zincirleri (ön ve sağ cephe)
+  const opChain = (orient: "h" | "v", line: number, len: number) => {
+    const pts = Array.from(new Set([0, len, ...fl.openings.filter((o) => o.exterior && o.orient === orient && near(o.line, line)).flatMap((o) => [o.center - o.width / 2, o.center + o.width / 2])].map((v) => Math.round(v * 1000) / 1000))).sort((a, b) => a - b);
+    return pts.length > 2 ? pts : [];
+  };
+  const fx = opChain("h", 0, L.W);
+  for (let i = 0; i < fx.length - 1; i++) if (fx[i + 1] - fx[i] > 0.04) d.dim(ox + fx[i], oy, ox + fx[i + 1], oy, -0.45);
+  const ry = opChain("v", L.W, L.D);
+  for (let i = 0; i < ry.length - 1; i++) if (ry[i + 1] - ry[i] > 0.04) d.dim(ox + L.W, oy + ry[i], ox + L.W, oy + ry[i + 1], 0.45);
   d.dim(ox + L.W, oy, ox + L.W, oy + L.D, 1.6);
   const ys = [0, L.hallBand.y, L.hallBand.y + L.hallBand.h, L.D];
-  for (let i = 0; i < ys.length - 1; i++) d.dim(ox + L.W, oy + ys[i], ox + L.W, oy + ys[i + 1], 0.9);
+  for (let i = 0; i < ys.length - 1; i++) d.dim(ox + L.W, oy + ys[i], ox + L.W, oy + ys[i + 1], 1.0);
   // kesit hattı
   const ax = ox + L.cutX;
   const outD = Math.max(0, ...fl.outdoor.map((o) => o.rect.y + o.rect.h - L.D));
@@ -279,6 +288,10 @@ function drawOpeningPlan(d: Dxf, L: BuildingLayout, o: Opening, P: (x: number, y
       const [x2, y2] = Q(u, o.line + t);
       d.line("MN-PENCERE", x1, y1, x2, y2);
     }
+    return;
+  }
+  if (o.kind === "passage") {
+    for (const v of [-t, t]) { const [x1, y1] = Q(a, o.line + v); const [x2, y2] = Q(b, o.line + v); d.line("MN-KAPI", x1, y1, x2, y2); }
     return;
   }
   const [hx, hy] = Q(a, o.line);
@@ -316,7 +329,7 @@ function drawSection(d: Dxf, L: BuildingLayout, ox: number, oy: number) {
       else {
         if (op.sill > 0) seg(0, op.sill);
         seg(Math.min(op.head, clear), clear);
-        if (op.kind !== "door") d.line("MN-PENCERE", X(w.line), Z(f.z + op.sill), X(w.line), Z(f.z + op.head));
+        if (op.kind === "window" || op.kind === "balconyDoor") d.line("MN-PENCERE", X(w.line), Z(f.z + op.sill), X(w.line), Z(f.z + op.head));
       }
     }
     for (const r of f.rooms) {

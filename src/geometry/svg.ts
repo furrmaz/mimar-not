@@ -5,6 +5,7 @@ import type { Program } from "../shared/schema";
 import { parkingStalls, zoningCheck } from "./zoning";
 import type { OfficeInfo } from "../office";
 import { furnishFloor, furnitureSymbol, type Prim } from "./furniture";
+import { legacyStairInfo, stairGeom, type StairInfo } from "./stair";
 
 const S = 50; // px / m
 const INK = "#1d1d1f";
@@ -76,8 +77,14 @@ function dimLine(x1: number, y1: number, x2: number, y2: number, label: string, 
   const horiz = Math.abs(y1 - y2) < 0.5;
   const tick = (x: number, y: number) => `<line x1="${x - 4}" y1="${y + 4}" x2="${x + 4}" y2="${y - 4}" stroke="${DIM}" stroke-width="1.2"/>`;
   let s = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${DIM}" stroke-width="0.8"/>` + tick(x1, y1) + tick(x2, y2);
-  if (horiz) s += text((x1 + x2) / 2, y1 - 4 * offsetDir, label, 10, { fill: DIM });
-  else s += text(x1 - 5 * offsetDir, (y1 + y2) / 2, label, 10, { fill: DIM, rotate: -90 });
+  // yazı çizginin üstünde (yatay) / solunda (düşey), çizgiyle çakışmaz; sığmazsa dışa taşar
+  const len = horiz ? Math.abs(x2 - x1) : Math.abs(y2 - y1);
+  const tw = label.length * 5.6;
+  const outside = tw + 6 > len;
+  // dar aralıkta yazı çizginin öbür yanına, küçük puntoyla
+  if (horiz) s += outside ? text((x1 + x2) / 2, y1 + 12, label, 8, { fill: DIM, halo: "#ffffff" }) : text((x1 + x2) / 2, y1 - 4, label, 10, { fill: DIM, halo: "#ffffff" });
+  else s += outside ? text(x1 + 11, (y1 + y2) / 2, label, 8, { fill: DIM, rotate: -90, halo: "#ffffff" }) : text(x1 - 4, (y1 + y2) / 2, label, 10, { fill: DIM, rotate: -90, halo: "#ffffff" });
+  void offsetDir;
   return s;
 }
 
@@ -85,7 +92,7 @@ function dimLine(x1: number, y1: number, x2: number, y2: number, label: string, 
 
 /** Kat planı çizim çerçevesi: dünya (m) ↔ SVG px dönüşümü. Plan düzenleyici de bunu kullanır. */
 export function planFrame(L: BuildingLayout, floor: FloorLayout) {
-  const M = 2.2; // kenar boşluğu (m)
+  const M = 2.8; // kenar boşluğu (m)
   const outDepth = floor.outdoor.reduce((s, o) => Math.max(s, o.rect.y + o.rect.h - L.D), 0);
   const outFront = floor.outdoor.reduce((s, o) => Math.max(s, -o.rect.y), 0);
   const Wm = L.W + 2 * M;
@@ -125,8 +132,8 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
   if (!opts.thumb) for (const f of furnishFloor(floor)) parts.push(primsSVG(furnitureSymbol(f), X, Y));
 
   // Merdiven (U dönüşlü)
-  if (L.stair) parts.push(stairPlan(L.stair, X, Y, floor.level === L.floors[L.floors.length - 1].level));
-  for (const st of floor.stairs ?? []) parts.push(stairPlan(st, X, Y, !!floor.units?.some((u) => u.part === "upper")));
+  if (L.stair) parts.push(stairPlan(L.stair, L.stairInfo ?? legacyStairInfo(L.stair, L.H), L.H, X, Y, floor.level === L.floors[L.floors.length - 1].level));
+  for (const st of floor.stairs ?? []) parts.push(stairPlan(st, legacyStairInfo(st, L.H), L.H, X, Y, !!floor.units?.some((u) => u.part === "upper")));
   // Asansör kuyusu
   for (const r of floor.rooms.filter((r) => r.name === "Asansör")) {
     const a = r.rect, i = 0.25;
@@ -194,26 +201,46 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
     const x0 = X(0) - 10, y0 = Y(L.D + outDepth) - 10;
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${L.W * S + 20} ${(L.D + outDepth + outFront) * S + 20}" ${FONT}>${parts.slice(2).join("")}</svg>`;
   }
-  // Ölçüler: alt toplam + ön bant zinciri, sağ toplam + bant zinciri
-  const yb = Y0 + 1.5 * S;
-  parts.push(dimLine(X(0), yb, X(L.W), yb, `${f2(L.W)}`, -1));
+  // Ölçüler: her cephede üç zincir — pencere/kapı aralıkları, mekân bölümleri, toplam
+  const chain = (pts: number[]) => Array.from(new Set(pts.map((v) => Math.round(v * 100) / 100))).sort((a, b) => a - b);
+  const opsOn = (orient: "h" | "v", line: number) =>
+    floor.openings.filter((o) => o.exterior && o.orient === orient && near(o.line, line)).flatMap((o) => [o.center - o.width / 2, o.center + o.width / 2]);
+  const hChain = (xs: number[], yPx: number) => { for (let i = 0; i < xs.length - 1; i++) if (xs[i + 1] - xs[i] > 0.04) parts.push(dimLine(X(xs[i]), yPx, X(xs[i + 1]), yPx, f2(xs[i + 1] - xs[i]))); };
+  const vChain = (ys: number[], xPx: number) => { for (let i = 0; i < ys.length - 1; i++) if (ys[i + 1] - ys[i] > 0.04) parts.push(dimLine(xPx, Y(ys[i]), xPx, Y(ys[i + 1]), f2(ys[i + 1] - ys[i]))); };
+  // alt (sokak cephesi)
+  const frontOps = opsOn("h", 0);
+  if (frontOps.length) hChain(chain([0, L.W, ...frontOps]), Y0 + 0.55 * S);
   const front = floor.rooms.filter((r) => near(r.rect.y, 0)).sort((a, b) => a.rect.x - b.rect.x);
-  const xs = Array.from(new Set([0, ...front.map((r) => r.rect.x + r.rect.w)])).sort((a, b) => a - b);
-  for (let i = 0; i < xs.length - 1; i++) parts.push(dimLine(X(xs[i]), Y0 + 0.8 * S, X(xs[i + 1]), Y0 + 0.8 * S, f2(xs[i + 1] - xs[i]), -1));
-  const xr = X(L.W) + 1.5 * S;
-  parts.push(dimLine(xr, Y(0), xr, Y(L.D), `${f2(L.D)}`, -1));
-  const ys = [0, L.hallBand.y, L.hallBand.y + L.hallBand.h, L.D];
-  for (let i = 0; i < ys.length - 1; i++) parts.push(dimLine(X(L.W) + 0.8 * S, Y(ys[i]), X(L.W) + 0.8 * S, Y(ys[i + 1]), f2(ys[i + 1] - ys[i]), -1));
+  hChain(chain([0, L.W, ...front.map((r) => r.rect.x + r.rect.w)]), Y0 + 1.1 * S);
+  parts.push(dimLine(X(0), Y0 + 1.65 * S, X(L.W), Y0 + 1.65 * S, f2(L.W)));
+  // sağ cephe
+  const xr = X(L.W);
+  const rightOps = opsOn("v", L.W);
+  if (rightOps.length) vChain(chain([0, L.D, ...rightOps]), xr + 0.55 * S);
+  vChain(chain([0, L.D, L.hallBand.y, L.hallBand.y + L.hallBand.h]), xr + 1.1 * S);
+  parts.push(dimLine(xr + 1.65 * S, Y(0), xr + 1.65 * S, Y(L.D), f2(L.D)));
+  // sol cephe: açıklık zinciri
+  const leftOps = opsOn("v", 0);
+  if (leftOps.length) vChain(chain([0, L.D, ...leftOps]), X(0) - 0.55 * S);
+  // kuzey oku (vaziyet yönünden; arka/bahçe cephesi güneyse kuzey sokak tarafıdır)
+  const southGarden = /bahçe[^.]*güney|güney[^.]*bahçe|arka[^.]*güney/i.test(program.site?.orientation ?? "");
+  const northGarden = /bahçe[^.]*kuzey|kuzey[^.]*bahçe|arka[^.]*kuzey/i.test(program.site?.orientation ?? "");
+  if (southGarden || northGarden) {
+    const nx = X(L.W) + 1.5 * S, ny = 70;
+    const dir = southGarden ? 1 : -1; // +1: kuzey sayfanın altına (sokak tarafı)
+    const tip = ny + dir * 16, tail = ny - dir * 16;
+    parts.push(`<g><circle cx="${nx}" cy="${ny}" r="20" fill="none" stroke="${THIN}" stroke-width="0.8"/><polygon points="${nx},${tip} ${nx - 7},${tail} ${nx},${tail + dir * 6} ${nx + 7},${tail}" fill="${INK}"/>${text(nx, dir > 0 ? tip + 13 : tip - 5, "K", 10, { weight: 700 })}</g>`);
+  }
 
   // Kesit hattı A-A
   const ax = X(L.cutX);
-  parts.push(`<line x1="${ax}" y1="${Y(L.D + outDepth) - 0.9 * S}" x2="${ax}" y2="${Y0 + 0.4 * S}" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="14 4 2 4"/>`);
-  for (const yy of [Y(L.D + outDepth) - 0.9 * S, Y0 + 0.4 * S]) {
+  parts.push(`<line x1="${ax}" y1="${Y(L.D + outDepth) - 0.9 * S}" x2="${ax}" y2="${Y0 + 2.15 * S}" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="14 4 2 4"/>`);
+  for (const yy of [Y(L.D + outDepth) - 0.9 * S, Y0 + 2.15 * S]) {
     parts.push(`<circle cx="${ax}" cy="${yy}" r="10" fill="#fff" stroke="#c0392b" stroke-width="1.2"/>`);
     parts.push(text(ax, yy + 4, "A", 11, { fill: "#c0392b", weight: 700 }));
   }
   // Sokak / bahçe etiketi
-  parts.push(text(X(L.W / 2), Y0 + 2.0 * S, "SOKAK CEPHESİ", 10, { fill: THIN, weight: 600 }));
+  parts.push(text(X(L.W / 2), Y0 + 2.45 * S, "SOKAK CEPHESİ", 10, { fill: THIN, weight: 600 }));
 
   return svgDoc(Wm * S, Dm * S + titleH, parts.join(""), { title: `${floor.name} planı`, no: `A-${100 + floor.level}`, scale: "1/100" });
 }
@@ -259,6 +286,14 @@ function openingPlan(o: Opening, L: BuildingLayout, X: (x: number) => number, Y:
     }
     return out.join("");
   }
+  if (o.kind === "passage") {
+    // kanatsız geçiş: yalnız lento çizgisi (kesikli)
+    const [x0, y0] = P(a, o.line - t / 2), [x1, y1] = P(b, o.line - t / 2);
+    const [x2, y2] = P(a, o.line + t / 2), [x3, y3] = P(b, o.line + t / 2);
+    out.push(`<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${THIN}" stroke-width="0.7" stroke-dasharray="4 3"/>`);
+    out.push(`<line x1="${x2}" y1="${y2}" x2="${x3}" y2="${y3}" stroke="${THIN}" stroke-width="0.7" stroke-dasharray="4 3"/>`);
+    return out.join("");
+  }
   // kapı: kanat + yay
   const w = o.width;
   const hinge = a;
@@ -281,33 +316,38 @@ function openingPlan(o: Opening, L: BuildingLayout, X: (x: number) => number, Y:
   return out.join("");
 }
 
-function stairPlan(st: Rect, X: (x: number) => number, Y: (y: number) => number, isTop: boolean) {
+function stairPlan(st: Rect, info: StairInfo, H: number, X: (x: number) => number, Y: (y: number) => number, isTop: boolean) {
+  const g = stairGeom(st, info, H);
   const out: string[] = [];
-  const flightW = (st.h - 0.15) / 2;
-  const landing = 1.1;
-  const run = st.w - landing;
-  const tread = 0.28;
-  const n = Math.max(3, Math.floor(run / tread));
-  // iki kol: alt kol (y düşük) ve üst kol, sahanlık solda (x=0 tarafı)
-  for (const [y0, label] of [[st.y, "up"], [st.y + flightW + 0.15, "down"]] as const) {
-    out.push(`<rect x="${X(landing)}" y="${Y(y0 + flightW)}" width="${run * S}" height="${flightW * S}" fill="#fafafa" stroke="${THIN}" stroke-width="0.8"/>`);
-    for (let i = 1; i < n; i++) {
-      const x = landing + (run * i) / n;
-      out.push(`<line x1="${X(x)}" y1="${Y(y0)}" x2="${X(x)}" y2="${Y(y0 + flightW)}" stroke="${THIN}" stroke-width="0.6"/>`);
-    }
-    void label;
+  const R = (r: Rect, fill: string, stroke = THIN, sw = 0.8) => `<rect x="${X(r.x).toFixed(1)}" y="${Y(r.y + r.h).toFixed(1)}" width="${(r.w * S).toFixed(1)}" height="${(r.h * S).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+  out.push(R(g.landing, "#fafafa"));
+  for (const f of g.flights) {
+    out.push(R(f.rect, "#fafafa"));
+    for (const [x1, y1, x2, y2] of f.lines) out.push(`<line x1="${X(x1).toFixed(1)}" y1="${Y(y1).toFixed(1)}" x2="${X(x2).toFixed(1)}" y2="${Y(y2).toFixed(1)}" stroke="${THIN}" stroke-width="0.6"/>`);
   }
-  // orta ayırıcı
-  out.push(`<rect x="${X(landing)}" y="${Y(st.y + flightW + 0.15)}" width="${run * S}" height="${0.15 * S}" fill="#bbb"/>`);
-  // ok: alt koldan sahanlığa, üst koldan geri
-  const yA = st.y + flightW / 2, yB = st.y + flightW + 0.15 + flightW / 2;
-  out.push(`<polyline points="${X(st.w - 0.2)},${Y(yA)} ${X(0.55)},${Y(yA)} ${X(0.55)},${Y(yB)} ${X(st.w - 0.4)},${Y(yB)}" fill="none" stroke="${INK}" stroke-width="1"/>`);
-  out.push(`<polygon points="${X(st.w - 0.4)},${Y(yB) - 4} ${X(st.w - 0.2)},${Y(yB)} ${X(st.w - 0.4)},${Y(yB) + 4}" fill="${INK}"/>`);
+  out.push(R(g.well, "#c9c9c9", "none", 0));
+  // çıkış oku
+  const pts = g.path.map(([x, y]) => `${X(x).toFixed(1)},${Y(y).toFixed(1)}`);
+  out.push(`<circle cx="${X(g.path[0][0]).toFixed(1)}" cy="${Y(g.path[0][1]).toFixed(1)}" r="2.5" fill="${INK}"/>`);
+  out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${INK}" stroke-width="1"/>`);
+  const [ax, ay] = g.path[g.path.length - 1], [bx, by] = g.path[g.path.length - 2];
+  const ang = Math.atan2(Y(ay) - Y(by), X(ax) - X(bx));
+  const hx = X(ax), hy = Y(ay);
+  const p1 = [hx - 8 * Math.cos(ang - 0.4), hy - 8 * Math.sin(ang - 0.4)], p2 = [hx - 8 * Math.cos(ang + 0.4), hy - 8 * Math.sin(ang + 0.4)];
+  out.push(`<polygon points="${hx.toFixed(1)},${hy.toFixed(1)} ${p1[0].toFixed(1)},${p1[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}" fill="${INK}"/>`);
   if (!isTop) {
-    // kesme çizgisi (üst kat görünmüyor)
-    out.push(`<line x1="${X(landing + run * 0.55)}" y1="${Y(st.y)}" x2="${X(landing + run * 0.75)}" y2="${Y(st.y + st.h)}" stroke="${INK}" stroke-width="1"/>`);
+    const [x1, y1, x2, y2] = g.breakLine;
+    out.push(`<line x1="${X(x1).toFixed(1)}" y1="${Y(y1).toFixed(1)}" x2="${X(x2).toFixed(1)}" y2="${Y(y2).toFixed(1)}" stroke="${INK}" stroke-width="1.1"/>`);
   }
-  out.push(text(X(st.w / 2 + 0.4), Y(st.y + st.h) - 4, "Merdiven", 9, { fill: THIN }));
+  const [lx, ly] = g.labelAt;
+  const horiz = g.landing.w > g.landing.h;
+  const big = g.info.landing > 1.2;
+  if (big) {
+    out.push(text(X(lx), Y(ly) - (horiz ? 2 : 0), "Merdiven", 9, { fill: THIN, weight: 600, rotate: horiz ? 0 : -90, halo: "#fafafa" }));
+    out.push(text(X(lx) + (horiz ? 0 : 11), Y(ly) + (horiz ? 9 : 0), g.label, 8, { fill: THIN, rotate: horiz ? 0 : -90, halo: "#fafafa" }));
+  } else {
+    out.push(text(X(lx), Y(ly) + 3, `Merdiven ${g.label}`, 8, { fill: THIN, rotate: horiz ? 0 : -90, halo: "#fafafa" }));
+  }
   return out.join("");
 }
 
@@ -379,6 +419,29 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
     }
     // kot işareti
     p.push(levelMark(X(L.D + outMax) + 1.0 * S, Z(z0), z0));
+  }
+
+  // merdiven (kollar hole dik ise kesitte eğimli görünür; kesit hattı koldan geçiyorsa kesilmiş, değilse görünüş)
+  if (L.stair && L.stairInfo?.axis === "y") {
+    const g = stairGeom(L.stair, L.stairInfo, L.H);
+    for (const f of floorsSorted.slice(0, -1)) {
+      const z0 = f.z;
+      for (const fl of g.flights) {
+        const cut = L.cutX >= fl.rect.x && L.cutX <= fl.rect.x + fl.rect.w;
+        const style = cut ? `fill="${INK}"` : `fill="#f4f4f4" stroke="${THIN}" stroke-width="0.7"`;
+        for (const st of fl.steps) p.push(`<rect x="${X(st.rect.y).toFixed(1)}" y="${Z(z0 + st.top).toFixed(1)}" width="${(st.rect.h * S).toFixed(1)}" height="${(L.H / L.stairInfo.risers * S).toFixed(1)}" ${style}/>`);
+        // kol plağı (eğimli alt yüz)
+        const ss = fl.steps;
+        if (ss.length > 1) {
+          const a = ss[0], b = ss[ss.length - 1];
+          const ya = a.rect.y + (a.top < b.top ? 0 : a.rect.h), yb = b.rect.y + (a.top < b.top ? b.rect.h : 0);
+          p.push(`<line x1="${X(ya).toFixed(1)}" y1="${Z(z0 + a.top - 0.25).toFixed(1)}" x2="${X(yb).toFixed(1)}" y2="${Z(z0 + b.top - 0.25).toFixed(1)}" stroke="${cut ? INK : THIN}" stroke-width="${cut ? 2 : 0.8}"/>`);
+        }
+      }
+      const ld = g.landing;
+      const cutL = L.cutX >= ld.x && L.cutX <= ld.x + ld.w;
+      p.push(`<rect x="${X(ld.y).toFixed(1)}" y="${Z(z0 + g.landingTop).toFixed(1)}" width="${(ld.h * S).toFixed(1)}" height="${(0.15 * S).toFixed(1)}" ${cutL ? `fill="${INK}"` : `fill="#ddd" stroke="${THIN}" stroke-width="0.7"`}/>`);
+    }
   }
 
   // tavan / çatı döşemesi
