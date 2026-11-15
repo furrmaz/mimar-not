@@ -22,7 +22,7 @@ img { max-width: 100%; height: auto; display: block; }
 .btn.primary:hover { background: #9c4424; }
 .btn.big { padding: 13px 22px; font-size: 16px; }
 
-main > section { padding: 64px max(16px, calc((100% - 1160px) / 2)); }
+main > section { scroll-margin-top: 64px; padding: 64px max(16px, calc((100% - 1160px) / 2)); }
 h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; letter-spacing: -0.025em; margin: 8px 0 16px; }
 h2 { font-size: clamp(24px, 3.2vw, 34px); letter-spacing: -0.02em; margin: 0 0 20px; }
 h3 { margin: 0 0 6px; font-size: 17px; }
@@ -79,3 +79,50 @@ footer .links { display: flex; gap: 18px; flex-wrap: wrap; }
   .nav .btn { margin-left: auto; }
   main > section { padding-block: 44px; }
 }
+
+/* Demo oynatıcı */
+.demo { text-align: center; }
+.demo > p { max-width: 640px; margin: -8px auto 24px; }
+.player { display: grid; grid-template-columns: 340px 1fr; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 30px 60px -30px rgba(60, 40, 20, .3); }
+.p-notes { border-right: 1px solid var(--line); background: #fbfaf8; padding: 16px 18px; min-width: 0; }
+.p-head { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+.p-notes pre { margin: 0; white-space: pre-wrap; font: 14px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace; color: #3a3a3d; min-height: 15em; }
+.p-notes pre::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; }
+.player.ready .p-notes pre::after { content: ""; }
+@keyframes blink { 50% { opacity: 0; } }
+.p-stage { display: flex; flex-direction: column; min-width: 0; }
+.p-steps { list-style: none; margin: 0; padding: 10px 12px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.p-steps li { cursor: pointer; padding: 4px 12px; border-radius: 99px; font-size: 14px; color: var(--muted); border: 1px solid transparent; }
+.p-steps li.done { color: var(--ink); }
+.p-steps li.on { background: var(--accent); color: #fff; }
+.p-frames { position: relative; aspect-ratio: 1470 / 1000; background: #fff; }
+.p-frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transform: scale(.985); transition: opacity .5s, transform .6s; }
+.p-frame.on { opacity: 1; transform: none; }
+img.p-frame[src$="3d.jpg"] { object-fit: cover; }
+.p-program { padding: 24px 28px; display: flex; flex-direction: column; gap: 16px; overflow: auto; }
+.p-title { font-weight: 700; font-size: 18px; }
+.p-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.p-chips span { background: var(--accent-soft); color: #7a3518; border-radius: 8px; padding: 6px 10px; font-size: 14px; font-weight: 600; }
+.p-zoning { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0; }
+.p-zoning div { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.p-zoning dt { font-size: 12px; color: var(--muted); } .p-zoning dd { margin: 0; font-weight: 700; color: var(--ok); }
+.p-zoning dd::after { content: " ✓"; }
+.p-ask { margin: 0; font-size: 14px; color: #3a3a3d; background: #fff7e6; border: 1px solid #f0d49c; border-radius: 10px; padding: 10px 12px; }
+.cta.center { justify-content: center; margin-top: 20px; }
+button.btn { font: inherit; font-weight: 600; font-size: 15px; cursor: pointer; }
+.download .grid.three article .muted.small { margin-top: -4px; }
+.who .grid article { border-top: 3px solid var(--accent); }
+
+@media (max-width: 900px) {
+  .player { grid-template-columns: 1fr; }
+  .p-notes { border-right: 0; border-bottom: 1px solid var(--line); }
+  .p-notes pre { min-height: 0; max-height: 8.2em; overflow: hidden; font-size: 13px; }
+  .player.ready .p-notes pre { max-height: none; }
+  .p-steps { flex-wrap: nowrap; overflow-x: auto; gap: 2px; }
+  .p-steps li { padding: 4px 10px; white-space: nowrap; }
+  .p-frames { aspect-ratio: 4 / 3.4; }
+  .p-program { padding: 16px; gap: 12px; }
+  .p-zoning { grid-template-columns: repeat(2, 1fr); }
+}
+.p-frames::before { content: "Notlar okunuyor…"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 15px; transition: opacity .3s; }
+.player.ready .p-frames::before { opacity: 0; }

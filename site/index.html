@@ -7,7 +7,16 @@
 <meta name="description" content="Müşteri görüşmesinde aldığınız notlardan dakikalar içinde kat planı, kesit, cephe, 3D model, DXF ve IFC. Türk imar yönetmeliğine göre TAKS/KAKS kontrolü. 7 gün ücretsiz deneyin." />
 <meta property="og:title" content="Planhane · Görüşme notundan çizim setine" />
 <meta property="og:description" content="Notları yazın ya da sesle söyleyin; plan, kesit, cephe, 3D ve AutoCAD DXF hazır." />
-<meta property="og:image" content="img/3d.jpg" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://planhane.com.tr/" />
+<meta property="og:image" content="https://planhane.com.tr/img/3d.jpg" />
+<meta property="og:locale" content="tr_TR" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="theme-color" content="#b5532e" />
+<link rel="canonical" href="https://planhane.com.tr/" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Planhane","applicationCategory":"DesignApplication","operatingSystem":"Windows, Android, Web","inLanguage":"tr","url":"https://planhane.com.tr/","description":"Mimarlar için görüşme notlarından kat planı, kesit, cephe, 3D model, render ve AutoCAD DXF üreten yapay zekâ destekli ön tasarım uygulaması.","offers":{"@type":"AggregateOffer","priceCurrency":"TRY","lowPrice":"1490","highPrice":"3990","offerCount":"3"}}
+</script>
 <link rel="icon" href="img/icon.png" />
 <link rel="stylesheet" href="site.css" />
 </head>
@@ -15,6 +24,7 @@
 <header class="nav">
   <a class="brand" href="./"><svg viewBox="0 0 24 24" width="24" height="24"><path d="M3 21V9l9-6 9 6v12h-6v-7H9v7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Planhane</a>
   <nav>
+    <a href="#demo">Demo</a>
     <a href="#ozellikler">Özellikler</a>
     <a href="#fiyatlar">Fiyatlar</a>
     <a href="#indir">İndir</a>
@@ -35,7 +45,7 @@
       </div>
       <p class="muted small">Kart bilgisi istemiyoruz. API anahtarı, kurulum ya da teknik ayar gerekmez.</p>
     </div>
-    <figure class="shot"><img src="img/3d.jpg" alt="Planhane 3D model görünümü" width="1461" height="966" /></figure>
+    <figure class="shot"><img src="img/3d.jpg" alt="Planhane 3D model görünümü" width="1468" height="850" /></figure>
   </section>
 
   <section class="strip">
@@ -45,6 +55,38 @@
     <div><b>Türkçe</b><span>arayüz, dikte ve yönetmelik</span></div>
   </section>
 
+  <section id="demo" class="demo">
+    <h2>Görüşmeden çizime, kırk saniyede</h2>
+    <p class="muted">Gerçek bir görüşme notu, Planhane'nin ondan çıkardığı program ve çizimler. Görüntüler uygulamanın kendisinden alınmıştır.</p>
+    <div class="player" id="player">
+      <div class="p-notes">
+        <div class="p-head">Görüşme notları</div>
+        <pre id="pNotes" aria-live="off"></pre>
+      </div>
+      <div class="p-stage">
+        <ol class="p-steps" id="pSteps">
+          <li>Program</li><li>Kat planı</li><li>Kesit</li><li>Cephe</li><li>3D</li>
+        </ol>
+        <div class="p-frames" id="pFrames">
+          <div class="p-frame p-program">
+            <div class="p-title">Yılmaz Konutu · dubleks müstakil konut</div>
+            <div class="p-chips">
+              <span>Salon 34 m²</span><span>Açık mutfak 16 m²</span><span>Kiler 3 m²</span><span>Çalışma odası 10 m²</span><span>Misafir WC</span>
+              <span>Ebeveyn yatak + giyinme + banyo</span><span>2 çocuk odası</span><span>Ortak banyo</span><span>Çamaşır odası</span><span>Balkon</span>
+            </div>
+            <dl class="p-zoning"><div><dt>TAKS</dt><dd>0,25</dd></div><div><dt>KAKS</dt><dd>0,50</dd></div><div><dt>Kat</dt><dd>2</dd></div><div><dt>Hmax</dt><dd>6,50 m</dd></div></dl>
+            <p class="p-ask"><b>Müşteriye sorulacak:</b> Şömine odun mu, gazlı mı? Otopark üstü kapalı mı olsun?</p>
+          </div>
+          <img class="p-frame" src="img/plan.jpg" alt="Planhane'nin ürettiği ölçülü zemin kat planı" loading="lazy" />
+          <img class="p-frame" src="img/kesit.jpg" alt="Kotlu A-A kesiti" loading="lazy" />
+          <img class="p-frame" src="img/cephe.jpg" alt="Ön cephe çizimi" loading="lazy" />
+          <img class="p-frame" src="img/3d.jpg" alt="3D model" loading="lazy" />
+        </div>
+      </div>
+    </div>
+    <div class="cta center"><a class="btn primary" href="app/">Kendi notunuzla deneyin</a><button class="btn" id="pReplay" type="button">Baştan oynat</button></div>
+  </section>
+
   <section id="nasil" class="how">
     <h2>Nasıl çalışır?</h2>
     <ol class="steps">
@@ -52,6 +94,15 @@
       <li><b>Programı onaylayın</b><p>Mekânlar, alanlar, kat dağılımı, imar değerleri, varsayımlar ve müşteriye sorulacak sorular tek ekranda. Değiştirdiğiniz her değer çizimlere anında yansır.</p></li>
       <li><b>Çizim setini alın</b><p>Kat planları, A-A kesiti, 4 cephe, vaziyet planı ve 3D model. DXF, IFC, PDF ve PNG olarak kaydedin; müşteriye gerçekçi render gösterin.</p></li>
     </ol>
+  </section>
+
+  <section class="who">
+    <h2>Kimler için?</h2>
+    <div class="grid three">
+      <article><h3>Bağımsız mimarlar</h3><p>Görüşmeden çıkar çıkmaz müşteriye plan ve render gönderin. İlk eskiz için ayırdığınız günü yeni işlere ayırın.</p></article>
+      <article><h3>Küçük ve orta ofisler</h3><p>Stajyerin ilk gününü çizimle değil, Planhane'nin hazırladığı set üzerinde tasarım tartışmasıyla geçirin. DXF ofis antetinizle gelir.</p></article>
+      <article><h3>Müteahhitler ve yapı firmaları</h3><p>Arsa başında imar değerlerini girin; kaç daire çıkar, TAKS/KAKS tutar mı, kaba maliyet ne olur, dakikalar içinde görün.</p></article>
+    </div>
   </section>
 
   <section id="ozellikler" class="features">
@@ -71,6 +122,7 @@
       <figure><img src="img/plan.jpg" alt="Ölçülü kat planı" loading="lazy" /><figcaption>Kat planı</figcaption></figure>
       <figure><img src="img/cephe.jpg" alt="Cephe çizimi" loading="lazy" /><figcaption>Cephe</figcaption></figure>
       <figure><img src="img/kesit.jpg" alt="A-A kesiti" loading="lazy" /><figcaption>Kesit</figcaption></figure>
+      <figure><img src="img/imar.jpg" alt="Vaziyet planı ve imar kontrolü" loading="lazy" /><figcaption>Vaziyet ve imar kontrolü</figcaption></figure>
     </div>
   </section>
 
@@ -84,8 +136,8 @@
   <section id="indir" class="download">
     <h2>İndir</h2>
     <div class="grid three">
-      <article><h3>Windows</h3><p>Kurulum dosyası; otomatik güncellenir. "AutoCAD'de aç" yalnız masaüstünde.</p><a class="btn primary" href="https://github.com/furrmaz/mimar-not/releases/latest">Windows için indir</a></article>
-      <article><h3>Android</h3><p>Telefon ve tablet. Görüşmede sesle not alın, fotoğraf ekleyin.</p><a class="btn" href="https://github.com/furrmaz/mimar-not/releases/latest">APK indir</a></article>
+      <article><h3>Windows</h3><p>Kurulum dosyası; otomatik güncellenir. "AutoCAD'de aç" yalnız masaüstünde.</p><a class="btn primary" id="dlWin" href="https://github.com/furrmaz/mimar-not/releases/latest">Windows için indir</a><span class="muted small" id="dlWinInfo"></span></article>
+      <article><h3>Android</h3><p>Telefon ve tablet. Görüşmede sesle not alın, fotoğraf ekleyin.</p><a class="btn" id="dlApk" href="https://github.com/furrmaz/mimar-not/releases/latest">APK indir</a><span class="muted small" id="dlApkInfo"></span></article>
       <article><h3>Tarayıcı</h3><p>Kurulum gerektirmez; Mac ve iPad dahil her cihazda çalışır.</p><a class="btn" href="app/">Web'de aç</a></article>
     </div>
     <p class="muted small">Sürümler sayfasında <b>Planhane-Kurulum-….exe</b> (Windows) ve <b>Planhane-Android-….apk</b> dosyalarını seçin. Windows ilk açılışta "bilinmeyen yayıncı" uyarısı verirse "Ek bilgi" → "Yine de çalıştır".</p>
@@ -98,6 +150,7 @@
     <details><summary>"Üretim hakkı" neyi kapsar?</summary><p>Notlardan yeni proje üretmek, "Notlarla güncelle" ve "Düzeltme iste" her biri bir üretimdir. Plan alternatifleri arasında geçiş, elle düzenleme, sınır sürükleme, dışa aktarma ve 3D sınırsızdır.</p></details>
     <details><summary>Hakkım biterse ne olur?</summary><p>Projeleriniz kaybolmaz; açıp düzenleyebilir, dışa aktarabilirsiniz. Yeni üretim için dönemin yenilenmesini bekleyebilir ya da üst plana geçebilirsiniz.</p></details>
     <details><summary>Birden çok bilgisayarda kullanabilir miyim?</summary><p>Evet, aynı hesapla giriş yapın. Haklar hesap başınadır. Ofisteki her mimar için ayrı hesap açmanızı öneririz.</p></details>
+    <details><summary>Deneme bitince ücret alınır mı?</summary><p>Hayır. Kart bilgisi istemediğimiz için otomatik çekim yoktur. Deneme bittiğinde beğendiyseniz planınızı seçip havale/EFT ile ödersiniz; beğenmediyseniz hiçbir şey yapmanız gerekmez.</p></details>
     <details><summary>Fatura kesiyor musunuz?</summary><p>Evet. Dekontla birlikte firma unvanınızı ve vergi numaranızı iletin.</p></details>
     <details><summary>iPhone / Mac sürümü var mı?</summary><p>Tarayıcı sürümü Mac, iPhone ve iPad'de çalışır. Ayrı uygulama şimdilik yok.</p></details>
   </section>
@@ -116,9 +169,9 @@
 <script>
 (async () => {
   const fallback = { plans: [
-    { id: "baslangic", label: "Başlangıç", priceTry: 990, features: ["Ayda 25 proje üretimi / düzeltme", "Ayda 10 gerçekçi render", "Tüm çizimler, DXF, IFC, PDF", "Windows, Android ve web"] },
-    { id: "profesyonel", label: "Profesyonel", priceTry: 1990, highlight: true, features: ["Ayda 80 proje üretimi / düzeltme", "Ayda 40 gerçekçi render", "Çok bloklu site projeleri", "Öncelikli destek"] },
-    { id: "ofis", label: "Ofis", priceTry: 4490, features: ["Ayda 250 proje üretimi / düzeltme", "Ayda 120 gerçekçi render", "Aynı hesapla birden çok cihaz", "Telefonla destek"] },
+    { id: "baslangic", label: "Başlangıç", priceTry: 1490, features: ["Ayda 25 proje üretimi / düzeltme", "Ayda 10 gerçekçi render", "Tüm çizimler, DXF, IFC, PDF", "Windows, Android ve web"] },
+    { id: "profesyonel", label: "Profesyonel", priceTry: 2490, highlight: true, features: ["Ayda 80 proje üretimi / düzeltme", "Ayda 40 gerçekçi render", "Çok bloklu site projeleri", "Öncelikli destek"] },
+    { id: "ofis", label: "Ofis", priceTry: 3990, features: ["Ayda 250 proje üretimi / düzeltme", "Ayda 120 gerçekçi render", "Aynı hesapla birden çok cihaz", "Telefonla destek"] },
   ], trial: { days: 7, generate: 3, render: 2 }, payment: {} };
   let cfg = fallback;
   try { const r = await fetch("api/public/config"); if (r.ok) cfg = await r.json(); } catch {}
@@ -142,5 +195,6 @@
   if (pay.email) m.href = `mailto:${pay.email}`; else if (pay.whatsapp) m.href = `https://wa.me/${pay.whatsapp.replace(/\D/g, "")}`; else m.remove();
 })();
 </script>
+<script src="site.js" defer></script>
 </body>
 </html>
