@@ -14,6 +14,7 @@ import { zoningCheck } from "../geometry/zoning";
 import { saveOutput } from "../store";
 import { RenderDialog, type RenderCapture } from "./RenderDialog";
 import { aspectValue, nearestAspect, type CameraInfo } from "../shared/render";
+import { FACING_NAMES, MONTHS, facingFromText, sunAngles, sunVector, type Facing } from "../geometry/sun";
 
 export function ThreeView({ layout, program, refImages = [], onSettings }: { layout: BuildingLayout; program: Program; refImages?: string[]; onSettings?: () => void }) {
   const [rendering, setRendering] = useState(false);
@@ -23,6 +24,8 @@ export function ThreeView({ layout, program, refImages = [], onSettings }: { lay
     composer: EffectComposer; gtao: GTAOPass; sky: Sky; sun: THREE.DirectionalLight; hemi: THREE.HemisphereLight; envReal: THREE.Texture; real: boolean;
   } | null>(null);
   const [opts, setOpts] = useState<ModelOptions>({ showRoof: true, maxLevel: null, cutaway: false, realistic: true });
+  /** Güneş çalışması: ay ve saate göre gölge (kapalıyken sabit sunum ışığı) */
+  const [sun, setSun] = useState<{ on: boolean; facing: Facing; month: number; hour: number }>(() => ({ on: false, facing: facingFromText(program.site?.orientation), month: 6, hour: 13 }));
 
   // Sahne kurulumu (bir kez)
   useEffect(() => {
@@ -162,11 +165,13 @@ export function ThreeView({ layout, program, refImages = [], onSettings }: { lay
     if (!real && c.sky.parent) c.scene.remove(c.sky);
     c.hemi.intensity = real ? 0.1 : 1.1;
     c.sun.intensity = real ? 5 : 2.0;
-    const dir = c.sun.userData.dir as THREE.Vector3;
+    const fixed = c.sun.userData.dir as THREE.Vector3;
+    const dir = sun.on ? new THREE.Vector3(...sunVector(sun.month, sun.hour, sun.facing)) : real ? fixed : new THREE.Vector3(-0.45, 0.75, -0.55).normalize();
     const center = new THREE.Vector3(layout.W / 2, 0, layout.D / 2);
-    c.sun.position.copy(center).addScaledVector(real ? dir : new THREE.Vector3(-0.45, 0.75, -0.55), 60);
+    c.sun.position.copy(center).addScaledVector(dir, 60);
     c.sun.target.position.copy(center);
-  }, [layout, opts, program]);
+    c.sky.material.uniforms.sunPosition.value.copy(sun.on ? dir : fixed);
+  }, [layout, opts, program, sun]);
 
   const exportGLB = () => {
     const c = ctx.current;
@@ -279,6 +284,27 @@ export function ThreeView({ layout, program, refImages = [], onSettings }: { lay
         <label className="check">
           <input type="checkbox" checked={opts.cutaway} onChange={(e) => setOpts({ ...opts, cutaway: e.target.checked, showRoof: e.target.checked ? false : opts.showRoof })} /> Maket kesiti (içini göster)
         </label>
+        <label className="check" title="Arsanın yönüne, aya ve saate göre gerçek güneş açısı ve gölgeler (39° enlem)">
+          <input type="checkbox" checked={sun.on} onChange={(e) => setSun({ ...sun, on: e.target.checked })} /> Güneş çalışması
+        </label>
+        {sun.on && (
+          <>
+            <label>Bahçe cephesi
+              <select value={sun.facing} onChange={(e) => setSun({ ...sun, facing: e.target.value as Facing })}>
+                {(Object.keys(FACING_NAMES) as Facing[]).map((k) => <option key={k} value={k}>{FACING_NAMES[k]}</option>)}
+              </select>
+            </label>
+            <label>Ay
+              <select value={sun.month} onChange={(e) => setSun({ ...sun, month: Number(e.target.value) })}>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+            </label>
+            <label>Saat {String(Math.floor(sun.hour)).padStart(2, "0")}:{sun.hour % 1 ? "30" : "00"}
+              <input type="range" min={6} max={19} step={0.5} value={sun.hour} onChange={(e) => setSun({ ...sun, hour: Number(e.target.value) })} />
+            </label>
+            <span className="muted small">Güneş yüksekliği {Math.max(0, sunAngles(sun.month, sun.hour).altitude).toFixed(0)}°</span>
+          </>
+        )}
         <span className="spacer" />
         <button className="btn primary" onClick={() => { if (!opts.realistic) setOpts({ ...opts, realistic: true }); setTimeout(() => setRendering(true), 50); }} title="Bu açıdan Higgsfield ile fotoğraf gerçekliğinde görsel">✦ Gerçekçi render</button>
         <button className="btn ghost" onClick={exportPNG}>PNG</button>

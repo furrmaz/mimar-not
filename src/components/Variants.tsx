@@ -4,6 +4,40 @@ import type { BuildingLayout } from "../geometry/layout";
 import { planSVG } from "../geometry/svg";
 import { allVariants, scoreLayout } from "../geometry/score";
 import { MASS_FEATURES, MASS_LABELS, effectiveMassing, type MassFeature } from "../geometry/massing";
+import { FACADE_DETAILS, normalizeFacade, type FacadeDetail } from "../shared/schema";
+import { STYLE_PACKS, applyStylePack } from "../stylepacks";
+
+const DETAIL_LABELS: Record<FacadeDetail, string> = {
+  pergola: "Pergola", gunes_kirici: "Ahşap güneş kırıcı", giris_cercevesi: "Giriş çerçevesi", kutu_cerceve: "Üst kat kutu çerçevesi", cati_feneri: "Çatı feneri",
+};
+
+/** Üslup paketleri ve cephe ayrıntıları: tek tıkla çatı, malzeme, cephe ve kütle birlikte değişir. */
+export function StylePicker({ program, apartment, onChange }: { program: Program; apartment?: boolean; onChange: (p: Program) => void }) {
+  const fac = normalizeFacade(program.facade, program.materials);
+  const details = fac.details as FacadeDetail[];
+  const toggle = (d: FacadeDetail) => onChange({ ...program, facade: { ...fac, details: details.includes(d) ? details.filter((x) => x !== d) : [...details, d] } });
+  return (
+    <section className="card">
+      <h3>Üslup paketi</h3>
+      <div className="style-packs">
+        {STYLE_PACKS.map((s) => (
+          <button key={s.id} className={`style-pack ${program.design?.stylePack === s.id ? "active" : ""}`} title={s.hint} onClick={() => onChange(applyStylePack(program, s))}>
+            <span className="swatches"><i style={{ background: s.facade.wallColor }} /><i style={{ background: s.facade.accentColor }} /><i style={{ background: s.facade.roofColor }} /></span>
+            <b>{s.name}</b>
+            <span className="muted small">{s.hint}</span>
+          </button>
+        ))}
+      </div>
+      <div className="massing-nums">
+        <span className="small"><b>Cephe ayrıntıları</b></span>
+        {FACADE_DETAILS.map((d) => (
+          <label key={d} className="check"><input type="checkbox" checked={details.includes(d)} onChange={() => toggle(d)} /> {DETAIL_LABELS[d]}</label>
+        ))}
+      </div>
+      <div className="muted small">Paket çatıyı, malzemeleri, renkleri, pencere biçimini{apartment ? "" : ", kütle biçimini"} ve cephe ayrıntılarını birlikte ayarlar; odalar değişmez. Ayrıntılar 3D modelde görünür.</div>
+    </section>
+  );
+}
 
 /** Üç plan alternatifi: küçük önizleme + puan; tıklanınca seçilir. */
 export function VariantPicker({ program, onChange }: { program: Program; onChange: (p: Program) => void }) {
