@@ -22,23 +22,30 @@ export const DEFAULT_PLANS: Plan[] = [
 
 export const TRIAL = { days: 7, generate: 3, render: 2 };
 
-export function loadPlans(): Plan[] {
-  const raw = process.env.PLANS_JSON;
-  if (!raw) return DEFAULT_PLANS;
+// Ayarların okunduğu yer: varsayılan ortam değişkenleri; sunucu yönetim paneli ayarlarına bağlar (settings.ts).
+let read: (k: string) => string | undefined = (k) => process.env[k];
+export function setConfigSource(f: (k: string) => string | undefined) { read = f; }
+
+export function parsePlans(raw: string): Plan[] | null {
   try {
     const list = JSON.parse(raw) as Plan[];
-    if (Array.isArray(list) && list.every((p) => p.id && p.label && Number.isFinite(p.generate))) return list;
+    if (Array.isArray(list) && list.length && list.every((p) => p && typeof p.id === "string" && p.id && typeof p.label === "string" && p.label && Number.isFinite(p.generate) && Number.isFinite(p.render) && Number.isFinite(p.priceTry))) return list;
   } catch { /* yoksay */ }
+  return null;
+}
+
+export function loadPlans(): Plan[] {
+  const raw = read("PLANS_JSON");
+  if (!raw) return DEFAULT_PLANS;
+  const list = parsePlans(raw);
+  if (list) return list;
   console.warn("PLANS_JSON okunamadı, varsayılan planlar kullanılıyor");
   return DEFAULT_PLANS;
 }
 
 export function loadTrial() {
-  return {
-    days: Number(process.env.TRIAL_DAYS ?? TRIAL.days),
-    generate: Number(process.env.TRIAL_GENERATE ?? TRIAL.generate),
-    render: Number(process.env.TRIAL_RENDER ?? TRIAL.render),
-  };
+  const n = (k: string, d: number) => { const v = (read(k) ?? "").trim(); const x = Number(v); return v && Number.isFinite(x) && x >= 0 ? x : d; };
+  return { days: n("TRIAL_DAYS", TRIAL.days), generate: n("TRIAL_GENERATE", TRIAL.generate), render: n("TRIAL_RENDER", TRIAL.render) };
 }
 
 const DAY = 86_400_000;

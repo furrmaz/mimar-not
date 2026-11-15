@@ -53,6 +53,8 @@ Sonunda site, panel adresi ve yönetici parolası ekrana yazılır ve `/root/mim
 
 ### Ortam değişkenleri
 
+API anahtarları, Claude modeli, ödeme/iletişim bilgileri, deneme hakları, planlar ve yönetici parolası kurulumdan sonra **yönetim panelinden (Ayarlar sekmesi)** değiştirilebilir. Panelde girilen değer buradakinin önüne geçer, yeniden başlatma gerekmez; panelde "sıfırla" deyince yine buradaki değer kullanılır.
+
 | Değişken | Açıklama |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API anahtarı (zorunlu) |

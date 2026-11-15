@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Yönetim paneli (/admin) kullanıcı adı ve parolasını belirler.
 # Parola ekranda görünmez, sunucuda yalnız scrypt özeti (ADMIN_PASSWORD_HASH) saklanır.
+# Normalde parola yönetim panelinden (Ayarlar → Yönetici hesabı) değiştirilir; bu betik parolayı unutunca kurtarmak içindir.
 # Kullanım (sunucuda): sudo bash /opt/mimar-not/deploy/set-admin.sh
 set -euo pipefail
 DIR=$(cd "$(dirname "$0")" && pwd)
@@ -35,5 +36,7 @@ if [[ ! "$K" =~ ^[Hh] ]]; then sed -i 's/^ADMIN_TOKEN=.*/ADMIN_TOKEN=/' "$TMP"; 
 { echo "ADMIN_USER=$U"; echo "ADMIN_PASSWORD_HASH=$HASH"; } >> "$TMP"
 cat "$TMP" > .env; rm -f "$TMP"; chmod 600 .env
 
+# Panelden belirlenmiş kullanıcı adı/parola varsa sil (yoksa .env'deki geçmez)
+docker exec "$APP" node cloud-dist/server.cjs clear-panel-admin >/dev/null 2>&1 || true
 docker compose up -d app >/dev/null
 echo "Tamam. Yönetim paneli: kullanıcı adı \"$U\" ve yeni parolanızla giriş yapın (açık oturumlar kapandı)."

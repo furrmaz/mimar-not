@@ -18,6 +18,12 @@ if (process.argv[2] === "hash-password") {
     console.log(hashAdminPassword(pw));
     process.exit(0);
   });
+} else if (process.argv[2] === "clear-panel-admin") {
+  // Panelden belirlenen yönetici kullanıcı adı/parolasını siler; .env'deki geçerli olur (parola unutulursa)
+  const db = openDB((process.env.DATA_DIR ?? "./data").trim());
+  db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)");
+  db.prepare("DELETE FROM settings WHERE key IN ('ADMIN_USER','ADMIN_PASSWORD_HASH')").run();
+  console.log("Panel yönetici bilgileri silindi.");
 } else start();
 
 function start() {
