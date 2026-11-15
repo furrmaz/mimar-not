@@ -10,7 +10,7 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import type { BuildingLayout } from "../geometry/layout";
 import { buildModel, type ModelOptions } from "../geometry/model3d";
 import type { Program } from "../shared/schema";
-import { zoningCheck } from "../geometry/zoning";
+import { sitePool, zoningCheck } from "../geometry/zoning";
 import { saveOutput } from "../store";
 import { RenderDialog, type RenderCapture } from "./RenderDialog";
 import { aspectValue, nearestAspect, type CameraInfo } from "../shared/render";
@@ -143,7 +143,9 @@ export function ThreeView({ layout, program, refImages = [], onSettings }: { lay
     const entranceX = ent ? (ent.orient === "h" ? ent.center : ent.line) : undefined;
     const others = (z.blocks ?? []).filter((b) => b.index !== (program.blockIndex ?? 0));
     const avoid = others.map((b) => ({ x: b.x - z.building.x, y: b.y - z.building.y, w: b.L.W, d: b.L.D }));
-    const model = buildModel(layout, { ...opts, materials: program.materials, facade: program.facade, entranceX, avoid }, { width: program.site.width, depth: program.site.depth, offsetX: z.building.x, offsetY: z.building.y });
+    const sp = sitePool(program, layout, z);
+    const pool = sp ? { x: sp.x - z.building.x, y: sp.y - z.building.y, w: sp.w, h: sp.h } : null;
+    const model = buildModel(layout, { ...opts, materials: program.materials, facade: program.facade, entranceX, avoid, pool }, { width: program.site.width, depth: program.site.depth, offsetX: z.building.x, offsetY: z.building.y });
     // çok bloklu: diğer bloklar da arsada
     for (const b of others) {
       const m = buildModel(b.L, { ...opts, materials: program.materials, facade: program.facade });

@@ -1,7 +1,7 @@
 // İmar kontrolleri: TAKS, KAKS (emsal), kat adedi, Hmax, çekme mesafeleri.
 // Not: Ön tasarım kontrolüdür; emsal dışı alanlar (balkon, merdiven evi muafiyetleri vb.) basitleştirilmiştir.
 import type { Program } from "../shared/schema";
-import { buildLayout, type BuildingLayout } from "./layout";
+import { buildLayout, isPool, type BuildingLayout } from "./layout";
 import { blockTypeKey, blockView, isMultiBlock } from "./blocks";
 import { floorFootprintArea } from "./massing";
 
@@ -186,4 +186,25 @@ export function parkingStalls(p: Program, L: BuildingLayout, z = zoningCheck(p, 
   const x0 = z.blocks ? Math.max(0.5, z.setbacks.side) : Math.max(0.5, Math.min(sw - total - 0.5, z.building.x + L.W - total));
   const y0 = z.building.y >= Dp + 1 ? Math.max(0.3, (z.building.y - Dp) / 2) : 0.3;
   return Array.from({ length: n }, (_, i) => ({ x: x0 + i * W, y: y0, w: W, h: Dp }));
+}
+
+/** Havuz: arka bahçede (sığmazsa yan bahçede), arsa koordinatında; veranda payı 1,2 m. Havuz yoksa null. */
+export function sitePool(p: Program, L: BuildingLayout, z = zoningCheck(p, L)): { x: number; y: number; w: number; h: number; name: string } | null {
+  if (z.blocks) return null;
+  const room = p.floors.flatMap((f) => f.rooms).find(isPool);
+  if (!room && !p.design?.pool) return null;
+  const area = Math.min(120, Math.max(15, room?.area && room.area > 8 ? room.area : 32));
+  let w = Math.min(12, Math.max(5, Math.sqrt(area * 2))), h = area / w;
+  const sw = p.site.width, sd = p.site.depth;
+  const maxOut = Math.max(0, ...L.floors.flatMap((f) => f.outdoor.map((o) => o.rect.y + o.rect.h - L.D)));
+  const by = z.building.y + L.D + maxOut;
+  const name = room?.name ?? "Havuz";
+  const fit = (x: number, y: number) => ({ x: Math.min(sw - w - 1.5, Math.max(1.5, x)), y, w, h, name });
+  if (sd - by >= h + 4 && sw >= w + 3) return fit(z.building.x + L.W / 2 - w / 2, by + 2.5);
+  // yan bahçe: havuz uzun kenarı derinlik yönünde
+  [w, h] = [h, w];
+  const right = sw - (z.building.x + L.W);
+  if (right >= w + 3.5 && sd >= h + 3) return { x: z.building.x + L.W + 2, y: Math.min(sd - h - 1.5, Math.max(1.5, z.building.y + L.D / 2 - h / 2)), w, h, name };
+  if (z.building.x >= w + 3.5 && sd >= h + 3) return { x: z.building.x - 2 - w, y: Math.min(sd - h - 1.5, Math.max(1.5, z.building.y + L.D / 2 - h / 2)), w, h, name };
+  return null;
 }

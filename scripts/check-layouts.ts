@@ -162,6 +162,14 @@ console.log("Örnek: villa");
 checkProgram(SAMPLE_PROGRAM, "villa");
 console.log("Örnek: 4 bloklu site (A blok)");
 checkProgram(blockView(SITE_PROGRAM, 0), "site-A");
+{
+  // apartman çekme katı: en üst katı dubleks olmayan blokta denenir
+  const b = blockView(SITE_PROGRAM, 0);
+  const p = { ...b, floors: b.floors.filter((f) => f.level < 4), massing: { features: ["cekme_kat"], cantilever: 1.5, terraceDepth: 2, notchDepth: 2.6, rationale: "" } } as Program;
+  console.log("Örnek: site A blok, çekme kat");
+  checkProgram(p, "site-A-cekme");
+  if (!buildLayout(p).massing?.features.includes("cekme_kat")) fail("site-A-cekme", "çekme kat uygulanmadı");
+}
 const N = Number(process.env.N ?? 120);
 console.log(`Rastgele ${N} konut programı`);
 for (let i = 0; i < N; i++) {
@@ -179,7 +187,7 @@ for (let i = 0; i < N; i++) {
 }
 
 // ---- kütle artikülasyonu: konsol, teras, köşe oyuğu (düz çatı)
-const COMBOS = [["on_konsol"], ["arka_konsol"], ["yan_konsol"], ["ust_kat_teras"], ["kose_oyugu"], ["on_konsol", "ust_kat_teras"], ["kose_oyugu", "on_konsol"], [...MASS_FEATURES]];
+const COMBOS = [["on_konsol"], ["arka_konsol"], ["yan_konsol"], ["ust_kat_teras"], ["kose_oyugu"], ["galeri"], ["kaydirilmis_kutu"], ["galeri", "on_konsol", "ust_kat_teras"], ["on_konsol", "ust_kat_teras"], ["kose_oyugu", "on_konsol"], [...MASS_FEATURES]];
 const appliedCount = new Map<string, number>();
 function baseFails(base: Program, variant: number) {
   const before = failures, c = checks;
@@ -195,6 +203,7 @@ function baseFails(base: Program, variant: number) {
 }
 const M = Number(process.env.M ?? 40);
 console.log(`Kütle: ${M} program × ${COMBOS.length} birleşim`);
+
 for (let i = 0; i < M; i++) {
   const base = randomHouse(1000 + i);
   for (const c of COMBOS) {
