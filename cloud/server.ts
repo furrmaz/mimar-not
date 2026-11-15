@@ -15,6 +15,7 @@ import { writeRenderPrompt } from "../src/shared/renderprompt";
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminSessions, checkAdminPassword, hashAdminPassword, readCookie, validAdminHash } from "./adminauth";
 import { openSettings } from "./settings";
 import { mountOffice } from "./office";
+import { mountShare } from "./share";
 
 export interface CloudOptions {
   db: DB;
@@ -238,6 +239,9 @@ export function createCloudApp(o: CloudOptions) {
     quotaBytes: (u) => (entitlement(db, u, plans()).status === "active" ? mb("OFFICE_QUOTA_MB", 1024) : mb("OFFICE_TRIAL_QUOTA_MB", 200)),
     maxFileBytes: () => mb("OFFICE_MAX_FILE_MB", 50),
   });
+
+  // ---------- müşteri paylaşım bağlantıları ----------
+  mountShare(app, { db, auth });
 
   // ---------- işler (üretim ve render) ----------
   const quotaError = (u: UserRow, kind: "generate" | "render") => {

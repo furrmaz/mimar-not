@@ -4,6 +4,13 @@ import type { BuildingLayout } from "../geometry/layout";
 import { areaTable, roomChecks } from "../geometry/roomcheck";
 import { isMultiBlock, unitCounts } from "../geometry/blocks";
 import { zoningCheck } from "../geometry/zoning";
+import { DEFAULT_PRICES, takeoff } from "../geometry/takeoff";
+import { structurePlan, structureSVG } from "../geometry/structure";
+
+const PRICES_KEY = "mimar-not.prices";
+function readPrices(): Record<string, number> {
+  try { return { ...DEFAULT_PRICES, ...(JSON.parse(localStorage.getItem(PRICES_KEY) ?? "{}") as Record<string, number>) }; } catch { return { ...DEFAULT_PRICES }; }
+}
 
 const COST_KEY = "mimar-not.unitCost";
 const tl = (v: number) => v.toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " ₺";
@@ -20,6 +27,15 @@ function readCost() {
 
 export function AreasPanel({ program, layout }: { program: Program; layout: BuildingLayout }) {
   const [unit, setUnit] = useState(readCost);
+  const [prices, setPrices] = useState(readPrices);
+  const tk = takeoff(layout, prices);
+  const st = structurePlan(layout);
+  const setPrice = (id: string, v: number) => {
+    const next = { ...prices, [id]: v };
+    setPrices(next);
+    try { localStorage.setItem(PRICES_KEY, JSON.stringify(next)); } catch { /* yok say */ }
+  };
+  const resetPrices = () => { setPrices({ ...DEFAULT_PRICES }); try { localStorage.removeItem(PRICES_KEY); } catch { /* yok say */ } };
   const { rows, total } = areaTable(layout);
   const issues = roomChecks(layout);
   const hard = issues.filter((i) => !i.soft);
@@ -85,6 +101,50 @@ export function AreasPanel({ program, layout }: { program: Program; layout: Buil
           </div>
         </div>
         <div className="muted small">Balkon ve teraslar yarım alan sayılır. Arsa, proje, harç ve iç donanım dahil değildir. Birim maliyet örnek değerdir; Çevre, Şehircilik ve İklim Değişikliği Bakanlığı'nın yıllık yapı yaklaşık birim maliyetlerini ya da kendi m² fiyatınızı girin.</div>
+      </section>
+
+      <section className="card">
+        <h3>Metraj ve keşif özeti{multi ? ` · ${program.blocks![program.blockIndex ?? 0]?.name}` : ""}</h3>
+        <table className="takeoff">
+          <thead><tr><th>İş kalemi</th><th className="num">Miktar</th><th>Birim</th><th className="num">Birim fiyat (₺)</th><th className="num">Tutar</th></tr></thead>
+          <tbody>
+            {tk.groups.map((g) => [
+              <tr key={g.group} className="group"><td colSpan={4}><b>{g.group}</b></td><td className="num"><b>{tl(g.total)}</b></td></tr>,
+              ...tk.items.filter((i) => i.group === g.group).map((i) => (
+                <tr key={i.id}>
+                  <td>{i.name}{i.note && <span className="muted small"> · {i.note}</span>}</td>
+                  <td className="num">{i.qty.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}</td><td>{i.unit}</td>
+                  <td className="num"><input type="number" step={50} value={i.price} onChange={(e) => setPrice(i.id, Number(e.target.value) || 0)} /></td>
+                  <td className="num">{tl(i.qty * i.price)}</td>
+                </tr>
+              )),
+            ])}
+            <tr style={{ fontWeight: 600 }}><td colSpan={4}>Toplam (KDV, proje, harç, arsa ve peyzaj hariç)</td><td className="num">{tl(tk.total)}</td></tr>
+          </tbody>
+        </table>
+        <div className="muted small">Miktarlar çizilen plandan hesaplanır (avan proje hassasiyeti, ± %10–15). Birim fiyatlar malzeme ve işçilik dahil örnek değerlerdir; kendi fiyatlarınızı yazın, bu cihazda saklanır. <button className="link" onClick={resetPrices}>Örnek fiyatlara dön</button></div>
+      </section>
+
+      <section className="card">
+        <h3>Taşıyıcı sistem ön önerisi</h3>
+        <div className="stats" style={{ marginBottom: 10 }}>
+          <div><b>{st.xs.length} × {st.ys.length}</b><span>aks</span></div>
+          <div><b>{st.columns.length}</b><span>kolon</span></div>
+          <div><b>{st.maxSpan.toLocaleString("tr-TR")} m</b><span>en büyük açıklık</span></div>
+          <div><b>{st.beam.w}×{st.beam.h} cm</b><span>kiriş</span></div>
+          <div><b>{st.slab} cm</b><span>plak döşeme</span></div>
+        </div>
+        <div className="struct-svg" dangerouslySetInnerHTML={{ __html: structureSVG(layout, st) }} />
+        <table>
+          <thead><tr><th>Kolon</th><th className="num">Boyut (cm)</th><th className="num">Etki alanı (m²)</th></tr></thead>
+          <tbody>
+            {Object.entries(st.columns.reduce<Record<string, { names: string[]; trib: number }>>((m, c) => { const k = `${c.w}×${c.d}`; (m[k] ??= { names: [], trib: 0 }).names.push(c.ax + c.ay); m[k].trib = Math.max(m[k].trib, c.trib); return m; }, {})).map(([k, v]) => (
+              <tr key={k}><td>{v.names.join(", ")}</td><td className="num">{k}</td><td className="num">≤ {m2(v.trib)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+        <ul style={{ margin: "8px 0", paddingLeft: 18, lineHeight: 1.6, fontSize: 14 }}>{st.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+        <div className="muted small">Kırmızı kesikli çizgiler aks, mavi şeritler kiriş, siyah dikdörtgenler kolon; turuncu kesikli çizgi üst katların oturumudur. Akslar DXF çıktısında MN-AKS ve MN-KOLON katmanlarındadır.</div>
       </section>
 
       <section className={`card ${hard.length ? "bad" : "good"}`}>
