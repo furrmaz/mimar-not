@@ -164,6 +164,65 @@ const wait = async (tok: string, id: string) => { for (;;) { await new Promise((
     ok(/Max-Age=0/.test(out.headers.get("set-cookie") ?? ""), "çıkış çerezi siler");
     s2.close(); s3.close();
   }
+  // ayarlar: panelden API anahtarı, ödeme, deneme, planlar, yönetici parolası
+  {
+    const db4 = openDB(fs.mkdtempSync(path.join(os.tmpdir(), "mn-")));
+    const f4: typeof fetch = async (url, init) => {
+      const u = String(url);
+      if (u.startsWith("https://api.anthropic.com/v1/models/")) {
+        const k = new Headers(init?.headers).get("x-api-key");
+        return k === "sk-ant-iyi-anahtar" ? Response.json({ display_name: "Claude Opus 5.5" }) : new Response("{}", { status: 401 });
+      }
+      if (u.endsWith("/files/generate-upload-url")) return new Headers(init?.headers).get("authorization") === "Key id1:sec1" ? Response.json({ upload_url: "x", public_url: "y" }) : new Response("{}", { status: 401 });
+      return new Response("nf", { status: 404 });
+    };
+    const app4 = createCloudApp({ db: db4, anthropicKey: "", adminToken: "eski-token-123456", payment: { bank: "EnvBank", holder: "", iban: "", email: "", whatsapp: "", company: "", address: "" }, claudeClient: fake, renderFetch: f4 });
+    const s4 = app4.listen(0);
+    const b4 = `http://127.0.0.1:${(s4.address() as { port: number }).port}`;
+    let ck = "";
+    const c4 = async (p: string, body?: unknown) => {
+      const r = await fetch(b4 + p, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...(ck ? { Cookie: ck } : {}) }, body: body ? JSON.stringify(body) : undefined });
+      const sc = r.headers.get("set-cookie"); if (sc && /pn_admin=[^;]+/.test(sc) && !/Max-Age=0/.test(sc)) ck = sc.split(";")[0];
+      return { s: r.status, j: await r.json().catch(() => null) as any };
+    };
+    ok((await c4("/api/health")).j.hasKey === false, "anahtar yokken health hasKey=false");
+    ok((await c4("/api/admin/settings")).s === 401, "ayarlar girişsiz 401");
+    await c4("/api/admin/login", { password: "eski-token-123456" });
+    let r4 = await c4("/api/admin/settings");
+    ok(r4.s === 200 && r4.j.items.find((i: any) => i.key === "PAY_BANK").source === "env" && !r4.j.items.some((i: any) => i.key.startsWith("ADMIN")), "ayarlar listesi (env kaynağı, yönetici gizli)");
+    ok((await c4("/api/admin/settings", { values: { ANTHROPIC_API_KEY: "yanlis" } })).s === 400, "geçersiz Claude anahtarı reddedildi");
+    ok((await c4("/api/admin/settings/test", { kind: "claude", key: "sk-ant-kotu" })).s === 400, "kötü anahtar denemesi hata");
+    ok((await c4("/api/admin/settings/test", { kind: "claude", key: "sk-ant-iyi-anahtar" })).j?.ok === true, "iyi anahtar denemesi başarılı");
+    r4 = await c4("/api/admin/settings", { values: { ANTHROPIC_API_KEY: "sk-ant-iyi-anahtar", HF_API_KEY_ID: "id1:sec1", PAY_BANK: "Panel Bank", CONTACT_WHATSAPP: "0532 111 22 33", TRIAL_GENERATE: "5" } });
+    const ak = r4.j.items.find((i: any) => i.key === "ANTHROPIC_API_KEY");
+    ok(ak.source === "panel" && !ak.value.includes("iyi-anahtar") && ak.set, "anahtar kaydedildi, maskeli döndü");
+    ok((await c4("/api/admin/settings/test", { kind: "claude" })).j?.ok === true, "kayıtlı anahtar denendi");
+    ok((await c4("/api/admin/settings/test", { kind: "higgsfield" })).j?.ok === true, "Higgsfield KeyID:Secret tek parça");
+    const h4 = (await c4("/api/health")).j;
+    ok(h4.hasKey === true && h4.hasHiggsfield === true, "health: Claude ve render açıldı");
+    let pc = (await c4("/api/public/config")).j;
+    ok(pc.payment.bank === "Panel Bank" && pc.payment.whatsapp === "905321112233" && pc.trial.generate === 5, "ödeme ve deneme panelden");
+    r4 = await c4("/api/admin/settings", { values: { ANTHROPIC_API_KEY: "" } });
+    ok(r4.j.hasClaude === true, "boş gizli alan anahtarı silmedi");
+    ok((await c4("/api/admin/settings", { values: { PLANS_JSON: "[{\"id\":\"x\"}]" } })).s === 400, "geçersiz plan reddedildi");
+    await c4("/api/admin/settings", { values: { PLANS_JSON: JSON.stringify([{ id: "tek", label: "Tek", priceTry: 999, generate: 7, render: 1, features: ["a"] }]) } });
+    pc = (await c4("/api/public/config")).j;
+    ok(pc.plans.length === 1 && pc.plans[0].priceTry === 999, "planlar panelden");
+    await c4("/api/admin/settings", { values: { PLANS_JSON: null, PAY_BANK: null } });
+    pc = (await c4("/api/public/config")).j;
+    ok(pc.plans.length === 3 && pc.payment.bank === "EnvBank", "sıfırla: varsayılan plan ve .env değeri");
+    ok((await c4("/api/admin/password", { username: "patron", current: "yanlis", password: "yeni-cok-gizli-1" })).s === 403, "mevcut parola yanlışsa değişmez");
+    ok((await c4("/api/admin/password", { username: "patron", current: "eski-token-123456", password: "kisa" })).s === 400, "kısa parola reddedildi");
+    const pw = await c4("/api/admin/password", { username: "patron", current: "eski-token-123456", password: "yeni-cok-gizli-1" });
+    ok(pw.s === 200 && (await c4("/api/admin/settings")).s === 200, "parola değişti, oturum sürüyor");
+    ok((await fetch(b4 + "/api/admin/stats", { headers: { "X-Admin-Token": "eski-token-123456" } })).status === 401, "eski ADMIN_TOKEN kapandı");
+    const li = (await c4("/api/admin/login")).j;
+    ok(li.userLogin === true && li.tokenLogin === false, "giriş bilgisi: kullanıcı adı, token yok");
+    ck = "";
+    ok((await c4("/api/admin/login", { password: "eski-token-123456" })).s === 401, "token ile form girişi kapandı");
+    ok((await c4("/api/admin/login", { username: "patron", password: "yeni-cok-gizli-1" })).s === 200 && (await c4("/api/admin/stats")).s === 200, "yeni parolayla giriş");
+    s4.close();
+  }
   srv.close();
   process.exit();
 })();

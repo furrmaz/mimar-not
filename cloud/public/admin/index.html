@@ -9,7 +9,7 @@
   :root { --bg:#f5f4f1; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e2e0db; --accent:#b5532e; --ok:#2e7d4f; --bad:#b3261e; }
   * { box-sizing: border-box; }
   body { margin:0; font: 14px/1.45 Inter, "Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--ink); }
-  header { display:flex; gap:12px; align-items:center; padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
+  header { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
   header b { font-size:16px; } header .sp { flex:1; }
   main { padding:18px 20px 60px; max-width:1200px; margin:0 auto; }
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-bottom:16px; }
@@ -36,6 +36,19 @@
   #login { max-width:360px; margin:12vh auto; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px; }
   #login input { width:100%; margin:10px 0; }
   .wrap { overflow-x:auto; }
+  .tabs { display:flex; gap:4px; margin-left:12px; }
+  .tabs button { border:none; background:none; padding:7px 12px; border-radius:8px; color:var(--muted); font-weight:600; }
+  .tabs button.on { background:#f1ece6; color:var(--ink); }
+  .set { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:14px; }
+  .set h2 { font-size:16px; margin:0 0 4px; } .set > p { margin:0 0 12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px 14px; }
+  .fld label { display:block; font-size:12px; color:var(--muted); margin-bottom:3px; }
+  .fld input, .fld select, .fld textarea { width:100%; }
+  .src { font-size:11px; padding:1px 6px; border-radius:99px; margin-left:6px; background:#eee; color:var(--muted); }
+  .src.panel { background:#e3f2e8; color:var(--ok); } .src.none { background:#fdecea; color:var(--bad); }
+  .lnk { border:none; background:none; padding:0; color:var(--accent); font-size:12px; cursor:pointer; margin-left:6px; }
+  .plans td, .plans th { padding:6px; } .plans input, .plans textarea { width:100%; }
+  .plans input[type=number] { min-width:70px; }
   @media (max-width:640px) { .hide-sm { display:none; } }
 </style>
 </head>
@@ -52,8 +65,8 @@
 </div>
 
 <div id="app" hidden>
-  <header><b>Planhane Yönetim</b><span class="sp"></span><button id="backup">Yedek indir</button><button id="refresh">Yenile</button><button id="logout">Çıkış</button></header>
-  <main>
+  <header><b>Planhane Yönetim</b><nav class="tabs"><button id="tabUsers" class="on">Kullanıcılar</button><button id="tabSettings">Ayarlar</button></nav><span class="sp"></span><button id="backup">Yedek indir</button><button id="refresh">Yenile</button><button id="logout">Çıkış</button></header>
+  <main id="usersView">
     <div class="cards" id="stats"></div>
     <div class="row" style="margin-bottom:10px">
       <input id="q" placeholder="Ara: e-posta, ad, ofis, telefon, MN-0012" style="flex:1;min-width:220px" />
@@ -65,6 +78,7 @@
     </table></div>
     <p class="muted small">Havale/EFT geldiğinde: açıklamadaki müşteri numarasını (MN-…) arayın, kullanıcıyı açın, plan ve ay seçip "Aboneliği aç" deyin. Süresi bitmemiş abonelik kaldığı yerden uzatılır.</p>
   </main>
+  <main id="settingsView" hidden></main>
 </div>
 <div id="detail" hidden></div>
 
@@ -104,7 +118,14 @@ $("#loginForm").onsubmit = async (e) => {
   await load().catch(() => {});
 };
 $("#logout").onclick = async () => { await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" }).catch(() => {}); showLogin(); };
-$("#refresh").onclick = () => load();
+$("#refresh").onclick = () => ($("#settingsView").hidden ? load() : loadSettings());
+const showTab = (set) => {
+  $("#usersView").hidden = set; $("#settingsView").hidden = !set;
+  $("#tabUsers").classList.toggle("on", !set); $("#tabSettings").classList.toggle("on", set);
+  if (set) loadSettings().catch((e) => alert(e.message));
+};
+$("#tabUsers").onclick = () => showTab(false);
+$("#tabSettings").onclick = () => showTab(true);
 $("#backup").onclick = async () => {
   const r = await fetch("/api/admin/backup", { credentials: "same-origin" });
   if (!r.ok) return alert("Yedek alınamadı");
@@ -203,6 +224,111 @@ async function openUser(id, note) {
   };
   const c = $("#cancel"); if (c) c.onclick = () => { if (confirm("Abonelik şimdi bitirilsin mi?")) act(() => api(`/api/admin/users/${id}/update`, { cancelPlan: true }), "Abonelik bitirildi."); };
   $("#saveNote").onclick = () => act(() => api(`/api/admin/users/${id}/update`, { note: $("#unote").value }), "Not kaydedildi.");
+}
+
+// ---------- Ayarlar ----------
+const SRC = { panel: "Panelden", env: "Sunucu dosyasından (.env)", none: "Girilmemiş" };
+const MODELS = [["claude-opus-5-5", "Claude Opus 5.5 (en iyi sonuç)"], ["claude-sonnet-5-5", "Claude Sonnet 5.5 (daha ucuz)"], ["claude-fable-5-2", "Claude Fable 5.2"], ["claude-haiku-5-5", "Claude Haiku 5.5 (en ucuz)"]];
+let S = null;
+const item = (k) => S.items.find((i) => i.key === k) || { value: "", source: "none", set: false };
+function fld(k, label, o = {}) {
+  const it = item(k);
+  const src = `<span class="src ${it.source}">${SRC[it.source]}</span>${it.source === "panel" ? `<button class="lnk" data-reset="${k}" title="Paneldeki değeri sil, sunucu dosyasındakini kullan">sıfırla</button>` : ""}`;
+  const input = o.area
+    ? `<textarea data-k="${k}" rows="2">${esc(it.value)}</textarea>`
+    : it.secret
+      ? `<input data-k="${k}" type="password" autocomplete="off" placeholder="${it.set ? "Kayıtlı: " + esc(it.value) + " (değiştirmek için yazın)" : "Girilmemiş"}" />`
+      : `<input data-k="${k}" ${o.type ? `type="${o.type}" min="0"` : ""} value="${esc(it.value)}" placeholder="${esc(o.ph || "")}" ${o.list ? `list="${o.list}"` : ""} />`;
+  return `<div class="fld"><label>${esc(label)}${src}</label>${input}${o.help ? `<div class="muted small">${o.help}</div>` : ""}</div>`;
+}
+const box = (id, title, desc, body, extra = "") => `<section class="set" id="${id}"><h2>${title}</h2><p class="muted small">${desc}</p>${body}<div class="row" style="margin-top:12px"><button class="primary" data-save="${id}">Kaydet</button>${extra}<span class="small" data-msg="${id}"></span></div></section>`;
+function planRow(p) {
+  return `<tr>
+    <td><input data-p="label" value="${esc(p.label)}" /><input data-p="id" value="${esc(p.id)}" class="small muted" title="Kimlik (değiştirmeyin: abonelikler buna bağlı)" style="margin-top:4px" /></td>
+    <td><input data-p="priceTry" type="number" min="0" value="${p.priceTry}" /></td>
+    <td><input data-p="generate" type="number" min="0" value="${p.generate}" /></td>
+    <td><input data-p="render" type="number" min="0" value="${p.render}" /></td>
+    <td><textarea data-p="features" rows="3">${esc((p.features || []).join("\n"))}</textarea></td>
+    <td style="text-align:center"><input type="radio" name="hl" data-p="highlight" ${p.highlight ? "checked" : ""} /></td>
+    <td><button class="danger" data-del title="Planı sil">×</button></td></tr>`;
+}
+async function loadSettings(note) {
+  S = await api("/api/admin/settings");
+  const pl = item("PLANS_JSON");
+  $("#settingsView").innerHTML = `
+    ${note ? `<div class="msg">${note}</div>` : ""}
+    <datalist id="models">${MODELS.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</datalist>
+    ${box("ai", "Yapay zekâ servisleri", `Üretim (Claude) ve gerçekçi render (Higgsfield) ücretleri bu hesaplardan ödenir. Durum: Claude <b>${S.hasClaude ? "açık" : "kapalı"}</b>, render <b>${S.hasHiggsfield ? "açık" : "kapalı"}</b>. Anahtarlar sunucuda saklanır, buraya yalnız maskeli gelir.`,
+      `<div class="grid">
+        ${fld("ANTHROPIC_API_KEY", "Claude API anahtarı", { help: 'platform.claude.com → Settings → Keys. Aynı yerden aylık harcama sınırı koyun.' })}
+        ${fld("CLAUDE_MODEL", "Claude modeli", { list: "models", ph: S.model, help: "Boşsa claude-opus-5-5." })}
+        ${fld("HF_API_KEY_ID", "Higgsfield Key ID", { help: 'cloud.higgsfield.ai → API Keys. "KeyID:Secret" tek parça da yapıştırılabilir.' })}
+        ${fld("HF_API_KEY_SECRET", "Higgsfield Secret")}
+      </div>`,
+      `<button data-test="claude">Claude'u dene</button><button data-test="higgsfield">Higgsfield'ı dene</button>`)}
+    ${box("pay", "Ödeme ve iletişim bilgileri", "Uygulamadaki \"Abone ol\" ekranında, kullanım koşulları ve KVKK sayfalarında görünür.",
+      `<div class="grid">
+        ${fld("PAY_BANK", "Banka")}${fld("PAY_HOLDER", "Hesap sahibi")}${fld("PAY_IBAN", "IBAN", { ph: "TR.." })}
+        ${fld("CONTACT_EMAIL", "İletişim e-postası")}${fld("CONTACT_WHATSAPP", "WhatsApp", { ph: "0532 123 45 67" })}
+        ${fld("COMPANY_NAME", "Satıcı unvanı")}${fld("COMPANY_ADDRESS", "Satıcı adresi", { area: true })}
+      </div>`)}
+    ${box("trial", "Ücretsiz deneme", "Yeni hesap açanlara verilir. Değişiklik yalnız bundan sonra açılan hesapların deneme süresini etkiler; haklar herkes için hemen değişir.",
+      `<div class="grid">${fld("TRIAL_DAYS", "Gün", { type: "number", ph: String(S.trial.days) })}${fld("TRIAL_GENERATE", "Proje üretimi", { type: "number", ph: String(S.trial.generate) })}${fld("TRIAL_RENDER", "Render", { type: "number", ph: String(S.trial.render) })}</div>`)}
+    ${box("plans", `Abonelik planları <span class="src ${pl.source}">${pl.source === "none" ? "Varsayılan" : SRC[pl.source]}</span>${pl.source === "panel" ? `<button class="lnk" data-reset="PLANS_JSON">varsayılana dön</button>` : ""}`, "Aylık fiyat (TL) ve dönem başına haklar. Yeni fiyat bundan sonraki ödemelerde geçerli; haklar mevcut abonelerde de hemen değişir. Aboneliği olan bir planı silmeyin. Öne çıkan plan sitede vurgulanır.",
+      `<div class="wrap"><table class="plans"><thead><tr><th>Plan</th><th>TL/ay</th><th>Üretim</th><th>Render</th><th>Özellikler (satır satır)</th><th>Öne çıkan</th><th></th></tr></thead><tbody id="planRows">${S.plans.map(planRow).join("")}</tbody></table></div>`,
+      `<button id="addPlan">Plan ekle</button>`)}
+    <section class="set" id="adm"><h2>Yönetici hesabı</h2>
+      <p class="muted small">${S.adminUser ? `Kullanıcı adı: <b>${esc(S.adminUser)}</b>.` : "Henüz kullanıcı adı tanımlanmadı."} ${S.tokenLogin ? "Eski tek parola (ADMIN_TOKEN) hâlâ açık; burada parola belirleyince kapanır." : ""} Parola değişince diğer cihazlardaki oturumlar kapanır.</p>
+      <div class="grid">
+        <div class="fld"><label>Kullanıcı adı</label><input id="aUser" value="${esc(S.adminUser || "admin")}" autocomplete="username" /></div>
+        <div class="fld"><label>Mevcut parola${S.adminUser ? "" : " (ADMIN_TOKEN)"}</label><input id="aCur" type="password" autocomplete="current-password" /></div>
+        <div class="fld"><label>Yeni parola (en az 12 karakter)</label><input id="aNew" type="password" autocomplete="new-password" /></div>
+        <div class="fld"><label>Yeni parola tekrar</label><input id="aNew2" type="password" autocomplete="new-password" /></div>
+      </div>
+      <div class="row" style="margin-top:12px"><button class="primary" id="aSave">Parolayı değiştir</button><span class="small" data-msg="adm"></span></div>
+    </section>
+    <p class="muted small">Ayarlar veritabanında saklanır ve hemen geçerli olur; yeniden başlatma gerekmez. "Yedek indir" dosyası bu ayarları (anahtarlar dahil) içerir, güvenli yerde tutun.</p>`;
+  const V = $("#settingsView");
+  const msg = (id, t, bad) => { const m = V.querySelector(`[data-msg="${id}"]`); m.textContent = t; m.style.color = bad ? "var(--bad)" : "var(--ok)"; };
+  const vals = (id) => Object.fromEntries([...V.querySelectorAll(`#${id} [data-k]`)].map((e) => [e.dataset.k, e.value]));
+  // Yalnız değiştirilen alanlar kaydedilir (dokunulmayanlar .env'den okunmaya devam eder)
+  const changed = (id) => Object.fromEntries(Object.entries(vals(id)).filter(([k, v]) => (item(k).secret ? v.trim() !== "" : v.trim() !== item(k).value)));
+  const save = async (id, values, okText = "Kaydedildi.") => {
+    try { S = await api("/api/admin/settings", { values }); await loadSettings(); msg(id, okText); } catch (e) { msg(id, e.message, true); }
+  };
+  V.querySelectorAll("[data-save]").forEach((b) => (b.onclick = () => {
+    const id = b.dataset.save;
+    if (id !== "plans") { const c = changed(id); return Object.keys(c).length ? save(id, c) : msg(id, "Değişiklik yok."); }
+    const rows = [...V.querySelectorAll("#planRows tr")].map((tr) => {
+      const g = (k) => tr.querySelector(`[data-p="${k}"]`);
+      return { id: g("id").value.trim() || g("label").value.trim().toLocaleLowerCase("tr").replace(/[^a-z0-9]+/g, "-"), label: g("label").value.trim(), priceTry: Number(g("priceTry").value), generate: Number(g("generate").value), render: Number(g("render").value), features: g("features").value.split("\n").map((x) => x.trim()).filter(Boolean), ...(g("highlight").checked ? { highlight: true } : {}) };
+    });
+    if (!rows.length) return msg("plans", "En az bir plan olmalı.", true);
+    if (new Set(rows.map((r) => r.id)).size !== rows.length) return msg("plans", "Plan kimlikleri farklı olmalı.", true);
+    const gone = S.plans.filter((p) => !rows.some((r) => r.id === p.id)).map((p) => p.label);
+    if (gone.length && !confirm(`${gone.join(", ")} planı silinecek. Bu planda abone varsa aboneliği tanınmaz. Devam edilsin mi?`)) return;
+    save("plans", { PLANS_JSON: JSON.stringify(rows) });
+  }));
+  V.querySelectorAll("[data-reset]").forEach((b) => (b.onclick = () => {
+    if (!confirm("Paneldeki değer silinsin ve sunucu dosyasındaki (ya da varsayılan) değer kullanılsın mı?")) return;
+    const sec = b.closest("section").id; save(sec, { [b.dataset.reset]: null }, "Sıfırlandı.");
+  }));
+  V.querySelectorAll("[data-test]").forEach((b) => (b.onclick = async () => {
+    const v = vals("ai"); msg("ai", "Deneniyor…");
+    try {
+      const r = await api("/api/admin/settings/test", b.dataset.test === "claude" ? { kind: "claude", key: v.ANTHROPIC_API_KEY, model: v.CLAUDE_MODEL } : { kind: "higgsfield", keyId: v.HF_API_KEY_ID, secret: v.HF_API_KEY_SECRET });
+      msg("ai", r.message + (v.ANTHROPIC_API_KEY || v.HF_API_KEY_SECRET ? " Kaydetmeyi unutmayın." : ""));
+    } catch (e) { msg("ai", e.message, true); }
+  }));
+  $("#addPlan").onclick = () => $("#planRows").insertAdjacentHTML("beforeend", planRow({ id: "", label: "", priceTry: 0, generate: 0, render: 0, features: [] }));
+  $("#planRows").onclick = (e) => { if (e.target.matches("[data-del]")) e.target.closest("tr").remove(); };
+  $("#aSave").onclick = async () => {
+    if ($("#aNew").value !== $("#aNew2").value) return msg("adm", "Yeni parolalar aynı değil.", true);
+    try {
+      await api("/api/admin/password", { username: $("#aUser").value.trim(), current: $("#aCur").value, password: $("#aNew").value });
+      await loadSettings("Yönetici kullanıcı adı ve parolası güncellendi. Eski ADMIN_TOKEN artık geçersiz.");
+    } catch (e) { msg("adm", e.message, true); }
+  };
 }
 
 load().catch(() => {});

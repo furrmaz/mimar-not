@@ -161,6 +161,12 @@ async function upload(f: Fetch, keys: HiggsfieldKeys, dataUrl: string, api = API
   return up.public_url;
 }
 
+/** Anahtarı ücretsiz bir istekle sınar (yükleme adresi alır, görsel yüklemez). Hata varsa fırlatır. */
+export async function testHiggsfield(keys: HiggsfieldKeys, f: Fetch = fetch, api = API) {
+  if (!keys.keyId || !keys.secret) throw new Error("Higgsfield anahtarı girilmemiş.");
+  await hfJson(f, keys, "/files/generate-upload-url", { method: "POST", body: JSON.stringify({ content_type: "image/png" }) }, api);
+}
+
 /** Render ister, tamamlanınca görsel URL'ini döndürür. onStatus ilerlemeyi bildirir. */
 export async function renderWithHiggsfield(
   req: RenderRequest,

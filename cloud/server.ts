@@ -8,11 +8,12 @@ import os from "node:os";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import type { DB, UserRow } from "./db";
-import { claudeCost, entitlement, loadPlans, loadTrial, type Plan } from "./plans";
+import { claudeCost, entitlement, loadPlans, loadTrial, parsePlans, setConfigSource, type Plan } from "./plans";
 import { generateWithClaude, GenerateError, DEFAULT_MODEL, type GenerateRequest } from "../src/shared/generate";
-import { renderWithHiggsfield, RENDER_MODELS, type RenderRequest } from "../src/shared/render";
+import { renderWithHiggsfield, testHiggsfield, RENDER_MODELS, type RenderRequest } from "../src/shared/render";
 import { writeRenderPrompt } from "../src/shared/renderprompt";
-import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminSessions, checkAdminPassword, readCookie } from "./adminauth";
+import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminSessions, checkAdminPassword, hashAdminPassword, readCookie, validAdminHash } from "./adminauth";
+import { openSettings } from "./settings";
 
 export interface CloudOptions {
   db: DB;
@@ -26,7 +27,7 @@ export interface CloudOptions {
   /** Havale/EFT bilgileri ve iletişim (abone ol ekranında gösterilir) */
   payment: { bank: string; holder: string; iban: string; email: string; whatsapp: string; company: string; address: string };
   /** Test için Claude istemcisi üretimi */
-  claudeClient?: () => Anthropic;
+  claudeClient?: (apiKey: string) => Anthropic;
   renderFetch?: typeof fetch;
   higgsfieldApi?: string;
 }
@@ -80,8 +81,37 @@ interface Job {
 
 export function createCloudApp(o: CloudOptions) {
   const { db } = o;
+  // Ayarlar: yönetim panelinden (veritabanı), yoksa başlangıç seçenekleri / ortam değişkenleri
+  const fallback: Record<string, string | undefined> = {
+    ANTHROPIC_API_KEY: o.anthropicKey, CLAUDE_MODEL: o.model,
+    HF_API_KEY_ID: o.higgsfield?.keyId, HF_API_KEY_SECRET: o.higgsfield?.secret,
+    PAY_BANK: o.payment.bank, PAY_HOLDER: o.payment.holder, PAY_IBAN: o.payment.iban,
+    CONTACT_EMAIL: o.payment.email, CONTACT_WHATSAPP: o.payment.whatsapp,
+    COMPANY_NAME: o.payment.company, COMPANY_ADDRESS: o.payment.address,
+    ADMIN_USER: o.adminLogin?.user, ADMIN_PASSWORD_HASH: o.adminLogin?.hash,
+  };
+  const settings = openSettings(db, (k) => (k in fallback ? fallback[k] ?? "" : process.env[k] ?? "").trim());
+  setConfigSource((k) => settings.get(k));
+  const conf = () => {
+    const g = (k: string) => settings.get(k);
+    // Higgsfield anahtarı "KeyID:Secret" tek parça girildiyse ayır
+    const hfRaw = g("HF_API_KEY_ID");
+    const hfId = hfRaw.includes(":") && !g("HF_API_KEY_SECRET") ? hfRaw.split(":")[0] : hfRaw;
+    const hfSecret = g("HF_API_KEY_SECRET") || (hfRaw.includes(":") ? hfRaw.slice(hfRaw.indexOf(":") + 1) : "");
+    return {
+      anthropicKey: g("ANTHROPIC_API_KEY"),
+      model: g("CLAUDE_MODEL") || DEFAULT_MODEL,
+      higgsfield: hfId && hfSecret ? { keyId: hfId, secret: hfSecret } : undefined,
+      payment: {
+        bank: g("PAY_BANK"), holder: g("PAY_HOLDER"), iban: g("PAY_IBAN"), email: g("CONTACT_EMAIL"),
+        // WhatsApp: 0543… → 90543…
+        whatsapp: g("CONTACT_WHATSAPP").replace(/\D/g, "").replace(/^0/, "90"),
+        company: g("COMPANY_NAME"), address: g("COMPANY_ADDRESS"),
+      },
+    };
+  };
+  const claude = (apiKey: string, maxRetries: number) => o.claudeClient?.(apiKey) ?? new Anthropic({ apiKey, maxRetries });
   const plans = (): Plan[] => loadPlans();
-  const model = o.model ?? process.env.CLAUDE_MODEL ?? DEFAULT_MODEL;
   const jobs = new Map<string, Job>();
   setInterval(() => { const t = Date.now() - 30 * 60_000; for (const [k, j] of jobs) if (j.status !== "running" && j.at < t) jobs.delete(k); }, 60_000).unref();
 
@@ -138,9 +168,9 @@ export function createCloudApp(o: CloudOptions) {
   };
 
   // ---------- herkese açık ----------
-  app.get("/api/health", (_req, res) => { res.json({ ok: true, cloud: true, hasKey: true, model, hasHiggsfield: Boolean(o.higgsfield) }); });
+  app.get("/api/health", (_req, res) => { const c = conf(); res.json({ ok: true, cloud: true, hasKey: Boolean(c.anthropicKey), model: c.model, hasHiggsfield: Boolean(c.higgsfield) }); });
   app.get("/api/public/config", (_req, res) => {
-    res.json({ plans: plans(), trial: loadTrial(), payment: o.payment, renderModels: RENDER_MODELS.map((m) => ({ id: m.id, label: m.label, note: m.note })) });
+    res.json({ plans: plans(), trial: loadTrial(), payment: conf().payment, renderModels: RENDER_MODELS.map((m) => ({ id: m.id, label: m.label, note: m.note })) });
   });
 
   // ---------- hesap ----------
@@ -240,7 +270,10 @@ export function createCloudApp(o: CloudOptions) {
     const q = quotaError(u, "generate");
     if (q) { res.status(q.status).json(q); return; }
     const body = (req.body ?? {}) as GenerateRequest;
-    const client = o.claudeClient?.() ?? new Anthropic({ apiKey: o.anthropicKey, maxRetries: 2 });
+    const c = conf();
+    if (!c.anthropicKey) { res.status(503).json({ error: "Proje üretimi şu an kapalı (sunucuda Claude anahtarı tanımlı değil). Bizimle iletişime geçin." }); return; }
+    const model = c.model;
+    const client = claude(c.anthropicKey, 2);
     const job = startJob(u, "generate", async (job) => {
       job.stage = "Claude programı çıkarıyor…";
       try {
@@ -259,19 +292,21 @@ export function createCloudApp(o: CloudOptions) {
 
   app.post("/api/jobs/render", auth, (req, res) => {
     const u = (req as Authed).user;
-    if (!o.higgsfield) { res.status(503).json({ error: "Gerçekçi render şu an kapalı." }); return; }
+    const c = conf();
+    if (!c.higgsfield) { res.status(503).json({ error: "Gerçekçi render şu an kapalı." }); return; }
+    const model = c.model;
     const q = quotaError(u, "render");
     if (q) { res.status(q.status).json(q); return; }
     const body = (req.body ?? {}) as RenderRequest;
     // Maliyet denetimi: yalnız listedeki modeller
     if (!RENDER_MODELS.some((m) => m.id === body.modelId)) body.modelId = RENDER_MODELS[0].id;
-    const keys = o.higgsfield;
+    const keys = c.higgsfield;
     const job = startJob(u, "render", async (job) => {
       try {
-        const client = o.claudeClient?.() ?? new Anthropic({ apiKey: o.anthropicKey, maxRetries: 1 });
+        const client = claude(c.anthropicKey, 1);
         const out = await renderWithHiggsfield(body, keys, {
           signal: job.ac.signal, fetch: o.renderFetch, api: o.higgsfieldApi, onStatus: (s) => { job.stage = s; },
-          writePrompt: (r, refs) => writeRenderPrompt(o.anthropicKey ? client : null, { view: r.view, refs, program: r.program, camera: r.camera, extra: r.extra, modelId: r.modelId }, { model, signal: job.ac.signal }),
+          writePrompt: (r, refs) => writeRenderPrompt(c.anthropicKey ? client : null, { view: r.view, refs, program: r.program, camera: r.camera, extra: r.extra, modelId: r.modelId }, { model, signal: job.ac.signal }),
         });
         job.stage = "Görsel indiriliyor…";
         const f = o.renderFetch ?? fetch;
@@ -303,37 +338,119 @@ export function createCloudApp(o: CloudOptions) {
   });
 
   // ---------- yönetim ----------
-  const adminSess = adminSessions(`${o.adminLogin?.user ?? ""}|${o.adminLogin?.hash ?? ""}|${o.adminToken}`);
+  // Giriş bilgileri panelden değiştirilebilir (ayarlar), bu yüzden her istekte okunur
+  const adminCreds = () => {
+    const user = settings.get("ADMIN_USER"), hash = settings.get("ADMIN_PASSWORD_HASH");
+    return user && validAdminHash(hash) ? { user, hash } : undefined;
+  };
+  const adminToken = () => (settings.get("ADMIN_TOKEN_OFF") === "1" ? "" : o.adminToken);
+  const adminSess = () => { const c = adminCreds(); return adminSessions(`${c?.user ?? ""}|${c?.hash ?? ""}|${adminToken()}`); };
   const adminLoginLimit = limiter(10, 15 * 60_000);
   const adminCookie = (req: Request, value: string, maxAgeMs: number) =>
     `${ADMIN_COOKIE}=${value}; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(maxAgeMs / 1000)}${req.secure ? "; Secure" : ""}`;
+  type AdminReq = Request & { adminWho: string };
   const admin = (req: Request, res: Response, next: NextFunction) => {
-    const t = req.get("x-admin-token") ?? "";
-    if (t && o.adminToken && safeEq(t, o.adminToken)) { next(); return; }
+    const t = req.get("x-admin-token") ?? "", tok = adminToken();
+    if (t && tok && safeEq(t, tok)) { (req as AdminReq).adminWho = "token"; next(); return; }
     const c = readCookie(req.get("cookie"), ADMIN_COOKIE);
-    if (c && adminSess.verify(c) !== null) { next(); return; }
+    const who = c ? adminSess().verify(c) : null;
+    if (who !== null) { (req as AdminReq).adminWho = who; next(); return; }
     res.status(401).json({ error: c ? "Oturumun süresi doldu, yeniden giriş yapın." : "Giriş yapın." });
   };
 
   app.get("/api/admin/login", (_req, res) => {
-    res.json({ userLogin: Boolean(o.adminLogin), tokenLogin: Boolean(o.adminToken) });
+    res.json({ userLogin: Boolean(adminCreds()), tokenLogin: Boolean(adminToken()) });
   });
   app.post("/api/admin/login", (req, res) => {
     const user = String(req.body?.username ?? "").trim();
     const pw = String(req.body?.password ?? "");
     if (!adminLoginLimit(req.ip ?? "?")) { res.status(429).json({ error: "Çok fazla deneme. 15 dakika sonra tekrar deneyin." }); return; }
+    const creds = adminCreds(), tok = adminToken();
     let who: string | null = null;
-    if (o.adminLogin && user && pw && user.toLowerCase() === o.adminLogin.user.toLowerCase() && checkAdminPassword(pw, o.adminLogin.hash)) who = o.adminLogin.user;
+    if (creds && user && pw && user.toLowerCase() === creds.user.toLowerCase() && checkAdminPassword(pw, creds.hash)) who = creds.user;
     // Kullanıcı adı tanımlanmadıysa eski ADMIN_TOKEN parola alanından girilebilir
-    else if (o.adminToken && pw && (!o.adminLogin || !user) && safeEq(pw, o.adminToken)) who = "token";
-    if (!who) { res.status(401).json({ error: o.adminLogin ? "Kullanıcı adı ya da parola hatalı." : "Yönetici parolası hatalı." }); return; }
-    res.setHeader("Set-Cookie", adminCookie(req, adminSess.issue(who), ADMIN_SESSION_MS));
+    else if (tok && pw && (!creds || !user) && safeEq(pw, tok)) who = "token";
+    if (!who) { res.status(401).json({ error: creds ? "Kullanıcı adı ya da parola hatalı." : "Yönetici parolası hatalı." }); return; }
+    res.setHeader("Set-Cookie", adminCookie(req, adminSess().issue(who), ADMIN_SESSION_MS));
     res.json({ ok: true, user: who });
   });
   app.post("/api/admin/logout", (req, res) => {
     res.setHeader("Set-Cookie", adminCookie(req, "", 0));
     res.json({ ok: true });
   });
+
+  // Yönetici kullanıcı adı / parolası (panelden). Eski ADMIN_TOKEN bundan sonra kapanır.
+  app.post("/api/admin/password", admin, (req, res) => {
+    const cur = String(req.body?.current ?? "");
+    const user = String(req.body?.username ?? "").trim();
+    const pw = String(req.body?.password ?? "");
+    const creds = adminCreds(), tok = adminToken();
+    const okCur = (creds && checkAdminPassword(cur, creds.hash)) || (!creds && tok && cur && safeEq(cur, tok));
+    if (!okCur) { res.status(403).json({ error: "Mevcut parola hatalı." }); return; }
+    if (!/^[A-Za-z0-9._@-]{3,64}$/.test(user)) { res.status(400).json({ error: "Kullanıcı adı 3-64 karakter olmalı; harf, rakam ve . _ @ - kullanılabilir." }); return; }
+    if (pw.length < 12) { res.status(400).json({ error: "Yeni parola en az 12 karakter olmalı." }); return; }
+    settings.set({ ADMIN_USER: user, ADMIN_PASSWORD_HASH: hashAdminPassword(pw), ADMIN_TOKEN_OFF: "1" });
+    // Anahtar değişti: diğer oturumlar düşer, bu oturuma yeni çerez
+    res.setHeader("Set-Cookie", adminCookie(req, adminSess().issue(user), ADMIN_SESSION_MS));
+    res.json({ ok: true, user });
+  });
+
+  // ---------- ayarlar (API anahtarları, ödeme bilgileri, deneme, planlar) ----------
+  const settingsView = () => {
+    const c = conf();
+    return { items: settings.view(), plans: plans(), trial: loadTrial(), model: c.model, hasClaude: Boolean(c.anthropicKey), hasHiggsfield: Boolean(c.higgsfield), adminUser: adminCreds()?.user ?? "", tokenLogin: Boolean(adminToken()) };
+  };
+  app.get("/api/admin/settings", admin, (_req, res) => { res.json(settingsView()); });
+  app.post("/api/admin/settings", admin, (req, res) => {
+    const vals = (req.body?.values ?? {}) as Record<string, unknown>;
+    const patch: Record<string, string | null | undefined> = {};
+    const items = new Map(settings.view().map((i) => [i.key, i]));
+    for (const [k, v] of Object.entries(vals)) {
+      const it = items.get(k);
+      if (!it) continue;
+      if (v === null) { patch[k] = null; continue; }
+      const t = String(v ?? "").trim();
+      if (it.secret && !t) continue; // gizli alan boş bırakıldı: değişmez
+      patch[k] = t;
+    }
+    for (const k of ["TRIAL_DAYS", "TRIAL_GENERATE", "TRIAL_RENDER"]) {
+      const v = patch[k];
+      if (typeof v === "string" && v && !(Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 1000)) { res.status(400).json({ error: "Deneme değerleri 0-1000 arası tam sayı olmalı." }); return; }
+    }
+    if (typeof patch.PLANS_JSON === "string" && patch.PLANS_JSON && !parsePlans(patch.PLANS_JSON)) { res.status(400).json({ error: "Plan listesi geçersiz: her planın kimliği, adı, fiyatı, üretim ve render hakkı olmalı." }); return; }
+    if (typeof patch.ANTHROPIC_API_KEY === "string" && patch.ANTHROPIC_API_KEY && !/^sk-ant-/.test(patch.ANTHROPIC_API_KEY)) { res.status(400).json({ error: "Claude API anahtarı \"sk-ant-\" ile başlamalı." }); return; }
+    settings.set(patch);
+    res.json(settingsView());
+  });
+
+  /** Anahtarı dener: girilen değer, yoksa kayıtlı olan. Ücret doğurmaz. */
+  app.post("/api/admin/settings/test", admin, async (req, res) => {
+    const b = req.body ?? {};
+    const c = conf();
+    const f = o.renderFetch ?? fetch;
+    try {
+      if (b.kind === "claude") {
+        const key = String(b.key ?? "").trim() || c.anthropicKey;
+        const model = String(b.model ?? "").trim() || c.model;
+        if (!key) throw new Error("Claude API anahtarı girilmemiş.");
+        const r = await f(`https://api.anthropic.com/v1/models/${encodeURIComponent(model)}`, { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" }, signal: AbortSignal.timeout(15_000) });
+        if (r.status === 401) throw new Error("Claude API anahtarı geçersiz.");
+        if (r.status === 404) throw new Error(`Anahtar geçerli ama "${model}" modeli bulunamadı.`);
+        if (!r.ok) throw new Error(`Claude yanıtı: ${r.status}`);
+        const j = (await r.json().catch(() => ({}))) as { display_name?: string };
+        res.json({ ok: true, message: `Claude anahtarı çalışıyor (${j.display_name ?? model}).` });
+      } else if (b.kind === "higgsfield") {
+        const id = String(b.keyId ?? "").trim(), sec = String(b.secret ?? "").trim();
+        const keys = id ? (id.includes(":") && !sec ? { keyId: id.split(":")[0], secret: id.slice(id.indexOf(":") + 1) } : { keyId: id, secret: sec || c.higgsfield?.secret || "" }) : c.higgsfield;
+        if (!keys) throw new Error("Higgsfield anahtarı girilmemiş.");
+        await testHiggsfield(keys, f, o.higgsfieldApi);
+        res.json({ ok: true, message: "Higgsfield anahtarı çalışıyor." });
+      } else res.status(400).json({ error: "Bilinmeyen deneme." });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).name === "TimeoutError" ? "Yanıt gelmedi (zaman aşımı)." : (e as Error).message });
+    }
+  });
+
   const adminUser = (u: UserRow) => {
     const e = entitlement(db, u, plans());
     const cost = db.prepare("SELECT COALESCE(SUM(cost_usd),0) AS c FROM usage WHERE user_id=? AND at>=?").get(u.id, e.periodStart) as { c: number };
