@@ -45,7 +45,8 @@ function start() {
   if (adminToken && adminToken.length < 12) console.warn("UYARI: ADMIN_TOKEN çok kısa (en az 12 karakter); yok sayıldı.");
   if (!adminLogin && adminToken.length < 12) console.warn("UYARI: Yönetici girişi tanımlı değil (ADMIN_USER + ADMIN_PASSWORD_HASH ya da ADMIN_TOKEN); yönetim paneli kapalı.");
 
-  const db = openDB(env("DATA_DIR", "./data"));
+  const dataDir = env("DATA_DIR", "./data");
+  const db = openDB(dataDir);
   // Higgsfield anahtarı "KeyID:Secret" tek parça girildiyse ayır
   const hfRaw = env("HF_API_KEY_ID");
   const hfId = hfRaw.includes(":") && !env("HF_API_KEY_SECRET") ? hfRaw.split(":")[0] : hfRaw;
@@ -59,6 +60,7 @@ function start() {
     higgsfield: hfId && hfSecret ? { keyId: hfId, secret: hfSecret } : undefined,
     adminToken: adminToken.length >= 12 ? adminToken : "",
     adminLogin,
+    filesDir: path.join(dataDir, "office-files"),
     payment: {
       bank: env("PAY_BANK"), holder: env("PAY_HOLDER"), iban: env("PAY_IBAN"),
       email: env("CONTACT_EMAIL"), whatsapp: wa,
