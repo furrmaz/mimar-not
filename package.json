@@ -17,7 +17,8 @@
     "build:web-cloud": "VITE_STANDALONE=1 VITE_CLOUD_URL=same-origin vite build --outDir dist-web",
     "cloud:start": "node cloud-dist/server.cjs",
     "test:cloud": "tsx cloud/test.ts",
-    "test:layout": "tsx scripts/check-layouts.ts"
+    "test:layout": "tsx scripts/check-layouts.ts",
+    "site:images": "node scripts/fetch-site-images.mjs"
   },
   "license": "UNLICENSED",
   "devDependencies": {
