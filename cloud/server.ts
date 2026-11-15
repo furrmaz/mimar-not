@@ -14,6 +14,7 @@ import { renderWithHiggsfield, testHiggsfield, RENDER_MODELS, type RenderRequest
 import { writeRenderPrompt } from "../src/shared/renderprompt";
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminSessions, checkAdminPassword, hashAdminPassword, readCookie, validAdminHash } from "./adminauth";
 import { openSettings } from "./settings";
+import { mountOffice } from "./office";
 
 export interface CloudOptions {
   db: DB;
@@ -30,6 +31,8 @@ export interface CloudOptions {
   claudeClient?: (apiKey: string) => Anthropic;
   renderFetch?: typeof fetch;
   higgsfieldApi?: string;
+  /** Ofis dosyalarının klasörü (varsayılan: geçici klasör; üretimde DATA_DIR/office-files) */
+  filesDir?: string;
 }
 
 const DAY = 86_400_000;
@@ -224,6 +227,16 @@ export function createCloudApp(o: CloudOptions) {
     if (String(newPassword ?? "").length < 8) { res.status(400).json({ error: "Yeni parola en az 8 karakter olmalı." }); return; }
     db.prepare("UPDATE users SET pass_hash=? WHERE id=?").run(hashPassword(String(newPassword)), u.id);
     res.json({ ok: true });
+  });
+
+  // ---------- ofis yönetimi (müşteri, iş, tahsilat, gider, dosya) ----------
+  const mb = (k: string, d: number) => { const n = Number(settings.get(k)); return (Number.isFinite(n) && n > 0 ? n : d) * 1024 * 1024; };
+  mountOffice(app, {
+    db, auth,
+    filesDir: o.filesDir ?? path.join(os.tmpdir(), "planhane-office-files"),
+    // Abonelere OFFICE_QUOTA_MB (1 GB), deneme / süresi dolmuş hesaplara OFFICE_TRIAL_QUOTA_MB (200 MB)
+    quotaBytes: (u) => (entitlement(db, u, plans()).status === "active" ? mb("OFFICE_QUOTA_MB", 1024) : mb("OFFICE_TRIAL_QUOTA_MB", 200)),
+    maxFileBytes: () => mb("OFFICE_MAX_FILE_MB", 50),
   });
 
   // ---------- işler (üretim ve render) ----------

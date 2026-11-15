@@ -153,3 +153,14 @@ async function shareNative(name: string, data: string | ArrayBuffer | Uint8Array
   }
   return { saved: true, path: name };
 }
+
+/** Hazır adlı bir dosyayı kaydet (ofis dosyaları, CSV): Android'de paylaş menüsü, masaüstünde "Farklı kaydet", tarayıcıda indirme. */
+export async function saveNamedFile(name: string, data: Blob) {
+  if (isNative()) return shareNative(name, data);
+  if (desktop) {
+    const dot = name.lastIndexOf(".");
+    return desktop.saveFile("Ofis", dot > 0 ? name.slice(0, dot) : name, dot > 0 ? name.slice(dot + 1) : "bin", await data.arrayBuffer());
+  }
+  download(name, data, data.type || "application/octet-stream");
+  return { saved: true };
+}
