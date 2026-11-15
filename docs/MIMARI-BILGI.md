@@ -50,3 +50,10 @@ Kaynaklar: [imarx – Madde 41 özeti](https://www.imarx.com.tr/imar-yonetmeligi
 - Oyulduktan sonra asgari ölçünün (PAİY md. 29'dan sadeleştirilmiş) ya da istenen alanın %82'sinin altına düşecek oda oyulmaz; konsol hattı, kesintisiz en uzun oda dizisinden (girişi içeren dizi önceliklidir) seçilir.
 - Konsol seçilince oturum konsolun %60'ı kadar derinleşir (zemin kat odaları küçülmez, fark üst katta çıkma olur); köşe oyuğunda oturum avlu kadar genişler.
 - `npm run test:layout` kütle birleşimlerini rastgele konutlarda dener: oyuk ile çakışma, erişim, dış açıklığın dış duvarda olması denetlenir.
+
+## 6. Üslup paketleri, cephe ayrıntıları, güneş (v0.13.0)
+
+- `src/stylepacks.ts`: Modern minimal, Çağdaş avlulu, Akdeniz / Ege, Bodrum evi, İskandinav, Taş ev, Endüstriyel. Paket çatıyı, malzemeyi, renkleri, pencere biçimini, cephe ayrıntılarını ve kütleyi birlikte ayarlar; odalara dokunmaz.
+- `facade.details`: pergola, gunes_kirici, giris_cercevesi, kutu_cerceve, cati_feneri (3D modelde çizilir).
+- Güneş çalışması (`src/geometry/sun.ts`): 39° enlem, ay ve saate göre güneş yüksekliği/azimutu; bahçe cephesinin yönü arsa yön metninden okunur.
+- İmar kontrolüne md. 41 çıkma satırları ve DXF vaziyet paftasına "İmar özeti" tablosu eklendi.

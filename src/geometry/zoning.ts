@@ -161,6 +161,18 @@ export function zoningCheck(p: Program, L: BuildingLayout): ZoningResult {
     chk("Yan bahçe mesafesi", actual.side, setbacks.side, " m", false),
     chk("Arka bahçe mesafesi", actual.rear, setbacks.rear, " m", false),
   ];
+  // Çıkmalar (PAİY md. 41): kapalı çıkma ≤ 1,50 m, altı ≥ 2,40 m, yan/arka çıkma parsel sınırına ≥ 3,00 m
+  const ground = above[0];
+  const cant = (ground?.outdoor ?? []).filter((o) => o.carved === "sundurma").map((o) => {
+    const front = Math.abs(o.rect.y) < 0.01, back = Math.abs(o.rect.y + o.rect.h - L.D) < 0.01;
+    return { side: front ? "front" : back ? "back" : "side", depth: front || back ? o.rect.h : o.rect.w };
+  });
+  if (cant.length) {
+    checks.push(chk("Kapalı çıkma derinliği (md. 41)", Math.max(...cant.map((c) => c.depth)), 1.5, " m"));
+    checks.push(chk("Çıkma altı yüksekliği (md. 41)", L.H - L.slab + Math.max(0, ground.z) + 0.3, 2.4, " m", false));
+    const edge = Math.min(...cant.filter((c) => c.side !== "front").map((c) => (c.side === "back" ? actual.rear : actual.side)));
+    if (Number.isFinite(edge)) checks.push(chk("Çıkma – parsel sınırı (md. 41)", edge, 3, " m", false));
+  }
   return { siteArea, footprintArea, grossTotal, taks, kaks, setbacks, building: { x, y }, actual, height, checks };
 }
 

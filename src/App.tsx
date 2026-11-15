@@ -13,7 +13,7 @@ import { download, fromProjectFile, generateProgram, lastGen, loadProjects, newP
 import { SAMPLE_NOTES, SAMPLE_PROGRAM } from "./sample";
 import { useDictation } from "./useDictation";
 import { AreasPanel, IssueList } from "./components/AreasPanel";
-import { AdjacencyCard, MassingPicker, VariantPicker } from "./components/Variants";
+import { AdjacencyCard, MassingPicker, StylePicker, VariantPicker } from "./components/Variants";
 import { PlanEditOverlay } from "./components/PlanEditor";
 import { buildIFC } from "./geometry/ifc";
 import { UpdateButton } from "./components/UpdateButton";
@@ -285,7 +285,7 @@ export default function App() {
   /** Blok görünümünde yapılan değişiklikleri (yerleşim tercihi, imar, arsa, malzeme) projeye yaz */
   const setView = (v: Program) => {
     if (!program || !multi) return setProgram(v);
-    setProgram({ ...program, design: v.design, zoning: v.zoning, site: v.site, materials: v.materials, floorHeight: v.floorHeight, roof: v.roof });
+    setProgram({ ...program, design: v.design, zoning: v.zoning, site: v.site, materials: v.materials, facade: v.facade, style: v.style, floorHeight: v.floorHeight, roof: v.roof });
   };
 
   const sendToAutoCAD = async () => {
@@ -463,6 +463,7 @@ export default function App() {
                 {tab === "plan" && (
                   <>
                     <VariantPicker program={view} onChange={setView} />
+                    <StylePicker program={view} apartment={layout.apartment} onChange={setView} />
                     {!layout.apartment && <MassingPicker program={view} layout={layout} onChange={setView} />}
                     <div className="subtabs">
                       {layout.floors.map((f, i) => (

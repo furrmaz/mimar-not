@@ -322,3 +322,9 @@ details.advanced summary { cursor: pointer; font-size: 13px; color: var(--muted)
 .massing-item .pill { margin-left: 6px; }
 .massing-nums { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 6px; }
 .massing-nums input { width: 64px; margin-left: 4px; }
+
+.style-packs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.style-pack { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 8px 10px; border: 1px solid var(--line, #e3e0da); border-radius: 10px; background: #fff; cursor: pointer; }
+.style-pack.active { border-color: #b5532b; box-shadow: 0 0 0 1px #b5532b; }
+.style-pack .swatches { display: flex; gap: 3px; }
+.style-pack .swatches i { width: 22px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.15); }
