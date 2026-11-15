@@ -25,7 +25,7 @@
   th { font-size:12px; color:var(--muted); font-weight:600; background:#fbfaf8; }
   tr.u { cursor:pointer; } tr.u:hover { background:#faf8f5; }
   .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; background:#eee; }
-  .pill.active { background:#e3f2e8; color:var(--ok); } .pill.trial { background:#fff3cd; color:#7a5a00; } .pill.expired, .pill.disabled { background:#fdecea; color:var(--bad); }
+  .pill.active { background:#e3f2e8; color:var(--ok); } .pill.trial { background:#fff3cd; color:#7a5a00; } .pill.frozen { background:#e3eefb; color:#1f4e8c; } .pill.expired, .pill.disabled { background:#fdecea; color:var(--bad); }
   .muted { color:var(--muted); } .small { font-size:12px; }
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   #detail { position:fixed; inset:0 0 0 auto; width:min(560px,100%); background:var(--panel); border-left:1px solid var(--line); box-shadow:-10px 0 30px rgba(0,0,0,.08); padding:18px; overflow:auto; z-index:3; }
@@ -53,7 +53,7 @@
     <div class="cards" id="stats"></div>
     <div class="row" style="margin-bottom:10px">
       <input id="q" placeholder="Ara: e-posta, ad, ofis, telefon, MN-0012" style="flex:1;min-width:220px" />
-      <select id="filter"><option value="">Tümü</option><option value="trial">Deneme</option><option value="active">Abone</option><option value="expired">Süresi dolan</option><option value="disabled">Kapalı</option></select>
+      <select id="filter"><option value="">Tümü</option><option value="trial">Deneme</option><option value="active">Abone</option><option value="frozen">Dondurulan</option><option value="expired">Süresi dolan</option><option value="disabled">Kapalı</option></select>
     </div>
     <div class="wrap"><table>
       <thead><tr><th>No</th><th>Kullanıcı</th><th>Durum</th><th class="hide-sm">Bitiş</th><th>Üretim</th><th class="hide-sm">Render</th><th class="hide-sm">Dönem maliyeti</th></tr></thead>
@@ -71,7 +71,7 @@ const d = (t) => (t ? new Date(t).toLocaleDateString("tr-TR") : "–");
 const dt = (t) => (t ? new Date(t).toLocaleString("tr-TR") : "–");
 const tl = (n) => `${Number(n || 0).toLocaleString("tr-TR")} TL`;
 const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
-const ST = { trial: "Deneme", active: "Abone", expired: "Süresi doldu", disabled: "Kapalı" };
+const ST = { trial: "Deneme", active: "Abone", frozen: "Donduruldu", expired: "Süresi doldu", disabled: "Kapalı" };
 let token = sessionStorage.getItem("mn.admin") || "";
 let plans = [];
 let all = [];
@@ -101,7 +101,7 @@ async function load() {
   plans = s.plans;
   const margin = s.monthRevenueTry - s.monthCostUsd * 41;
   $("#stats").innerHTML = [
-    ["Abone", s.active], ["Denemede", s.trials], ["Toplam kullanıcı", s.users], ["Son 30 gün kayıt", s.signups30],
+    ["Abone", s.active], ["Denemede", s.trials], ["Dondurulan", s.frozen ?? 0], ["Toplam kullanıcı", s.users], ["Son 30 gün kayıt", s.signups30],
     ["Bu ay tahsilat", tl(s.monthRevenueTry)], ["Bu ay API maliyeti", `${usd(s.monthCostUsd)} ≈ ${tl(Math.round(s.monthCostUsd * 41))}`],
     ["Bu ay üretim / render", `${s.monthGenerations} / ${s.monthRenders}`], ["Ortalama üretim maliyeti", usd(s.avgGenerateCostUsd)],
     ["Bu ay hata", s.monthFailures], ["Kaba kâr (bu ay)", tl(Math.round(margin))],
@@ -134,7 +134,7 @@ async function openUser(id, note) {
     ${note ? `<div class="msg">${note}</div>` : ""}
     <div class="box">
       <span class="pill ${u.disabled ? "disabled" : u.status}">${ST[u.disabled ? "disabled" : u.status]}${u.plan ? " · " + esc(u.plan.label) : ""}</span>
-      Bitiş: <b>${d(u.until)}</b> · Bu dönem: ${u.used.generate}/${u.limits.generate} üretim, ${u.used.render}/${u.limits.render} render · Maliyet ${usd(u.periodCostUsd)}
+      ${u.status === "frozen" ? `${d(u.frozenAt)} tarihinde donduruldu · Korunan süre <b>${Math.ceil(u.frozenLeft / 86400000)} gün</b>${u.frozenNote ? ` · ${esc(u.frozenNote)}` : ""}` : `Bitiş: <b>${d(u.until)}</b>`} · Bu dönem: ${u.used.generate}/${u.limits.generate} üretim, ${u.used.render}/${u.limits.render} render · Maliyet ${usd(u.periodCostUsd)}
     </div>
     <h3>Havale geldi: aboneliği aç / uzat</h3>
     <div class="box">
@@ -150,9 +150,11 @@ async function openUser(id, note) {
     <div class="row">
       <button id="trial">Denemeyi 7 gün uzat</button>
       <button id="reset">Parola sıfırla</button>
-      ${u.planUntil && u.planUntil > Date.now() ? `<button id="cancel" class="danger">Aboneliği bitir</button>` : ""}
+      ${!u.disabled ? `<button id="freeze">${u.status === "frozen" ? "Dondurmayı kaldır" : "Üyeliği dondur"}</button>` : ""}
+      ${u.planUntil && (u.planUntil > Date.now() || u.status === "frozen") ? `<button id="cancel" class="danger">Aboneliği bitir</button>` : ""}
       <button id="toggle" class="danger">${u.disabled ? "Hesabı aç" : "Hesabı kapat"}</button>
     </div>
+    <p class="muted small">Dondur: kullanıcı giriş yapıp projelerini açabilir ama yeni üretim/render yapamaz; kalan süresi saklanır, dondurma kaldırılınca (ya da yeni ödeme işlenince) kaldığı yerden devam eder. Aboneliği bitir: süre hemen sona erer. Hesabı kapat: giriş de engellenir, oturumlar kapanır.</p>
     <h3>Not</h3>
     <textarea id="unote" rows="2" style="width:100%">${esc(u.note)}</textarea>
     <button id="saveNote" style="margin-top:6px">Notu kaydet</button>
@@ -176,6 +178,11 @@ async function openUser(id, note) {
   $("#trial").onclick = () => act(() => api(`/api/admin/users/${id}/update`, { trialDays: 7 }), "Deneme 7 gün uzatıldı.");
   $("#reset").onclick = () => { if (confirm("Parola sıfırlansın mı? Kullanıcının tüm cihazlarda oturumu kapanır.")) act(() => api(`/api/admin/users/${id}/reset-password`, {}), (r) => `Yeni parola: <b>${esc(r.password)}</b> — kullanıcıya iletin, girişten sonra değiştirsin.`); };
   $("#toggle").onclick = () => { if (confirm(u.disabled ? "Hesap açılsın mı?" : "Hesap kapatılsın mı? Oturumları sonlanır.")) act(() => api(`/api/admin/users/${id}/update`, { disabled: !u.disabled }), u.disabled ? "Hesap açıldı." : "Hesap kapatıldı."); };
+  const fz = $("#freeze"); if (fz) fz.onclick = () => {
+    if (u.status === "frozen") { if (confirm("Dondurma kaldırılsın mı? Kalan süre bugünden itibaren işlemeye başlar.")) act(() => api(`/api/admin/users/${id}/update`, { freeze: false }), "Dondurma kaldırıldı, üyelik kaldığı yerden devam ediyor."); return; }
+    const why = prompt("Üyelik dondurulsun mu? Kalan süre saklanır.\nNeden (isteğe bağlı, yalnız panelde görünür):", "");
+    if (why !== null) act(() => api(`/api/admin/users/${id}/update`, { freeze: true, freezeNote: why }), "Üyelik donduruldu.");
+  };
   const c = $("#cancel"); if (c) c.onclick = () => { if (confirm("Abonelik şimdi bitirilsin mi?")) act(() => api(`/api/admin/users/${id}/update`, { cancelPlan: true }), "Abonelik bitirildi."); };
   $("#saveNote").onclick = () => act(() => api(`/api/admin/users/${id}/update`, { note: $("#unote").value }), "Not kaydedildi.");
 }

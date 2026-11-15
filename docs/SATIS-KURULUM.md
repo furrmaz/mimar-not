@@ -84,6 +84,8 @@ Windows, Android ve web paneli `https://planhane.com.tr` sunucusuna bağlı olar
 3. Siz `https://alanadiniz/admin/` → aramaya müşteri numarasını yazın → kullanıcıyı açın → plan ve ay sayısını seçip **Aboneliği aç**. Kullanıcı bunu uygulamada hemen görür.
 4. Süresi bitmemiş bir aboneliği yeniden açarsanız kalan sürenin üstüne eklenir.
 5. Parolasını unutan kullanıcı için **Parola sıfırla**: yeni parola ekranda görünür, kullanıcıya iletin.
+6. Üyeliği geçici olarak durdurmak için **Üyeliği dondur** (ör. ödeme gecikti, kullanıcı tatilde, itiraz var). Kullanıcı giriş yapıp projelerini açabilir ama yeni üretim ve render yapamaz; uygulamada "Üyeliğiniz donduruldu, kalan N gününüz korunuyor" yazar. **Dondurmayı kaldır** dediğinizde (ya da yeni bir ödeme işlediğinizde) kalan süre kaldığı yerden devam eder. Denemedeki kullanıcı da dondurulabilir.
+7. **Aboneliği bitir** süreyi hemen sona erdirir (iade, iptal). **Hesabı kapat** girişi de engeller ve tüm oturumları kapatır (kötüye kullanım); **Hesabı aç** ile geri alınır.
 
 Panelin üst kısmında bu ayki tahsilat, Claude/render maliyeti, ortalama üretim maliyeti ve kaba kâr görünür. İlk haftalarda **ortalama üretim maliyetine** bakıp plan haklarını gerekirse ayarlayın.
 
@@ -93,17 +95,17 @@ Varsayılan planlar:
 
 | Plan | Fiyat / ay | Üretim | Render |
 |---|---|---|---|
-| Başlangıç | 990 TL | 25 | 10 |
-| Profesyonel | 1.990 TL | 80 | 40 |
-| Ofis | 4.490 TL | 250 | 120 |
+| Başlangıç | 1.490 TL | 25 | 10 |
+| Profesyonel | 2.490 TL | 80 | 40 |
+| Ofis | 3.990 TL | 250 | 120 |
 
 Tahmini maliyet: bir üretim (Claude Opus 5.5; 4 $ / 20 $ milyon token) ortalama **0,3-0,6 $**, bir render **0,03-0,04 $**. Profesyonel planı sonuna kadar kullanan bir kullanıcının en kötü durumdaki maliyeti yaklaşık 80 × 0,5 $ + 40 × 0,04 $ ≈ 42 $ (≈ 1.700 TL); çoğu kullanıcı hakkının tamamını kullanmaz. Gerçek ortalama yönetim panelinde görünür.
 
 Planları değiştirmek için `PLANS_JSON` değişkenine bir JSON dizisi yazın:
 
 ```json
-[{"id":"baslangic","label":"Başlangıç","priceTry":1190,"generate":25,"render":10,"features":["Ayda 25 proje üretimi / düzeltme","Ayda 10 gerçekçi render"]},
- {"id":"profesyonel","label":"Profesyonel","priceTry":2290,"generate":80,"render":40,"highlight":true,"features":["Ayda 80 proje üretimi / düzeltme","Ayda 40 gerçekçi render"]}]
+[{"id":"baslangic","label":"Başlangıç","priceTry":1690,"generate":25,"render":10,"features":["Ayda 25 proje üretimi / düzeltme","Ayda 10 gerçekçi render"]},
+ {"id":"profesyonel","label":"Profesyonel","priceTry":2790,"generate":80,"render":40,"highlight":true,"features":["Ayda 80 proje üretimi / düzeltme","Ayda 40 gerçekçi render"]}]
 ```
 
 `id` değerini değiştirmeyin; mevcut abonelikler bu kimlikle eşleşir. Fiyatlar tanıtım sayfasında ve uygulamada kendiliğinden güncellenir.

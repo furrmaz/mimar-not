@@ -18,6 +18,9 @@ export interface UserRow {
   plan_until: number | null;
   trial_until: number;
   disabled: number;
+  /** Üyelik dondurulduysa dondurma anı (ms); null → dondurulmamış. Açılınca kalan süre bu kadar ileri kayar. */
+  frozen_at: number | null;
+  frozen_note: string;
   note: string;
   last_seen: number | null;
 }
@@ -79,5 +82,9 @@ export function openDB(dir: string): DB {
       note TEXT NOT NULL DEFAULT ''
     );
   `);
+  // Eski veritabanlarına sonradan eklenen sütunlar
+  const cols = new Set((db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name));
+  if (!cols.has("frozen_at")) db.exec("ALTER TABLE users ADD COLUMN frozen_at INTEGER");
+  if (!cols.has("frozen_note")) db.exec("ALTER TABLE users ADD COLUMN frozen_note TEXT NOT NULL DEFAULT ''");
   return db;
 }

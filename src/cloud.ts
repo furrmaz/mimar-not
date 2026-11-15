@@ -28,12 +28,15 @@ export interface Me {
   office: string;
   phone: string;
   ref: string;
-  status: "trial" | "active" | "expired" | "disabled";
+  status: "trial" | "active" | "frozen" | "expired" | "disabled";
   plan: { id: string; label: string } | null;
   until: number;
   periodEnd: number;
   limits: { generate: number; render: number };
   used: { generate: number; render: number };
+  /** Yalnız dondurulmuş üyelikte: dondurma anı ve korunan kalan süre (ms) */
+  frozenAt?: number;
+  frozenLeft?: number;
 }
 export interface Plan { id: string; label: string; priceTry: number; generate: number; render: number; features: string[]; highlight?: boolean }
 export interface PublicConfig {
