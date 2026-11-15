@@ -4,6 +4,7 @@ import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateWithClaude, GenerateError, DEFAULT_MODEL } from "../src/shared/generate";
 import { renderWithHiggsfield, type HiggsfieldKeys } from "../src/shared/render";
+import { writeRenderPrompt } from "../src/shared/renderprompt";
 
 export interface AppOptions {
   getApiKey: () => string | undefined;
@@ -50,7 +51,13 @@ export function createApp(opts: AppOptions) {
     const ac = new AbortController();
     res.on("close", () => { if (!res.writableEnded) ac.abort(); });
     try {
-      const out = await renderWithHiggsfield(req.body, keys, { signal: ac.signal });
+      // Talimatı Claude yazar (Claude anahtarı yoksa şablon talimat)
+      const apiKey = opts.getApiKey();
+      const client = apiKey ? new Anthropic({ apiKey, maxRetries: 1 }) : null;
+      const out = await renderWithHiggsfield(req.body, keys, {
+        signal: ac.signal,
+        writePrompt: (r, refs) => writeRenderPrompt(client, { view: r.view, refs, program: r.program, camera: r.camera, extra: r.extra, modelId: r.modelId }, { model: MODEL, signal: ac.signal }),
+      });
       // Görseli sunucuda indirip data URL olarak döndür (tarayıcı CORS'a takılmasın, kaydedilebilsin)
       const img = await fetch(out.url);
       const buf = Buffer.from(await img.arrayBuffer());

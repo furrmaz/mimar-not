@@ -91,17 +91,22 @@ async function toDataUrl(f: typeof fetch, url: string): Promise<string | null> {
   } catch { return null; }
 }
 
-export interface RenderResult { url: string; data: string | null; model: string; price: number | null }
+export interface RenderResult { url: string; data: string | null; model: string; price: number | null; prompt?: string; promptSource?: "claude" | "template" | "manual" }
 
 export async function callRender(req: RenderRequest, opts: { signal?: AbortSignal; onStatus?: (s: string) => void } = {}): Promise<RenderResult> {
   if (signedIn()) return viaCloud<RenderResult>("render", req, opts);
   if (STANDALONE) {
     const k = loadKeys();
-    const { renderWithHiggsfield } = await import("./shared/render");
+    const [{ renderWithHiggsfield }, { writeRenderPrompt }] = await Promise.all([import("./shared/render"), import("./shared/renderprompt")]);
     // Android: yamalı fetch istekleri yerel katmandan geçirir (CORS yok). Web panelinde tarayıcı fetch'i.
     const f = window.fetch.bind(window);
     try {
-      const out = await renderWithHiggsfield(req, { keyId: k.hfId?.trim() ?? "", secret: k.hfSecret?.trim() ?? "" }, { fetch: f, api: testBase("hf"), ...opts });
+      // Talimatı Claude yazar (bu cihazda Claude anahtarı varsa; yoksa şablon)
+      const ck = k.claude?.trim();
+      const client = ck ? new (await import("@anthropic-ai/sdk")).default({ apiKey: ck, dangerouslyAllowBrowser: true, fetch: webFetch(), maxRetries: 1, baseURL: testBase("claude") }) : null;
+      const writePrompt = (r: RenderRequest & { program: NonNullable<RenderRequest["program"]> }, refs: string[]) =>
+        writeRenderPrompt(client, { view: r.view, refs, program: r.program, camera: r.camera, extra: r.extra, modelId: r.modelId }, { signal: opts.signal });
+      const out = await renderWithHiggsfield(req, { keyId: k.hfId?.trim() ?? "", secret: k.hfSecret?.trim() ?? "" }, { fetch: f, api: testBase("hf"), writePrompt, ...opts });
       return { ...out, data: await toDataUrl(f, out.url) };
     } catch (e) {
       if (e instanceof TypeError && !isNative())

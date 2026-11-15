@@ -12,7 +12,8 @@ import { buildModel, type ModelOptions } from "../geometry/model3d";
 import type { Program } from "../shared/schema";
 import { zoningCheck } from "../geometry/zoning";
 import { saveOutput } from "../store";
-import { RenderDialog } from "./RenderDialog";
+import { RenderDialog, type RenderCapture } from "./RenderDialog";
+import { aspectValue, nearestAspect, type CameraInfo } from "../shared/render";
 
 export function ThreeView({ layout, program, refImages = [], onSettings }: { layout: BuildingLayout; program: Program; refImages?: string[]; onSettings?: () => void }) {
   const [rendering, setRendering] = useState(false);
@@ -185,19 +186,70 @@ export function ThreeView({ layout, program, refImages = [], onSettings }: { lay
     c.renderer.domElement.toBlob((b) => b && saveOutput(`${program.projectName}-3d`, "png", b));
   };
 
-  /** Render için şu anki görünümün JPEG'i (en uzun kenar 1600 px) */
-  const capture = () => {
+  /** Render için şu anki görünümün JPEG'i (en uzun kenar 2048 px) ve kamera bilgisi.
+   *  aspect verilirse görünüm o orana ortadan kırpılır; "auto" görünüme en yakın orandır. */
+  const capture = (aspect = "auto", modelId?: string): RenderCapture | null => {
     const c = ctx.current;
     if (!c) return null;
     if (c.real) c.composer.render();
     else c.renderer.render(c.scene, c.camera);
     const src = c.renderer.domElement;
-    const k = Math.min(1, 1600 / Math.max(src.width, src.height));
+    const a = aspect === "auto" ? nearestAspect(src.width, src.height, modelId) : aspect;
+    const want = aspectValue(a);
+    // ortadan kırp: kadraj oranı = istenen oran
+    let sw = src.width, sh = src.height;
+    if (sw / sh > want) sw = Math.round(sh * want); else sh = Math.round(sw / want);
+    const sx = (src.width - sw) / 2, sy = (src.height - sh) / 2;
+    const k = Math.min(1, 2048 / Math.max(sw, sh));
     const cv = document.createElement("canvas");
-    cv.width = Math.round(src.width * k);
-    cv.height = Math.round(src.height * k);
-    cv.getContext("2d")!.drawImage(src, 0, 0, cv.width, cv.height);
-    return cv.toDataURL("image/jpeg", 0.9);
+    cv.width = Math.round(sw * k);
+    cv.height = Math.round(sh * k);
+    cv.getContext("2d")!.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+    // kırpılmış kadrajda NDC → 0..1 dönüşümü
+    const fx = sw / src.width, fy = sh / src.height;
+    const toFrame = (v: THREE.Vector3) => ({ x: (v.x / fx + 1) / 2, y: (1 - v.y / fy) / 2 });
+    const cam = c.camera;
+    const H = layout.totalHeight + layout.roofHeight;
+    const box = c.model ? new THREE.Box3().setFromObject(c.model) : new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(layout.W, H, layout.D));
+    // peyzaj/arsa yerine binanın kendisi: yerleşimin kutusu (çok blokta tüm bloklar modelde)
+    const bx0 = 0, bx1 = layout.W, bz0 = 0, bz1 = layout.D;
+    const corners: THREE.Vector3[] = [];
+    for (const x of [bx0, bx1]) for (const y of [0, H]) for (const z of [bz0, bz1]) corners.push(new THREE.Vector3(x, y, z));
+    const pts = corners.map((v) => toFrame(v.clone().project(cam)));
+    const clamp = (v: number) => Math.min(1, Math.max(0, v));
+    const frame = { x0: clamp(Math.min(...pts.map((p) => p.x))), x1: clamp(Math.max(...pts.map((p) => p.x))), y0: clamp(Math.min(...pts.map((p) => p.y))), y1: clamp(Math.max(...pts.map((p) => p.y))) };
+    // görünen cepheler: yüz merkezinden kameraya doğrultu yüz normaliyle aynı yöndeyse görünür. Ön cephe sokak tarafı (-z).
+    const cx = (bx0 + bx1) / 2, cz = (bz0 + bz1) / 2, my = H / 2;
+    const faces = [
+      { n: new THREE.Vector3(0, 0, -1), p: new THREE.Vector3(cx, my, bz0), side: "front" },
+      { n: new THREE.Vector3(0, 0, 1), p: new THREE.Vector3(cx, my, bz1), side: "rear" },
+      { n: new THREE.Vector3(1, 0, 0), p: new THREE.Vector3(bx1, my, cz), side: "x1" },
+      { n: new THREE.Vector3(-1, 0, 0), p: new THREE.Vector3(bx0, my, cz), side: "x0" },
+    ];
+    // önden bakan kişiye göre sol/sağ: kamera -z'den +z'ye bakarken sağ taraf -x'tir
+    const sideName = (s: string): "front" | "rear" | "left" | "right" => (s === "x1" ? "left" : s === "x0" ? "right" : (s as "front" | "rear"));
+    const facades = faces
+      .map((f) => ({ f, dot: cam.position.clone().sub(f.p).normalize().dot(f.n) }))
+      .filter((x) => x.dot > 0.12)
+      .sort((a, b) => b.dot - a.dot)
+      .map(({ f }) => {
+        const x = toFrame(f.p.clone().project(cam)).x;
+        return { name: sideName(f.side), where: (x < 0.4 ? "left" : x > 0.6 ? "right" : "centre") as "left" | "centre" | "right" };
+      });
+    const dir = new THREE.Vector3();
+    cam.getWorldDirection(dir);
+    const vfov = (cam.fov * Math.PI) / 180;
+    const camera: CameraInfo = {
+      height: Math.max(0, cam.position.y - Math.max(0, box.min.y)),
+      distance: Math.hypot(cam.position.x - cx, cam.position.z - cz),
+      pitch: (-Math.asin(Math.max(-1, Math.min(1, dir.y))) * 180) / Math.PI,
+      // 35 mm eşdeğeri: kırpılmış kadrajın köşegen açısına göre (43,3 mm köşegen)
+      focal: 43.27 / (2 * Math.tan(vfov / 2) * fy * Math.hypot(1, want)),
+      buildingHeight: H,
+      facades,
+      frame,
+    };
+    return { image: cv.toDataURL("image/jpeg", 0.92), camera, aspect: a };
   };
 
   const levels = layout.floors.map((f) => f.level);
