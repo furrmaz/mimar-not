@@ -479,5 +479,17 @@ function drawSite(d: Dxf, L: BuildingLayout, p: Program, ox: number, oy: number)
   d.dim(ox, oy + z.building.y + L.D / 2, ox + z.building.x, oy + z.building.y + L.D / 2, 0.3);
   d.text("MN-BASLIK", ox + sw / 2, oy - 2.4, 0.35, "SOKAK");
   d.text("MN-MAHAL", ox + 0.5, oy + sd - 1.0, 0.25, `TAKS ${z.taks.toFixed(2)}  KAKS ${z.kaks.toFixed(2)}`, 0);
-  return sw;
+  // İmar özeti tablosu (vaziyet planının sağında)
+  const tx = ox + sw + 3, rowH = 0.7, cols = [0, 7.5, 10.5, 13.5, 16];
+  const rows: string[][] = [["KONTROL", "PROJE", "SINIR", "DURUM"], ...z.checks.map((c) => [c.label, c.value, c.limit, c.ok == null ? "-" : c.ok ? "UYGUN" : "AŞIYOR"])];
+  const ty = oy + sd - 1.2;
+  d.text("MN-BASLIK", tx, ty + 0.5, 0.35, "İMAR ÖZETİ", 0);
+  rows.forEach((r, i) => {
+    const y = ty - (i + 1) * rowH;
+    d.rect("MN-ANTET", tx, y, cols[4], rowH);
+    r.forEach((t, k) => d.text(i === 0 ? "MN-BASLIK" : "MN-MAHAL", tx + cols[k] + 0.2, y + 0.22, 0.22, t, 0));
+  });
+  for (const cx of cols.slice(1, 4)) d.line("MN-ANTET", tx + cx, ty, tx + cx, ty - rows.length * rowH);
+  d.text("MN-MAHAL", tx, ty - (rows.length + 1) * rowH, 0.2, `Arsa ${z.siteArea.toFixed(0)} m2 · taban ${z.footprintArea.toFixed(0)} m2 · emsale giren ${z.grossTotal.toFixed(0)} m2. Ön tasarım kontrolüdür; imar durumu belgesi esastır.`, 0);
+  return sw + 3 + cols[4];
 }

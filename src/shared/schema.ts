@@ -94,9 +94,14 @@ export const FacadeSchema = z
     balconyRail: z.enum(["cam", "metal", "dolu"]).describe("Balkon korkuluğu: cam, ince metal, dolu parapet"),
     shutters: z.boolean().describe("Pencere kepenkleri/panjur var mı (Akdeniz, klasik)"),
     cornice: z.boolean().describe("Saçak/kat silmesi gibi yatay bantlar var mı"),
+    details: z
+      .array(z.string())
+      .describe("Cephe ayrıntıları; yalnız şunlardan seç (yoksa boş liste): pergola (bahçe tarafında ahşap pergola), gunes_kirici (büyük pencerelerin önünde dikey ahşap güneş kırıcı lameller), giris_cercevesi (girişi saran çıkıntılı çerçeve/portal), kutu_cerceve (üst kat kütlesini saran ince çerçeve; konsollu modern evlerde), cati_feneri (düz çatıda merdiven üstünde ışıklık)"),
   })
   .describe("Cephenin görsel dili: referans görsel varsa ondan birebir oku; yoksa üsluptan çıkar. 3D model ve gerçekçi render bunu kullanır");
 export type Facade = z.infer<typeof FacadeSchema>;
+export const FACADE_DETAILS = ["pergola", "gunes_kirici", "giris_cercevesi", "kutu_cerceve", "cati_feneri"] as const;
+export type FacadeDetail = (typeof FACADE_DETAILS)[number];
 
 export const MassingSchema = z
   .object({
@@ -189,6 +194,10 @@ export interface DesignOptions {
   cols?: Record<string, number[]>;
   /** Mimarın seçtiği kütle biçimi (programdakini geçersiz kılar) */
   massing?: Massing;
+  /** Son uygulanan üslup paketi */
+  stylePack?: string;
+  /** Güneş ayarı: bahçe (arka) cephesinin baktığı yön, ay (1-12), saat */
+  sun?: { facing?: "G" | "K" | "D" | "B"; month?: number; hour?: number };
 }
 export type Requirement = z.infer<typeof ProgramSchema>["requirements"][number];
 export type Program = Omit<z.infer<typeof ProgramSchema>, "floors" | "unitTypes" | "blocks" | "blockSpacing" | "facade" | "requirements" | "imageReadings" | "massing"> & {
@@ -257,6 +266,7 @@ export function normalizeFacade(f: Partial<Facade> | undefined, m: Materials = D
     balconyRail: (["cam", "metal", "dolu"] as const).includes(f?.balconyRail as "cam") ? f!.balconyRail! : "metal",
     shutters: Boolean(f?.shutters),
     cornice: Boolean(f?.cornice),
+    details: Array.from(new Set((Array.isArray(f?.details) ? f!.details! : []).map((d) => String(d).toLocaleLowerCase("tr").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ö/g, "o").replace(/[\s-]+/g, "_").trim()).filter((d) => FACADE_DETAILS.includes(d as FacadeDetail)))),
   };
 }
 const MASS_KEYS = ["on_konsol", "arka_konsol", "yan_konsol", "ust_kat_teras", "kose_oyugu"];

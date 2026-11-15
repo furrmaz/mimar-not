@@ -7,7 +7,7 @@ import { furnishFloor, type FurnitureKind } from "./furniture";
 import { DEFAULT_MATERIALS, normalizeFacade, type Facade, type Materials } from "../shared/schema";
 import { texturedMaterial, worldUV } from "./materials3d";
 import { legacyStairInfo, stairGeom } from "./stair";
-import { floorRects, slabCells, unionCells } from "./massing";
+import { floorRects, openingFacing, slabCells, unionCells } from "./massing";
 import type { Rect } from "./layout";
 
 /** Hücreleri dış kenarlarında yarım duvar kalınlığı kadar genişletir (döşeme duvar dış yüzüne kadar). */
@@ -179,6 +179,85 @@ function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y:
   return m;
 }
 
+/** Cephe ayrıntıları: pergola, güneş kırıcı lameller, giriş çerçevesi, üst kat kutu çerçevesi, çatı feneri. */
+function addFacadeDetails(root: THREE.Group, L: BuildingLayout, visible: FloorLayout[], withRoof: boolean) {
+  const det = new Set(fac.details ?? []);
+  if (!det.size || !visible.length) return;
+  const g = new THREE.Group();
+  g.name = "Cephe ayrıntıları";
+  const wood = mats.door;
+  const acc = mats.accent ?? mats.wallStone;
+  const above = visible.filter((f) => f.z >= 0);
+  const ground = above[0];
+  const out = (side: string): [number, number] => (side === "front" ? [0, -1] : side === "back" ? [0, 1] : side === "left" ? [-1, 0] : [1, 0]);
+
+  if (det.has("gunes_kirici")) {
+    for (const f of above)
+      for (const o of f.openings) {
+        if (!o.exterior || o.kind !== "window" || o.width < 1.8 || o.sill > 0.6) continue;
+        const side = openingFacing(f, L, o);
+        if (!side) continue;
+        const [dx, dz] = out(side);
+        const h = o.head - o.sill + 0.3, zc = f.z + o.sill + h / 2 - 0.1;
+        // pencerenin yarısını örten lamel dizisi (manzara açık kalır)
+        const span = o.width * 0.5, start = o.center - o.width / 2;
+        for (let u = start + 0.08; u <= start + span; u += 0.22) {
+          if (o.orient === "h") g.add(box(0.05, h, 0.16, wood, u, zc, o.line + dz * 0.28));
+          else g.add(box(0.16, h, 0.05, wood, o.line + dx * 0.28, zc, u));
+        }
+      }
+  }
+  if (det.has("giris_cercevesi") && ground) {
+    const e = ground.openings.find((o) => o.kind === "entrance" && o.width < 2);
+    const side = e && openingFacing(ground, L, e);
+    if (e && side) {
+      const [dx, dz] = out(side);
+      const d = 0.7, w = e.width + 0.9, h = e.head + 0.35, t = 0.2;
+      const put = (len: number, hh: number, c: number, y: number) =>
+        e.orient === "h" ? box(len, hh, d, acc, c, y, e.line + dz * (d / 2 + 0.1)) : box(d, hh, len, acc, e.line + dx * (d / 2 + 0.1), y, c);
+      g.add(put(t, h, e.center - w / 2, ground.z + h / 2));
+      g.add(put(t, h, e.center + w / 2, ground.z + h / 2));
+      g.add(put(w + t, t, e.center, ground.z + h));
+    }
+  }
+  if (det.has("kutu_cerceve") && above.length > 1) {
+    // en üst katın sokak cephesini saran ince çerçeve
+    const f = above[above.length - 1];
+    const xs = floorRects(f, L).filter((r) => r.y < 0.02);
+    if (xs.length) {
+      const x0 = Math.min(...xs.map((r) => r.x)) - L.extWall / 2, x1 = Math.max(...xs.map((r) => r.x + r.w)) + L.extWall / 2;
+      const d = 0.45, t = 0.16, zf = -L.extWall / 2 - d / 2, h = L.H + (withRoof && L.roof === "duz" ? L.roofHeight : 0);
+      g.add(box(x1 - x0, t, d, mats.slab, (x0 + x1) / 2, f.z + t / 2 - L.slab, zf));
+      g.add(box(x1 - x0, t, d, mats.slab, (x0 + x1) / 2, f.z + h - t / 2, zf));
+      g.add(box(t, h + L.slab, d, mats.slab, x0 + t / 2, f.z + h / 2 - L.slab / 2, zf));
+      g.add(box(t, h + L.slab, d, mats.slab, x1 - t / 2, f.z + h / 2 - L.slab / 2, zf));
+    }
+  }
+  if (det.has("pergola") && ground) {
+    // bahçe cephesinde, en büyük yaşam mekânının önünde
+    const hosts = ground.rooms.filter((r) => ["salon", "yemek", "mutfak"].includes(r.type)).sort((a, b) => b.rect.y + b.rect.h - (a.rect.y + a.rect.h) || b.rect.w - a.rect.w);
+    const host = hosts[0];
+    if (host) {
+      const y0 = Math.max(host.rect.y + host.rect.h, ...ground.outdoor.filter((o) => o.carved === "sundurma" && o.rect.x < host.rect.x + host.rect.w && o.rect.x + o.rect.w > host.rect.x).map((o) => o.rect.y + o.rect.h)) + L.extWall / 2;
+      const w = Math.min(Math.max(3, host.rect.w), 5.5), dp = 3, x0 = Math.min(L.W - w, Math.max(0, host.rect.x + host.rect.w / 2 - w / 2));
+      const top = ground.z + 2.5;
+      for (const x of [x0 + 0.08, x0 + w - 0.08]) g.add(box(0.14, 2.5 + 0.3, 0.14, wood, x, ground.z + 1.1, y0 + dp - 0.08));
+      g.add(box(w, 0.18, 0.1, wood, x0 + w / 2, top, y0 + dp - 0.08));
+      g.add(box(w, 0.18, 0.1, wood, x0 + w / 2, top, y0 + 0.06));
+      for (let x = x0 + 0.15; x <= x0 + w - 0.1; x += 0.45) g.add(box(0.07, 0.14, dp + 0.4, wood, x, top + 0.16, y0 + dp / 2));
+      g.add(box(w, 0.06, dp, mats.slab, x0 + w / 2, ground.z - L.slab + 0.03, y0 + dp / 2, "Veranda"));
+    }
+  }
+  if (det.has("cati_feneri") && withRoof && L.roof === "duz" && L.stair) {
+    const st = L.stair, top = L.totalHeight;
+    const w = Math.min(st.w, 1.8), d = Math.min(st.h, 2.4);
+    g.add(box(w, 0.7, d, mats.glass, st.x + st.w / 2, top + 0.35, st.y + st.h / 2, "Çatı feneri"));
+    g.add(box(w + 0.1, 0.06, d + 0.1, mats.frame, st.x + st.w / 2, top + 0.73, st.y + st.h / 2));
+  }
+  g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  root.add(g);
+}
+
 export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width: number; depth: number; offsetX: number; offsetY: number }): THREE.Group {
   useMaterials(opts);
   const root = new THREE.Group();
@@ -208,6 +287,7 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
   }
 
   if (opts.realistic) addFacadeAccents(root, L, visible);
+  if (!opts.cutaway) addFacadeDetails(root, L, visible, isTopAll && opts.showRoof);
   if (site && opts.realistic) root.add(landscape(L, site, opts.entranceX, opts.avoid ?? []));
 
   // Çatı
