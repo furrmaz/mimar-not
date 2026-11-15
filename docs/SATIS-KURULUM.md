@@ -117,6 +117,14 @@ Planları değiştirmek için `PLANS_JSON` değişkenine bir JSON dizisi yazın:
 
 Yönetim panelinde **Yedek indir** tüm hesapların, ödemelerin ve kullanım kayıtlarının tek dosyalık kopyasını indirir. Haftada bir indirin. Geri yüklemek için dosyayı sunucudaki `DATA_DIR` klasörüne `mimarnot.db` adıyla koyup sunucuyu yeniden başlatın.
 
+Kullanıcıların **Ofis** ekranındaki kayıtları (müşteri, iş, tahsilat, gider) da bu veritabanı dosyasındadır; yüklenen dosyalar ise ayrıca `DATA_DIR/office-files/<kullanıcı no>/` klasöründedir (Docker'da `mimarnot-data` biriminin içinde). Dosyaların da yedeğini almak için sunucuda:
+
+```bash
+docker run --rm -v deploy_mimarnot-data:/data -v /root:/yedek alpine tar czf /yedek/planhane-dosyalar-$(date +%F).tgz -C /data office-files
+```
+
+Dosya alanı: abonelere 1 GB, deneme hesaplarına 200 MB, tek dosya en fazla 50 MB. Değiştirmek için `.env`'e `OFFICE_QUOTA_MB`, `OFFICE_TRIAL_QUOTA_MB`, `OFFICE_MAX_FILE_MB` yazın.
+
 ## 7. Satıştan önce yapılması gerekenler (sizin tarafınızda)
 
 - **Şirket ve fatura**: satış için şahıs ya da limited şirket ve e-Arşiv fatura gerekir. Mali müşavirinize "yurt içi yazılım aboneliği (SaaS), havale ile tahsilat" olarak danışın.

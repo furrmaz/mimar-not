@@ -74,7 +74,7 @@ export class CloudError extends Error {
   constructor(message: string, public status = 0, public code?: string, public raw?: unknown) { super(message); }
 }
 
-async function req<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+export async function req<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const base = cloudBase();
   if (!base) throw new CloudError("Sunucu adresi tanımlı değil.");
   const headers: Record<string, string> = { Accept: "application/json" };

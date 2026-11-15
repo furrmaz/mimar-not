@@ -58,7 +58,7 @@ Kaynaklar: [imarx – Madde 41 özeti](https://www.imarx.com.tr/imar-yonetmeligi
 - Güneş çalışması (`src/geometry/sun.ts`): 39° enlem, ay ve saate göre güneş yüksekliği/azimutu; bahçe cephesinin yönü arsa yön metninden okunur.
 - İmar kontrolüne md. 41 çıkma satırları ve DXF vaziyet paftasına "İmar özeti" tablosu eklendi.
 
-## 7. Galeri, kaydırılmış kutular, çekme kat, havuz, eğimli arsa (v0.14.0)
+## 7. Galeri, kaydırılmış kutular, çekme kat, havuz, eğimli arsa (v0.16.0)
 
 - `galeri`: zemin kattaki boydan boya salonun üstünde üst kat döşemesi açılır ("Galeri Boşluğu"); dış duvarlar sürer, üst kat holü cam korkulukla salona bakar. Oturum boşluk kadar büyür.
 - `kaydirilmis_kutu`: zemin kat sağdan, en üst kat soldan geri çekilir; bir yanda konsol, öbür yanda alt katın çatısında teras oluşur.

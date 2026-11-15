@@ -28,6 +28,7 @@ import { SITE_NOTES, SITE_PROGRAM } from "./sample-site";
 import { RequirementsCard } from "./components/RequirementsCard";
 import { STANDALONE, isNative, loadKeys } from "./platform";
 import { AccountChip, AccountDialog } from "./components/AccountDialog";
+import { OfficeDialog } from "./components/OfficeDialog";
 import { cachedMe, cloudConfigured, onAccount, refreshMe, signedIn, type Me } from "./cloud";
 
 /** Demo derlemesi (VITE_DEMO=1): API ve indirmeler olmadan, örnek projeyle açılır. */
@@ -65,6 +66,7 @@ export default function App() {
   const [apiInfo, setApiInfo] = useState<{ ok: boolean; hasKey: boolean; model?: string } | null>(null);
   const project = projects.find((p) => p.id === activeId) ?? projects[0];
   const [showSettings, setShowSettings] = useState(false);
+  const [showOffice, setShowOffice] = useState(false);
   const CLOUD = !DEMO && cloudConfigured();
   const [me, setMe] = useState<Me | null>(() => (signedIn() ? cachedMe() : null));
   const [account, setAccount] = useState<{ reason?: string } | null>(null);
@@ -342,10 +344,15 @@ export default function App() {
         )}
         <span className="spacer" />
         <UpdateButton onMessage={setToast} />
+        {CLOUD && <button className="btn ghost small" onClick={() => setShowOffice(true)} title="Müşteriler, tahsilatlar, giderler ve dosyalar">Ofis</button>}
         {CLOUD && <AccountChip me={me} onClick={() => setAccount({})} />}
         {desktop && <button className="btn ghost small" onClick={() => desktop!.openFolder(program?.projectName || project.title)}>Çıktı klasörü</button>}
         <button className="btn ghost small" onClick={() => setShowSettings(true)}>Ayarlar</button>
       </header>
+      {showOffice && (
+        <OfficeDialog onClose={() => setShowOffice(false)} onAccount={() => { setShowOffice(false); setAccount({}); }}
+          projects={projects.map((p) => ({ id: p.id, title: p.title }))} onOpenProject={setActiveId} />
+      )}
       {account && <AccountDialog reason={account.reason} onClose={() => setAccount(null)} />}
       {showSettings && <SettingsDialog onOffice={setOffice} onClose={() => { setShowSettings(false); refreshHealth(); }} />}
       {toast && <div className="toast" role="status">{toast}</div>}
