@@ -108,7 +108,7 @@ export const MassingSchema = z
     features: z
       .array(z.string())
       .describe(
-        "Kütle artikülasyonu; yalnız şunlardan seç (birden çok olabilir, sade kutu için boş liste): on_konsol (zemin kat sokak cephesinde geri çekilir, üst kat konsol olarak taşar, altı giriş sundurması), arka_konsol (zemin kat bahçe tarafında geri çekilir, altı gölgeli kapalı teras), yan_konsol (zemin kat bir yandan geri çekilir, üst kat yana taşar; araç sundurması), ust_kat_teras (en üst kat bahçe tarafında geri çekilir, alt katın çatısı teras olur; düz çatı ister), kose_oyugu (bahçe köşesi bütün katlarda oyulur, L kütle + avlu; düz çatı ister)",
+        "Kütle artikülasyonu; yalnız şunlardan seç (birden çok olabilir, sade kutu için boş liste): on_konsol (zemin kat sokak cephesinde geri çekilir, üst kat konsol olarak taşar, altı giriş sundurması), arka_konsol (zemin kat bahçe tarafında geri çekilir, altı gölgeli kapalı teras), yan_konsol (zemin kat bir yandan geri çekilir, üst kat yana taşar; araç sundurması), ust_kat_teras (en üst kat bahçe tarafında geri çekilir, alt katın çatısı teras olur; düz çatı ister), kose_oyugu (bahçe köşesi bütün katlarda oyulur, L kütle + avlu; düz çatı ister), kaydirilmis_kutu (üst kat alt kata göre yana kayar: bir yanda konsol, öbür yanda teras), galeri (salonun üstünde döşeme açılır, çift yükseklikli salon), cekme_kat (yalnız apartmanda: en üst kat ön ve arkadan geri çekilir, teraslı çekme kat)",
       ),
     cantilever: z.number().describe("Konsol / kapalı çıkma derinliği (m); yönetmelik sınırı 1.5, tipik 1.2-1.5; arsa izin veriyorsa ve zemin kat geri çekiliyorsa 2.4'e kadar"),
     terraceDepth: z.number().describe("Kademeli teras derinliği (m), tipik 2.4-3.0"),
@@ -128,6 +128,7 @@ export const ProgramSchema = z.object({
     width: z.number().describe("Arsa cephe genişliği (m)"),
     depth: z.number().describe("Arsa derinliği (m)"),
     orientation: z.string().describe("Cephe yönü / manzara, ör. 'Güney cephe bahçeye bakıyor'"),
+    slope: z.number().nullable().optional().describe("Arsa eğimi (%), sokaktan arkaya doğru: arka taraf yükseliyorsa artı, alçalıyorsa eksi; düz ya da bilinmiyorsa 0"),
   }),
   zoning: z.object({
     taks: z.number().nullable().describe("İmar durumundaki TAKS (taban alanı katsayısı); notlarda yoksa null"),
@@ -194,6 +195,10 @@ export interface DesignOptions {
   cols?: Record<string, number[]>;
   /** Mimarın seçtiği kütle biçimi (programdakini geçersiz kılar) */
   massing?: Massing;
+  /** Arsa eğimi (%), sokaktan arkaya: artı yükselir, eksi alçalır (programdakini geçersiz kılar) */
+  slope?: number;
+  /** Bahçeye havuz ekle (programda havuz yoksa bile) */
+  pool?: boolean;
   /** Son uygulanan üslup paketi */
   stylePack?: string;
   /** Güneş ayarı: bahçe (arka) cephesinin baktığı yön, ay (1-12), saat */
@@ -269,7 +274,7 @@ export function normalizeFacade(f: Partial<Facade> | undefined, m: Materials = D
     details: Array.from(new Set((Array.isArray(f?.details) ? f!.details! : []).map((d) => String(d).toLocaleLowerCase("tr").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ö/g, "o").replace(/[\s-]+/g, "_").trim()).filter((d) => FACADE_DETAILS.includes(d as FacadeDetail)))),
   };
 }
-const MASS_KEYS = ["on_konsol", "arka_konsol", "yan_konsol", "ust_kat_teras", "kose_oyugu"];
+const MASS_KEYS = ["on_konsol", "arka_konsol", "yan_konsol", "kaydirilmis_kutu", "ust_kat_teras", "kose_oyugu", "galeri", "cekme_kat"];
 /** Kütle özelliklerini doğrular (bilinmeyenleri atar). */
 export function normalizeMassing(m: Partial<Massing> | undefined): Massing {
   const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : d);
@@ -291,4 +296,10 @@ export function normalizeProgram(w: ProgramWire): Program {
     unitTypes: w.unitTypes.map((u) => ({ ...u, rooms: u.rooms.map(fixRoom) })),
     blocks: w.blocks.map((b) => ({ ...b, floors: b.floors.map((f) => ({ ...f, rooms: f.rooms.map(fixRoom) })) })),
   };
+}
+
+/** Geçerli arsa eğimi (oran; 0,10 = %10). Sokaktan arkaya doğru artı yükselir. */
+export function siteSlope(p: { site?: { slope?: number | null }; design?: { slope?: number } | null }): number {
+  const v = Number(p.design?.slope ?? p.site?.slope ?? 0);
+  return Number.isFinite(v) ? Math.max(-30, Math.min(30, v)) / 100 : 0;
 }

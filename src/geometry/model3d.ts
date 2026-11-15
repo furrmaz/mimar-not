@@ -35,6 +35,8 @@ export interface ModelOptions {
   entranceX?: number;
   /** Diğer blokların (yerel koordinatta) alanları: ağaç konmaz */
   avoid?: { x: number; y: number; w: number; d: number }[];
+  /** Havuz (bina yerel koordinatında) */
+  pool?: { x: number; y: number; w: number; h: number } | null;
 }
 
 const BASE = {
@@ -268,7 +270,18 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
 
   // Arsa zemini
   if (site) {
-    const pg = new THREE.PlaneGeometry(site.width, site.depth);
+    const slope = L.siteSlope ?? 0;
+    const pg = slope ? new THREE.PlaneGeometry(site.width, site.depth, Math.ceil(site.width / 0.75), Math.ceil(site.depth / 0.75)) : new THREE.PlaneGeometry(site.width, site.depth);
+    if (slope) {
+      // eğimli arsa: bina ve çevresi düz platform, platformun dışında doğal zemin eğimle sürer (şev / istinat)
+      const pos = pg.attributes.position, cx = site.width / 2 - site.offsetX, cz = site.depth / 2 - site.offsetY;
+      for (let i = 0; i < pos.count; i++) {
+        const wx = cx + pos.getX(i), wy = cz - pos.getY(i);
+        const flat = wy <= 0 || (wy < L.D + 1.5 && wx > -1.5 && wx < L.W + 1.5);
+        pos.setZ(i, flat ? 0 : slope * wy);
+      }
+      pg.computeVertexNormals();
+    }
     if (opts.realistic) worldUV(pg, new THREE.Vector3(), 3);
     const g = new THREE.Mesh(pg, mats.ground);
     g.rotation.x = -Math.PI / 2;
@@ -288,7 +301,15 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
 
   if (opts.realistic) addFacadeAccents(root, L, visible);
   if (!opts.cutaway) addFacadeDetails(root, L, visible, isTopAll && opts.showRoof);
-  if (site && opts.realistic) root.add(landscape(L, site, opts.entranceX, opts.avoid ?? []));
+  if (site && opts.realistic) root.add(landscape(L, site, opts.entranceX, (opts.avoid ?? []).concat(opts.pool ? [{ x: opts.pool.x, y: opts.pool.y, w: opts.pool.w, d: opts.pool.h }] : [])));
+  if (site && opts.pool) {
+    const q = opts.pool, dk = 1.2;
+    const pg = new THREE.Group();
+    pg.name = "Havuz";
+    pg.add(box(q.w + 2 * dk, 0.08, q.h + 2 * dk, opts.realistic ? texturedMaterial("paving") : mats.slab, q.x + q.w / 2, -0.27, q.y + q.h / 2, "Veranda"));
+    pg.add(box(q.w, 0.1, q.h, new THREE.MeshPhysicalMaterial({ color: 0x3fa7cf, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.88 }), q.x + q.w / 2, -0.24, q.y + q.h / 2, "Su"));
+    root.add(pg);
+  }
 
   // Çatı
   if (opts.showRoof && isTopAll) root.add(buildRoof(L));
@@ -323,7 +344,26 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
     grp.add(box(L.W + L.extWall, L.slab, L.D + L.extWall, mats.slab, L.W / 2, z0 - L.slab / 2, L.D / 2, "Döşeme"));
   }
   // Oda zemin renkleri
+  // Galeri boşluğu: döşeme yok; dış duvar halkası döşeme kotunda sürer, hole bakan kenarda cam korkuluk
+  for (const r of f.rooms.filter((q) => q.void)) {
+    const a = r.rect;
+    for (const w of f.wallLines) {
+      if (!w.exterior) continue;
+      const onEdge = w.orient === "h" ? near(w.line, a.y) || near(w.line, a.y + a.h) : near(w.line, a.x) || near(w.line, a.x + a.w);
+      if (!onEdge) continue;
+      const lo = Math.max(w.a, (w.orient === "h" ? a.x : a.y) - L.extWall / 2), hi = Math.min(w.b, (w.orient === "h" ? a.x + a.w : a.y + a.h) + L.extWall / 2);
+      if (hi - lo < 0.05) continue;
+      const mat = f.z <= 0 ? mats.wallStone : mats.wall;
+      grp.add(w.orient === "h" ? box(hi - lo, L.slab, w.thickness, mat, (lo + hi) / 2, z0 - L.slab / 2, w.line) : box(w.thickness, L.slab, hi - lo, mat, w.line, z0 - L.slab / 2, (lo + hi) / 2));
+    }
+  }
+  for (const rl of f.rails ?? []) {
+    const len = rl.b - rl.a, mid = (rl.a + rl.b) / 2;
+    grp.add(rl.orient === "h" ? box(len, 1.0, 0.03, mats.glass, mid, z0 + 0.5, rl.line) : box(0.03, 1.0, len, mats.glass, rl.line, z0 + 0.5, mid));
+    grp.add(rl.orient === "h" ? box(len, 0.05, 0.06, mats.rail, mid, z0 + 1.03, rl.line) : box(0.06, 0.05, len, mats.rail, rl.line, z0 + 1.03, mid));
+  }
   for (const r of f.rooms) {
+    if (r.void) continue;
     const color = new THREE.Color(r.type === "merdiven" ? "#e6e2db" : ZONE_COLORS[r.zone] ?? "#eeeeee");
     const m = new THREE.Mesh(new THREE.PlaneGeometry(r.rect.w, r.rect.h), new THREE.MeshStandardMaterial({ color, roughness: 0.9 }));
     m.rotation.x = -Math.PI / 2;

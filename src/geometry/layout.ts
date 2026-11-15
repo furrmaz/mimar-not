@@ -3,7 +3,7 @@
 // Her katta üç bant vardır: ön bant (gündüz mekânları), orta bant (hol + merdiven), arka bant (gece mekânları).
 // Orta bant tüm katlarda aynı yerde olduğu için merdiven katlar arasında üst üste gelir.
 
-import type { Adjacency, DesignOptions, Program, Room, RoomType, Zone } from "../shared/schema";
+import { siteSlope, type Adjacency, type DesignOptions, type Program, type Room, type RoomType, type Zone } from "../shared/schema";
 import type { ApFloor, UnitSlot } from "./blocks";
 import { legacyStairInfo, stairCalc, type StairInfo } from "./stair";
 import { applyMassing, effectiveMassing, type CarvedKind, type MassFeature, type OpenEdge, type Side } from "./massing";
@@ -25,6 +25,8 @@ export interface PlacedRoom {
   band: "front" | "hall" | "back";
   /** Apartmanda ait olduğu daire */
   unit?: string;
+  /** Döşemesi olmayan hacim (galeri boşluğu): alt kattaki mekân çift yüksekliklidir */
+  void?: boolean;
 }
 
 /** passage: kanatsız geçiş (açık plan, salona geniş giriş) */
@@ -72,6 +74,8 @@ export interface FloorLayout {
   voids?: Rect[];
   /** Açık plan kenarları (duvarsız komşu mekânlar) */
   openEdges?: OpenEdge[];
+  /** İç korkuluklar (galeri boşluğu kenarı) */
+  rails?: { orient: "h" | "v"; line: number; a: number; b: number }[];
   /** Sürüklenebilir sütun sınırları (iç sınırların x değerleri) */
   cols: { band: "front" | "back"; key: string; xs: number[] }[];
   /** Dubleks dairelerin iç merdivenleri */
@@ -100,6 +104,8 @@ export interface BuildingLayout {
   /** Apartman bloğunda asansör kuyusu */
   elevator?: Rect | null;
   apartment?: boolean;
+  /** Arsa eğimi (oran), sokaktan arkaya artı yükselir; çizimler zemini buna göre çizer */
+  siteSlope?: number;
   /** Merdiven hesabı ve yönü (yoksa eski hol bandı merdiveni) */
   stairInfo?: StairInfo;
   /** Uygulanan kütle artikülasyonu (yoksa sade dikdörtgen kutu) */
@@ -111,6 +117,12 @@ export function isParking(r: Room) {
   return (r.zone === "dis" || r.type === "balkon" || r.type === "teras" || r.type === "diger") && /otopark|park yeri|araç park|carport/i.test(`${r.name} ${r.note}`)
     || (r.type === "garaj" && r.zone === "dis");
 }
+
+/** Havuz: bina dışı, vaziyet planında ve 3D'de bahçede gösterilir. */
+export function isPool(r: Room) {
+  return (r.zone === "dis" || r.type === "diger") && /havuz|pool/i.test(r.name);
+}
+const isSiteItem = (r: Room) => isParking(r) || isPool(r);
 
 export const VARIANTS = [
   { id: 0, name: "A · Gündüz sokak tarafında", short: "A" },
@@ -142,6 +154,13 @@ const canPair = (a: Room, b: Room) => (viaNeighbour(a) && viaNeighbour(b)) || (S
 const SMALL_OK: RoomType[] = ["banyo", "wc", "camasir", "depo", "kiler", "teknik", "giyinme"];
 
 export function buildLayout(program: Program, design: DesignOptions = program.design ?? {}): BuildingLayout {
+  const L = buildLayoutInner(program, design);
+  const s = siteSlope({ site: program.site, design });
+  if (s) L.siteSlope = s;
+  return L;
+}
+
+function buildLayoutInner(program: Program, design: DesignOptions): BuildingLayout {
   if (program.floors.some((f) => (f as ApFloor).units?.length)) return apartmentLayout(program, design);
   if (!(design as UnitDesign).unitMode) {
     const L = houseLayout(program, design);
@@ -175,8 +194,8 @@ function legacyLayout(program: Program, design: DesignOptions): BuildingLayout {
   });
   const assignments = program.floors.map((f, i) =>
     unitMode
-      ? assignUnitBands(f.rooms.filter((r) => !isParking(r)), { reverse: variant === 2, entry: i === 0 })
-      : assignBands(f.rooms.filter((r) => !isParking(r)), { flip: variant === 1, reverse: variant === 2, adj: adj.filter((a) => hasRoom(f.rooms, a.a) && hasRoom(f.rooms, a.b)) }),
+      ? assignUnitBands(f.rooms.filter((r) => !isSiteItem(r)), { reverse: variant === 2, entry: i === 0 })
+      : assignBands(f.rooms.filter((r) => !isSiteItem(r)), { flip: variant === 1, reverse: variant === 2, adj: adj.filter((a) => hasRoom(f.rooms, a.a) && hasRoom(f.rooms, a.b)) }),
   );
   if (!unitMode) assignments.forEach(orderSuite);
   // Ön bant derinliği tüm katlarda ortak (merdiven hizası için); katların alan paylarının ortalamasından
@@ -890,7 +909,7 @@ function apartmentLayout(program: Program, design: DesignOptions): BuildingLayou
   // Daireleri ön/arka banda böl (sayı farkı en çok 1, alan dengeli); ortak mekânlar ayrı bir "daire" gibi
   const slotsOf = (f: ApFloor): UnitSlot[] => {
     const units = (f.units ?? []).filter((u) => u.part !== "upper");
-    const common = f.rooms.filter((r) => !r.unit && !isParking(r));
+    const common = f.rooms.filter((r) => !r.unit && !isSiteItem(r));
     if (units.length && common.filter((r) => !isOutdoorRoom(r) && r.type !== "hol" && r.type !== "koridor").length) {
       units.push({ label: "", type: "Ortak alan", part: "single", rooms: common, area: sumArea(common.filter((r) => !isOutdoorRoom(r))) });
     }
@@ -918,6 +937,13 @@ function apartmentLayout(program: Program, design: DesignOptions): BuildingLayou
   const elevator: Rect | null = elevW ? { x: stairW + LOBBY, y: hallBand.y, w: elevW, h: ELEV_D } : null;
   const groundLevel = floorsIn.find((f) => f.level >= 0)?.level ?? floorsIn[0].level;
   const slotsByLevel = new Map<number, SlotInfo[]>();
+  // Çekme kat: en üst kat sokak ve bahçe cephesinde geri çekilir, daireler daralan derinliğe yerleşir, çevresi teras olur
+  const mspec = effectiveMassing(program, design);
+  const topLevelIn = floorsIn[floorsIn.length - 1].level;
+  const wantCk = mspec.features.includes("cekme_kat");
+  const ckOk = wantCk && program.roof === "duz" && topLevelIn > groundLevel && splits.has(topLevelIn);
+  const ckDepth = round2(Math.min(3, Math.max(1.5, mspec.terraceDepth ?? 2)));
+  const insetOf = (level: number) => (ckOk && level === topLevelIn ? Math.min(ckDepth, round2(Math.min(hallBand.y, D - hallBand.y - hallBand.h) - 5)) : 0);
 
   const floors: FloorLayout[] = floorsIn.map((f) => {
     let uid = 0;
@@ -928,7 +954,7 @@ function apartmentLayout(program: Program, design: DesignOptions): BuildingLayou
 
     // Yalnız ortak mekânlı kat (bodrum, otopark, dükkan katı): tek konut yerleşimi, aynı çekirdek
     if (!sp && !hasUpper) {
-      const rooms = f.rooms.filter((r) => !isParking(r));
+      const rooms = f.rooms.filter((r) => !isSiteItem(r));
       const fl = layoutFloor(f.level, f.name, assignBands(rooms, { flip: variant === 1, reverse: variant === 2 }), { W, D, hallBand, stair, isGround: f.level === groundLevel, H, cols: {} });
       if (elevator) addElevator(fl, elevator, id);
       fl.cols = [];
@@ -942,12 +968,13 @@ function apartmentLayout(program: Program, design: DesignOptions): BuildingLayou
     const units: NonNullable<FloorLayout["units"]> = [];
     const stairs: Rect[] = [];
     const infos: SlotInfo[] = [];
+    const ins = Math.max(0, insetOf(f.level));
 
     if (sp) {
       for (const side of ["front", "back"] as const) {
         let list = side === "front" ? sp.front : sp.back;
-        const by = side === "front" ? 0 : hallBand.y + hallBand.h;
-        const bh = side === "front" ? hallBand.y : D - by;
+        const by = side === "front" ? ins : hallBand.y + hallBand.h;
+        const bh = side === "front" ? hallBand.y - ins : D - by - ins;
         const tot = list.reduce((s, u) => s + u.area, 0) || 1;
         // Daireler bandı dolduramıyorsa (ör. zemin katta az daire) şişirilmez; artan genişlik ortak alana kalır
         const need = list.map((u) => (u.area * 1.22) / bh);
@@ -1002,7 +1029,7 @@ function apartmentLayout(program: Program, design: DesignOptions): BuildingLayou
         if (o.kind === "entrance" || o.kind === "balconyDoor") continue;
         const t = T.op(o);
         if (o.exterior) {
-          const ext = t.orient === "h" ? near(t.line, 0) || near(t.line, D) : near(t.line, 0) || near(t.line, W);
+          const ext = t.orient === "h" ? near(t.line, ins) || near(t.line, D - ins) : near(t.line, 0) || near(t.line, W);
           if (!ext) continue;
         }
         openings.push({ ...t, id: id("o") });
@@ -1019,14 +1046,23 @@ function apartmentLayout(program: Program, design: DesignOptions): BuildingLayou
         }
       }
       // balkonlar: dairenin cephesine çıkma
-      const outs = unit.rooms.filter(isOutdoorRoom).filter((r) => !isParking(r));
-      const facadeY = xf.side === "front" ? 0 : D;
+      const outs = unit.rooms.filter(isOutdoorRoom).filter((r) => !isSiteItem(r));
+      const facadeY = xf.side === "front" ? ins : D - ins;
       const hostPref = (p: PlacedRoom) => ["salon", "ebeveyn", "yatak", "cocuk", "yemek", "mutfak"].indexOf(p.type as string);
       const hosts = rooms
         .filter((r) => r.band !== "hall" && hostPref(r) >= 0 && near(xf.side === "front" ? r.rect.y : r.rect.y + r.rect.h, facadeY))
         .sort((a, b) => hostPref(a) - hostPref(b) || b.rect.w - a.rect.w);
       const taken: [number, number][] = [];
-      outs.forEach((o, k) => {
+      if (ins > 0 && hosts[0]) {
+        // çekme kat: çıkma balkon yerine terasa açılan cam kapı
+        const host = hosts[0];
+        for (let i = openings.length - 1; i >= 0; i--) {
+          const op = openings[i];
+          if (op.orient === "h" && near(op.line, facadeY) && op.kind === "window" && op.center > host.rect.x && op.center < host.rect.x + host.rect.w) openings.splice(i, 1);
+        }
+        openings.push({ id: id("tk"), kind: "balconyDoor", orient: "h", line: facadeY, center: round2(host.rect.x + host.rect.w / 2), width: round2(Math.min(2.4, host.rect.w - 0.6)), sill: 0, head: 2.2, exterior: true, swing: xf.side === "front" ? 1 : -1 });
+      }
+      if (!ins) outs.forEach((o, k) => {
         const host = hosts[k % Math.max(1, hosts.length)];
         const depth = o.type === "teras" || o.area > 10 ? 2.0 : 1.5;
         const w = round2(Math.min(xf.bw - 0.4, Math.max(2, o.area / depth)));
@@ -1068,6 +1104,13 @@ function apartmentLayout(program: Program, design: DesignOptions): BuildingLayou
       wallRooms.push({ ...hall, id: "asn-w", rect: elevator });
     }
     const wallLines = buildWallLines(wallRooms, W, D);
+    if (ins > 0) {
+      for (const w of wallLines) if (w.orient === "h" && !w.exterior && (near(w.line, ins) || near(w.line, D - ins))) Object.assign(w, { exterior: true, thickness: EXT, a: w.a - EXT / 2, b: w.b + EXT / 2 });
+      outdoor.push(
+        { name: "Çekme Kat Terası", area: round2(W * ins), type: "teras", rect: { x: 0, y: 0, w: W, h: ins }, carved: "teras", rails: ["front", "left", "right"] },
+        { name: "Çekme Kat Terası", area: round2(W * ins), type: "teras", rect: { x: 0, y: round2(D - ins), w: W, h: ins }, carved: "teras", rails: ["back", "left", "right"] },
+      );
+    }
     const walls = subtractOpenings(wallLines, openings);
     return { level: f.level, name: f.name, z: f.level * H, rooms: placed, openings, walls, wallLines, outdoor, cols: [], units, stairs };
   });
@@ -1078,12 +1121,14 @@ function apartmentLayout(program: Program, design: DesignOptions): BuildingLayou
     W, D, H, slab: SLAB, extWall: EXT, intWall: INT, roof: program.roof, stair, hallBand,
     floors, cutX, totalHeight: (topFloor + 1) * H, roofHeight: program.roof === "duz" ? 0.9 : round2(Math.min(W, D) * 0.5 * 0.4 + 0.3),
     variant, parking, elevator, apartment: true, stairInfo: legacyStairInfo(stair, H),
+    ...(ckOk && insetOf(topLevelIn) > 0 ? { massing: { features: ["cekme_kat"] as MassFeature[], notes: [] } }
+      : wantCk ? { massing: { features: [] as MassFeature[], notes: [splits.has(topLevelIn) ? "Çekme kat düz çatılı, en az iki katlı ve yeterince derin bloklarda uygulanır." : "Çekme kat: en üst kat dubleks üst katı olduğu için uygulanmadı; en üst katı ayrı dairelerle programlayın."] } } : {}),
   };
 }
 
 /** Bir daireyi yerel koordinatlarda çözer: yerel y = 0 cephe, y = derinlik çekirdek tarafı. */
 function layoutSlot(program: Program, unit: UnitSlot, xf: SlotXf, variant: number, coreStart: number, W: number): SlotInfo {
-  const fl: Program["floors"] = [{ level: 0, name: "a", rooms: unit.rooms.filter((r) => !isOutdoorRoom(r) && !isParking(r)) }];
+  const fl: Program["floors"] = [{ level: 0, name: "a", rooms: unit.rooms.filter((r) => !isOutdoorRoom(r) && !isSiteItem(r)) }];
   if (unit.part === "lower" && unit.upperRooms?.length) fl.push({ level: 1, name: "b", rooms: unit.upperRooms.filter((r) => !isOutdoorRoom(r)) });
   if (!fl[0].rooms.length) fl[0].rooms = [{ name: "Boş Alan", type: "diger", zone: "servis", area: xf.bw * xf.bh, note: "" }];
   const mini: Program = { ...program, footprint: { width: xf.bw, depth: xf.bh }, floors: fl, adjacencies: [], blocks: [], unitTypes: [] };
@@ -1158,8 +1203,8 @@ function pickCut(floors: FloorLayout[], W: number, x0: number) {
 const CORRIDOR = 1.25;
 
 /** Kütle oyumu için banda konan yer tutucu mahal (yerleşimden sonra dış mekâna çevrilir). */
-export const POCKET = { court: "__avlu__", terrace: "__teras__" } as const;
-export const isPocket = (r: { name: string }) => r.name === POCKET.court || r.name === POCKET.terrace;
+export const POCKET = { court: "__avlu__", terrace: "__teras__", gallery: "__galeri__" } as const;
+export const isPocket = (r: { name: string }) => r.name.startsWith("__");
 
 function houseLayout(program: Program, design: DesignOptions): BuildingLayout | null {
   const variant = design.variant ?? 0;
@@ -1175,7 +1220,8 @@ function houseLayout(program: Program, design: DesignOptions): BuildingLayout | 
   const cant = Math.min(3, Math.max(1, mspec.cantilever ?? 1.5));
   const multiAbove = aboveFloors.length > 1;
   const kon = (k: string) => multiAbove && mspec.features.includes(k as never);
-  const W = round2(program.footprint.width + (wantCourt ? courtW * 0.85 : 0) + (kon("yan_konsol") ? (cant + 0.5) * 0.6 : 0));
+  const wantGallery = multiAbove && mspec.features.includes("galeri") && !wantCourt;
+  const W = round2(program.footprint.width + (wantCourt ? courtW * 0.85 : 0) + (kon("yan_konsol") || kon("kaydirilmis_kutu") ? (cant + 0.5) * 0.6 : 0) + (wantGallery ? 1.2 : 0));
   const D = round2(program.footprint.depth + (kon("on_konsol") ? cant * 0.6 : 0) + (kon("arka_konsol") ? cant * 0.6 : 0));
   const H = program.floorHeight;
   const multi = program.floors.length > 1;
@@ -1190,7 +1236,7 @@ function houseLayout(program: Program, design: DesignOptions): BuildingLayout | 
   const sc = multi ? stairCalc(H) : null;
   const stairArea = sc ? sc.width * sc.len : 0;
   const assignments = program.floors.map((f) => {
-    const a = assignBands(f.rooms.filter((r) => !isParking(r)), { flip, reverse, modern: true, adj: adj.filter((x) => hasRoom(f.rooms, x.a) && hasRoom(f.rooms, x.b)) });
+    const a = assignBands(f.rooms.filter((r) => !isSiteItem(r)), { flip, reverse, modern: true, adj: adj.filter((x) => hasRoom(f.rooms, x.a) && hasRoom(f.rooms, x.b)) });
     return a;
   });
 
@@ -1291,6 +1337,21 @@ function houseLayout(program: Program, design: DesignOptions): BuildingLayout | 
         }
       }
     });
+  }
+
+  // Çift yükseklikli salon: zemin kattaki boydan boya salonun üstünde, ilk üst katın ön bandının sağ ucunda galeri boşluğu
+  if (wantGallery) {
+    const gi = program.floors.indexOf(aboveFloors[0]);
+    const end = ends[gi], a = assignments[gi + 1];
+    if (end && a && !ends[gi + 1] && a.front.length) {
+      const F = W - (stair && stairBand === "front" ? stair.w : 0);
+      const need = a.front.reduce((s, r) => s + Math.max(MIN_WIDTH[r.type] ?? 2.4, (r.area * 0.8) / Math.max(1, frontDepth)), 0);
+      const gw = Math.min(end.w, 4.5, F - need);
+      if (gw >= 2.6) {
+        const T = sumArea(a.front);
+        a.front.push({ name: POCKET.gallery, type: "diger", zone: "sirkulasyon", area: round2((gw * T) / Math.max(0.5, F - gw)), note: "" });
+      }
+    }
   }
 
   const floors = program.floors.map((f, i) =>

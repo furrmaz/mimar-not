@@ -2,11 +2,11 @@
 import type { BuildingLayout, FloorLayout, Opening, Rect } from "./layout";
 import { ZONE_COLORS, near } from "./layout";
 import type { Program } from "../shared/schema";
-import { parkingStalls, zoningCheck } from "./zoning";
+import { parkingStalls, sitePool, zoningCheck } from "./zoning";
 import type { OfficeInfo } from "../office";
 import { furnishFloor, furnitureSymbol, type Prim } from "./furniture";
 import { legacyStairInfo, stairGeom, type StairInfo } from "./stair";
-import { facadeFaces, floorRects, openingDepth, openingOnFacade, spansAtX } from "./massing";
+import { facadeFaces, floorRects, openingDepth, openingOnFacade, slabSpansAtX, spansAtX } from "./massing";
 
 const S = 50; // px / m
 const INK = "#1d1d1f";
@@ -133,6 +133,17 @@ export function planSVG(L: BuildingLayout, floor: FloorLayout, program: Program,
   for (const r of floor.rooms) {
     const fill = r.type === "merdiven" ? "#f4f4f4" : ZONE_COLORS[r.zone] ?? "#f5f5f5";
     parts.push(`<rect x="${X(r.rect.x)}" y="${Y(r.rect.y + r.rect.h)}" width="${r.rect.w * S}" height="${r.rect.h * S}" fill="${fill}"/>`);
+  }
+
+  // Galeri boşluğu: çapraz çizgi (döşeme yok) ve korkuluk
+  for (const r of floor.rooms.filter((q) => q.void)) {
+    const a = r.rect;
+    parts.push(`<rect x="${X(a.x)}" y="${Y(a.y + a.h)}" width="${a.w * S}" height="${a.h * S}" fill="#fafafa"/>`);
+    parts.push(`<path d="M${X(a.x)} ${Y(a.y)} L${X(a.x + a.w)} ${Y(a.y + a.h)} M${X(a.x)} ${Y(a.y + a.h)} L${X(a.x + a.w)} ${Y(a.y)}" stroke="${THIN}" stroke-width="0.7" stroke-dasharray="8 5"/>`);
+  }
+  for (const rl of floor.rails ?? []) {
+    const [x1, y1, x2, y2] = rl.orient === "h" ? [X(rl.a), Y(rl.line), X(rl.b), Y(rl.line)] : [X(rl.line), Y(rl.a), X(rl.line), Y(rl.b)];
+    parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#2f6fb0" stroke-width="3"/>`);
   }
 
   // Mobilya
@@ -379,7 +390,19 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
   // zemin
   p.push(`<rect x="0" y="${Z(groundZ)}" width="${widthM * S}" height="${(groundZ - bottomZ + 1.2) * S}" fill="url(#earth)"/>`);
   p.push(`<defs><pattern id="earth" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#f3efe7"/><line x1="0" y1="0" x2="0" y2="10" stroke="#cbbfa8" stroke-width="1"/></pattern></defs>`);
-  p.push(`<line x1="0" y1="${Z(groundZ)}" x2="${widthM * S}" y2="${Z(groundZ)}" stroke="${INK}" stroke-width="1.6"/>`);
+  const slope = (L.siteSlope ?? 0);
+  if (!slope) p.push(`<line x1="0" y1="${Z(groundZ)}" x2="${widthM * S}" y2="${Z(groundZ)}" stroke="${INK}" stroke-width="1.6"/>`);
+  else {
+    // eğimli arsa: bina düz bir platforma oturur; arkada doğal zemin eğimle sürer, bina altındaki doğal zemin kesikli çizilir
+    const yEnd = widthM - M - outFront, gB = groundZ + slope * L.D, gE = groundZ + slope * yEnd;
+    p.push(`<line x1="0" y1="${Z(groundZ)}" x2="${X(L.D)}" y2="${Z(groundZ)}" stroke="${INK}" stroke-width="1.6"/>`);
+    if (slope > 0) p.push(`<polygon points="${X(L.D)},${Z(groundZ)} ${X(L.D)},${Z(gB)} ${widthM * S},${Z(gE)} ${widthM * S},${Z(groundZ)}" fill="url(#earth)"/>`);
+    else p.push(`<polygon points="${X(L.D)},${Z(groundZ)} ${X(L.D)},${Z(gB)} ${widthM * S},${Z(gE)} ${widthM * S},${Z(groundZ)}" fill="#fff"/>`);
+    p.push(`<line x1="${X(L.D)}" y1="${Z(gB)}" x2="${widthM * S}" y2="${Z(gE)}" stroke="${INK}" stroke-width="1.6"/>`);
+    p.push(`<line x1="${X(L.D)}" y1="${Z(groundZ)}" x2="${X(L.D)}" y2="${Z(gB)}" stroke="${INK}" stroke-width="3"/>`);
+    p.push(`<line x1="${X(0)}" y1="${Z(groundZ)}" x2="${X(L.D)}" y2="${Z(gB)}" stroke="${THIN}" stroke-width="1" stroke-dasharray="6 4"/>`);
+    p.push(text(X(L.D * 0.55), Z(groundZ + slope * L.D * 0.55) - 6, `doğal zemin %${f2(Math.abs(slope) * 100).replace(/[.,]00$/, "")} ${slope > 0 ? "yükseliyor" : "alçalıyor"} · arkada ${slope > 0 ? "+" : "−"}${f2(Math.abs(slope * L.D))} m`, 10, { fill: THIN }));
+  }
 
   const t = L.extWall;
   const floorsSorted = [...L.floors].sort((a, b) => a.z - b.z);
@@ -397,7 +420,7 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
     const clear = L.H - L.slab;
     // döşeme (kesilen, koyu): bu katın ve altındaki katın hacimleri (konsol altı, teras döşemesi)
     const fi = floorsSorted.indexOf(f);
-    for (const [a, b] of spans(fi > 0 ? [f, floorsSorted[fi - 1]] : [f]))
+    for (const [a, b] of L.massing ? slabSpansAtX(L, f, L.cutX) : spans(fi > 0 ? [f, floorsSorted[fi - 1]] : [f]))
       p.push(`<rect x="${X(a - t / 2)}" y="${Z(z0)}" width="${(b - a + t) * S}" height="${L.slab * S}" fill="${INK}"/>`);
     // oyulmuş teras korkulukları
     for (const o of f.outdoor) {
@@ -517,7 +540,7 @@ export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade
   const topZ = top + L.roofHeight + 0.8;
   const titleH = 56;
   const widthM = len + 2 * M + 3;
-  const heightM = topZ - groundZ + 1.6;
+  const heightM = topZ - groundZ + 1.6 + Math.max(0, -(L.siteSlope ?? 0) * L.D);
   const U = (u: number) => (u + M) * S;
   const Z = (z: number) => (topZ - z) * S + titleH;
   // dünya → cephe u koordinatı
@@ -647,9 +670,18 @@ export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade
   }
 
   // zemin çizgisi, insan figürü (ölçek)
-  p.push(`<line x1="0" y1="${Z(groundZ)}" x2="${widthM * S}" y2="${Z(groundZ)}" stroke="${INK}" stroke-width="2"/>`);
-  p.push(person(U(len + 1.0), Z(groundZ)));
-  p.push(tree(U(len + 2.9), Z(groundZ)));
+  const slope = (L.siteSlope ?? 0);
+  // cephe u koordinatında zemin kotu (yan cephelerde eğimli, arka cephede arka kot)
+  const gAt = (u: number) => groundZ + slope * (facade === "front" ? 0 : facade === "back" ? L.D : Math.max(0, Math.min(L.D, facade === "left" ? L.D - u : u)));
+  if (slope) {
+    const uu = [-M, 0, len, widthM - M];
+    const pts = uu.map((u) => `${U(u)},${Z(gAt(u))}`).join(" ");
+    if (slope < 0) p.push(`<polygon points="${U(0)},${Z(groundZ)} ${U(len)},${Z(groundZ)} ${U(len)},${Z(gAt(len))} ${U(0)},${Z(gAt(0))}" fill="url(#stone)" stroke="${INK}" stroke-width="1"/>`);
+    p.push(`<polygon points="${pts} ${widthM * S},${heightM * S + titleH} 0,${heightM * S + titleH}" fill="#f3efe7"/>`);
+    p.push(`<polyline points="${pts}" fill="none" stroke="${INK}" stroke-width="2"/>`);
+  } else p.push(`<line x1="0" y1="${Z(groundZ)}" x2="${widthM * S}" y2="${Z(groundZ)}" stroke="${INK}" stroke-width="2"/>`);
+  p.push(person(U(len + 1.0), Z(gAt(len + 1.0))));
+  p.push(tree(U(len + 2.9), Z(gAt(len + 2.9))));
   // yükseklik ölçüsü
   p.push(dimLine(U(-1.2), Z(groundZ), U(-1.2), Z(zt + rise), `${f2(zt + rise - groundZ)}`, -1));
   p.push(dimLine(U(0), Z(groundZ) + 0.6 * S, U(len), Z(groundZ) + 0.6 * S, f2(len), -1));
@@ -713,6 +745,14 @@ export function sitePlanSVG(L: BuildingLayout, program: Program): string {
     }
   } else
   p.push(`<rect x="${X(b.x)}" y="${Y(b.y + L.D)}" width="${L.W * sc}" height="${L.D * sc}" fill="#d9d3c7" stroke="${INK}" stroke-width="2"/>`);
+  // havuz + veranda
+  const pool = sitePool(program, L, z);
+  if (pool) {
+    const dk = 1.2;
+    p.push(`<rect x="${X(pool.x - dk)}" y="${Y(pool.y + pool.h + dk)}" width="${(pool.w + 2 * dk) * sc}" height="${(pool.h + 2 * dk) * sc}" fill="#e9e2d3" stroke="${THIN}" stroke-width="0.8"/>`);
+    p.push(`<rect x="${X(pool.x)}" y="${Y(pool.y + pool.h)}" width="${pool.w * sc}" height="${pool.h * sc}" rx="3" fill="#a9d6ea" stroke="#3d86a8" stroke-width="1.4"/>`);
+    p.push(text(X(pool.x + pool.w / 2), Y(pool.y + pool.h / 2) + 4, `${pool.name} · ${f2(pool.w)}×${f2(pool.h)}`, 10, { fill: "#205a75", weight: 600 }));
+  }
   // açık otopark
   for (const st of parkingStalls(program, L, z)) {
     p.push(`<rect x="${X(st.x)}" y="${Y(st.y + st.h)}" width="${st.w * sc}" height="${st.h * sc}" fill="#f1f1ef" stroke="${THIN}" stroke-width="1"/>`);

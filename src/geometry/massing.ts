@@ -13,7 +13,7 @@
 import type { Program, Room, RoomType } from "../shared/schema";
 import type { BuildingLayout, FloorLayout, Opening, PlacedRoom, Rect, WallPiece } from "./layout";
 
-export const MASS_FEATURES = ["on_konsol", "arka_konsol", "yan_konsol", "ust_kat_teras", "kose_oyugu"] as const;
+export const MASS_FEATURES = ["on_konsol", "arka_konsol", "yan_konsol", "kaydirilmis_kutu", "ust_kat_teras", "kose_oyugu", "galeri", "cekme_kat"] as const;
 export type MassFeature = (typeof MASS_FEATURES)[number];
 
 export interface MassingSpec {
@@ -33,6 +33,9 @@ export const MASS_LABELS: Record<MassFeature, { name: string; hint: string }> = 
   arka_konsol: { name: "Arka konsol", hint: "Zemin kat bahçe cephesinde geri çekilir; üst katın altı gölgeli kapalı teras olur" },
   yan_konsol: { name: "Yan konsol", hint: "Zemin kat bir yandan geri çekilir; üst kat yana taşar (araç sundurması, gölgeli yol)" },
   ust_kat_teras: { name: "Kademeli teras", hint: "En üst kat bahçe tarafında geri çekilir; alt katın çatısı teras olur (düz çatı)" },
+  kaydirilmis_kutu: { name: "Kaydırılmış kutular", hint: "Üst kat alt kata göre yana kayar: bir yanda konsol, öbür yanda alt katın çatısında teras" },
+  galeri: { name: "Çift yükseklikli salon", hint: "Salonun üstünde döşeme açılır (galeri boşluğu); üst kat holü cam korkulukla salona bakar" },
+  cekme_kat: { name: "Çekme kat", hint: "En üst kat sokak ve bahçe cephesinde geri çekilir; çevresi teras olur (apartman ve çok katlı yapılar, düz çatı)" },
   kose_oyugu: { name: "Köşe oyuğu (L kütle)", hint: "Bahçe köşesi bütün katlarda oyulur; L biçimli kütle ve korunaklı avlu (düz çatı)" },
 };
 
@@ -64,7 +67,7 @@ const KEEP_AREA: Partial<Record<RoomType | "merdiven", number>> = {
   salon: 14, ebeveyn: 10.5, yatak: 9, cocuk: 9, misafir: 9, calisma: 7, mutfak: 5.5, banyo: 3.5, wc: 1.3, garaj: 14,
 };
 
-function canTrim(r: PlacedRoom, side: Side, d: number) {
+function canTrim(r: PlacedRoom, side: Side, d: number, loose = false) {
   if (r.type === "merdiven") return false;
   const len = side === "front" || side === "back" ? r.rect.h : r.rect.w;
   const other = side === "front" || side === "back" ? r.rect.w : r.rect.h;
@@ -75,7 +78,7 @@ function canTrim(r: PlacedRoom, side: Side, d: number) {
   const area = left * other;
   if (area < (KEEP_AREA[r.type] ?? 0) - 1e-6) return false;
   // istenen alanın büyük kısmı korunmalı (asgari ölçü kontrolü %80'in altını uyarır)
-  if (r.requestedArea > 0 && area < r.requestedArea * 0.82 && !(r.type === "antre" || r.type === "hol" || r.type === "koridor")) return false;
+  if (!loose && r.requestedArea > 0 && area < r.requestedArea * 0.82 && !(r.type === "antre" || r.type === "hol" || r.type === "koridor")) return false;
   return true;
 }
 
@@ -106,17 +109,18 @@ export function floorRects(f: FloorLayout, L: BuildingLayout): Rect[] {
 }
 
 /** Dikdörtgenler birleşimini çakışmasız hücrelere böler (aynı satırdaki bitişik hücreler birleşir). */
-export function unionCells(rects: Rect[], hole?: Rect | null): Rect[] {
+export function unionCells(rects: Rect[], hole?: Rect | null | Rect[]): Rect[] {
   if (!rects.length) return [];
-  const xs = uniq(rects.flatMap((r) => [r.x, r.x + r.w]).concat(hole ? [hole.x, hole.x + hole.w] : []));
-  const ys = uniq(rects.flatMap((r) => [r.y, r.y + r.h]).concat(hole ? [hole.y, hole.y + hole.h] : []));
+  const holes = Array.isArray(hole) ? hole : hole ? [hole] : [];
+  const xs = uniq(rects.flatMap((r) => [r.x, r.x + r.w]).concat(holes.flatMap((h) => [h.x, h.x + h.w])));
+  const ys = uniq(rects.flatMap((r) => [r.y, r.y + r.h]).concat(holes.flatMap((h) => [h.y, h.y + h.h])));
   const out: Rect[] = [];
   for (let j = 0; j < ys.length - 1; j++) {
     const cy = (ys[j] + ys[j + 1]) / 2;
     let run: Rect | null = null;
     for (let i = 0; i < xs.length - 1; i++) {
       const cx = (xs[i] + xs[i + 1]) / 2;
-      const on = rects.some((r) => inRect(r, cx, cy)) && !(hole && inRect(hole, cx, cy));
+      const on = rects.some((r) => inRect(r, cx, cy)) && !holes.some((h) => inRect(h, cx, cy));
       if (on) {
         if (run && near(run.x + run.w, xs[i], 1e-4)) run.w = xs[i + 1] - run.x;
         else { run = { x: xs[i], y: ys[j], w: xs[i + 1] - xs[i], h: ys[j + 1] - ys[j] }; out.push(run); }
@@ -137,7 +141,32 @@ export function slabCells(L: BuildingLayout, f: FloorLayout, withHole = true): R
   if (!L.massing) return withHole && L.stair && f !== L.floors[0] ? unionCells([{ x: 0, y: 0, w: L.W, h: L.D }], L.stair) : [{ x: 0, y: 0, w: L.W, h: L.D }];
   const i = L.floors.indexOf(f);
   const rects = floorRects(f, L).concat(i > 0 ? floorRects(L.floors[i - 1], L) : []);
-  return unionCells(rects, withHole && i > 0 ? L.stair : null);
+  const holes = voidRects(f);
+  if (withHole && i > 0 && L.stair) holes.push(L.stair);
+  return unionCells(rects, holes);
+}
+
+/** Katın döşemesiz hacimleri (galeri boşluğu). */
+export function voidRects(f: FloorLayout): Rect[] {
+  return f.rooms.filter((r) => r.void).map((r) => r.rect);
+}
+
+/** x = sabit hattında katın döşeme aralıkları (kesit): bu katın ve alt katın hacimleri, galeri boşluğu hariç. */
+export function slabSpansAtX(L: BuildingLayout, f: FloorLayout, x: number): [number, number][] {
+  const i = L.floors.indexOf(f);
+  const spans = spansAtX(floorRects(f, L).concat(i > 0 ? floorRects(L.floors[i - 1], L) : []), x);
+  const holes = spansAtX(voidRects(f), x);
+  const out: [number, number][] = [];
+  for (const [a, b] of spans) {
+    let s = a;
+    for (const [h0, h1] of holes) {
+      if (h1 <= s || h0 >= b) continue;
+      if (h0 - s > 0.05) out.push([s, h0]);
+      s = Math.max(s, h1);
+    }
+    if (b - s > 0.05) out.push([s, b]);
+  }
+  return out;
 }
 
 /** Katın kapalı oturum alanı (m²). */
@@ -301,16 +330,16 @@ export function applyMassing(L: BuildingLayout, program: Program, spec: MassingS
    * Kattaki, kenara değen ve oyulabilen odalardan kesintisiz en uzun diziyi oyar (girişi içeren dizi önceliklidir);
    * tek tek dişli bir cephe yerine temiz bir konsol hattı oluşur. Oyulan kenar uzunluğu payını döndürür.
    */
-  const carveSide = (f: FloorLayout, side: Side, d: number) => {
+  const carveSide = (f: FloorLayout, side: Side, d: number, filter: (r: PlacedRoom) => boolean = () => true, minLen = 3, loose = false) => {
     const horiz = side === "front" || side === "back";
     const edgeLen = horiz ? W : D;
-    const list = f.rooms.filter((r) => !r.name.startsWith("__") && touches(r.rect, side, W, D))
+    const list = f.rooms.filter((r) => !r.name.startsWith("__") && !r.void && touches(r.rect, side, W, D))
       .sort((a, b) => (horiz ? a.rect.x - b.rect.x : a.rect.y - b.rect.y));
     const a0 = (r: PlacedRoom) => (horiz ? r.rect.x : r.rect.y), a1 = (r: PlacedRoom) => (horiz ? r.rect.x + r.rect.w : r.rect.y + r.rect.h);
     const runs: PlacedRoom[][] = [];
     let cur: PlacedRoom[] = [];
     for (const r of list) {
-      const ok = canTrim(r, side, d);
+      const ok = filter(r) && canTrim(r, side, d, loose);
       if (ok && cur.length && near(a1(cur[cur.length - 1]), a0(r), 0.05)) cur.push(r);
       else if (ok) { if (cur.length) runs.push(cur); cur = [r]; }
       else { if (cur.length) runs.push(cur); cur = []; }
@@ -320,7 +349,7 @@ export function applyMassing(L: BuildingLayout, program: Program, spec: MassingS
     const hasEntrance = (run: PlacedRoom[]) => run.some((r) => f.openings.some((o) => o.kind === "entrance" && o.width < 2 && (o.orient === "h") === horiz
       && near(o.line, horiz ? (side === "front" ? r.rect.y : r.rect.y + r.rect.h) : side === "left" ? r.rect.x : r.rect.x + r.rect.w)
       && o.center > a0(r) && o.center < a1(r)));
-    const best = runs.filter((r) => len(r) >= Math.max(3, edgeLen * 0.3))
+    const best = runs.filter((r) => len(r) >= Math.min(Math.max(3, edgeLen * 0.3), minLen < 3 ? minLen : Infinity))
       .sort((p, q) => Number(hasEntrance(q)) - Number(hasEntrance(p)) || len(q) - len(p))[0];
     if (!best) return 0;
     for (const r of best) {
@@ -332,8 +361,24 @@ export function applyMassing(L: BuildingLayout, program: Program, spec: MassingS
   };
 
   // Yer tutucu oyuklar (köşe avlusu, üst kat terası): odadan çıkar, dış mekân şeridine çevir
+  const touched = new Set<FloorLayout>();
   for (const f of L.floors) {
     for (const r of f.rooms.filter((q) => q.name.startsWith("__"))) {
+      if (r.name === "__galeri__") {
+        // galeri boşluğu: mahal kalır (dış duvarlar sürer), döşemesi yoktur; hole bakan kenarı açık ve korkulukludur
+        const hall = f.rooms.find((q) => q.band === "hall" && q.type !== "merdiven");
+        const e = hall && edgeBetween(r.rect, hall.rect);
+        Object.assign(r, { name: "Galeri Boşluğu", zone: "sirkulasyon", requestedArea: 0, void: true });
+        if (e) {
+          f.openings = f.openings.filter((o) => !(o.orient === e.orient && near(o.line, e.line) && o.center > e.a && o.center < e.b));
+          (f.openEdges ??= []).push({ ...e, len: e.b - e.a });
+          (f.rails ??= []).push({ orient: e.orient, line: e.line, a: e.a, b: e.b });
+        }
+        for (const o of f.openings) if (o.exterior && o.kind === "window" && (o.orient === "h" ? o.center > r.rect.x && o.center < r.rect.x + r.rect.w && (near(o.line, r.rect.y) || near(o.line, r.rect.y + r.rect.h)) : o.center > r.rect.y && o.center < r.rect.y + r.rect.h && (near(o.line, r.rect.x) || near(o.line, r.rect.x + r.rect.w)))) o.sill = Math.min(o.sill, 0.3);
+        touched.add(f);
+        applied.push("galeri");
+        continue;
+      }
       push(f, { rect: { ...r.rect }, side: "back", host: r });
       f.rooms.splice(f.rooms.indexOf(r), 1);
       const R = r.rect;
@@ -368,14 +413,44 @@ export function applyMassing(L: BuildingLayout, program: Program, spec: MassingS
     if (carveSide(ground, side, d) > 0) applied.push(k);
     else notes.push(`${MASS_LABELS[k].name}: zemin kattaki odalar ${d.toFixed(1).replace(".", ",")} m geri çekilince asgari ölçünün ya da istenen alanın altına düşüyor; oturumu büyütün ya da konsolu kısaltın.`);
   }
+  if (want.has("kaydirilmis_kutu") && multi) {
+    const d = Math.min(cant + 0.5, 3);
+    const lo = applied.includes("yan_konsol") ? 1 : carveSide(ground, "right", d);
+    const hi = flat ? carveSide(top, "left", d, (r) => r.band !== "hall", 2.4) : 0;
+    if (lo > 0 || hi > 0) applied.push("kaydirilmis_kutu");
+    else notes.push("Kaydırılmış kutular: yan cephelerdeki odalar kaydırmaya yetecek genişlikte değil.");
+  } else if (want.has("kaydirilmis_kutu")) notes.push("Kaydırılmış kutular için en az iki kat gerekir.");
+  if (want.has("cekme_kat")) {
+    if (!flat || !multi) notes.push("Çekme kat düz çatılı ve en az iki katlı yapılarda uygulanır.");
+    else {
+      const d = clampNum(spec.terraceDepth, 1.5, 3.0, 2.0);
+      const hit: Side[] = [];
+      for (const side of ["front", "back"] as Side[]) {
+        if (side === "back" && applied.includes("ust_kat_teras")) continue;
+        if (carveSide(top, side, d, (r) => r.band !== "hall", 2.4, !!L.apartment) > 0) hit.push(side);
+      }
+      if (hit.length) {
+        applied.push("cekme_kat");
+        // geri çekilen cephedeki çıkma balkonlar terasa karışır
+        const st = strips.get(top) ?? [];
+        top.outdoor = top.outdoor.filter((o) => {
+          if (!o.rect || o.carved) return true;
+          const side: Side | null = o.rect.y < -0.01 ? "front" : o.rect.y > D - 0.01 ? "back" : null;
+          const cx = o.rect.x + o.rect.w / 2;
+          return !(side && st.some((q) => q.side === side && cx > q.rect.x - 0.01 && cx < q.rect.x + q.rect.w + 0.01));
+        });
+      } else notes.push("Çekme kat: en üst kattaki odalar geri çekilince asgari ölçünün altına düşüyor; teras derinliğini azaltın.");
+    }
+  }
+  if (spec.features.includes("galeri") && !applied.includes("galeri")) notes.push("Çift yükseklikli salon: iki katlı ve zemin katta boydan boya salonu olan planlarda uygulanır.");
   if (spec.features.includes("ust_kat_teras") && flat && multi && !applied.includes("ust_kat_teras")) notes.push("Kademeli teras: üst kat bandında teras için yer kalmadı.");
   if (spec.features.includes("kose_oyugu") && flat && !applied.includes("kose_oyugu")) notes.push("Köşe oyuğu: arka bantta avlu için yer kalmadı.");
-  if (!strips.size) return { applied, notes };
+  if (!strips.size && !touched.size) return { applied, notes };
 
   // katları yeniden kur: duvarlar, açıklıklar, dış mekânlar
   for (const f of L.floors) {
-    const st = strips.get(f);
-    if (!st) continue;
+    const st = strips.get(f) ?? [];
+    if (!st.length && !touched.has(f)) continue;
     const i = L.floors.indexOf(f);
     const upper = L.floors[i + 1];
     const lower = i > 0 ? L.floors[i - 1] : undefined;

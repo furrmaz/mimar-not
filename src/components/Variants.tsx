@@ -33,6 +33,10 @@ export function StylePicker({ program, apartment, onChange }: { program: Program
         {FACADE_DETAILS.map((d) => (
           <label key={d} className="check"><input type="checkbox" checked={details.includes(d)} onChange={() => toggle(d)} /> {DETAIL_LABELS[d]}</label>
         ))}
+        {!apartment && <label className="check" title="Arka bahçeye (sığmazsa yan bahçeye) havuz ve veranda; vaziyet planında, 3D'de ve DXF'te görünür"><input type="checkbox" checked={!!program.design?.pool} onChange={(e) => onChange({ ...program, design: { ...(program.design ?? {}), pool: e.target.checked } })} /> Havuz</label>}
+        <label className="small" title="Sokaktan arkaya doğru arsa eğimi: arka taraf yükseliyorsa artı, alçalıyorsa eksi. Kesitte, yan cephelerde, 3D'de ve DXF'te zemin buna göre çizilir">Arsa eğimi %
+          <input type="number" min={-30} max={30} step={1} value={program.design?.slope ?? program.site.slope ?? 0} onChange={(e) => onChange({ ...program, design: { ...(program.design ?? {}), slope: Math.max(-30, Math.min(30, Number(e.target.value) || 0)) } })} />
+        </label>
       </div>
       <div className="muted small">Paket çatıyı, malzemeleri, renkleri, pencere biçimini{apartment ? "" : ", kütle biçimini"} ve cephe ayrıntılarını birlikte ayarlar; odalar değişmez. Ayrıntılar 3D modelde görünür.</div>
     </section>

@@ -57,3 +57,11 @@ Kaynaklar: [imarx – Madde 41 özeti](https://www.imarx.com.tr/imar-yonetmeligi
 - `facade.details`: pergola, gunes_kirici, giris_cercevesi, kutu_cerceve, cati_feneri (3D modelde çizilir).
 - Güneş çalışması (`src/geometry/sun.ts`): 39° enlem, ay ve saate göre güneş yüksekliği/azimutu; bahçe cephesinin yönü arsa yön metninden okunur.
 - İmar kontrolüne md. 41 çıkma satırları ve DXF vaziyet paftasına "İmar özeti" tablosu eklendi.
+
+## 7. Galeri, kaydırılmış kutular, çekme kat, havuz, eğimli arsa (v0.14.0)
+
+- `galeri`: zemin kattaki boydan boya salonun üstünde üst kat döşemesi açılır ("Galeri Boşluğu"); dış duvarlar sürer, üst kat holü cam korkulukla salona bakar. Oturum boşluk kadar büyür.
+- `kaydirilmis_kutu`: zemin kat sağdan, en üst kat soldan geri çekilir; bir yanda konsol, öbür yanda alt katın çatısında teras oluşur.
+- `cekme_kat` (apartman): en üst kat sokak ve bahçe cephesinde 1,5–3 m geri çekilir, daireler daralan derinliğe yeniden yerleşir, çıkma balkon yerine teras kapısı açılır. En üst kat dubleks üst katıysa uygulanmaz.
+- Havuz: programda adı "Havuz" olan dış mekân ya da "Havuz" seçeneği; arka bahçeye (sığmazsa yan bahçeye) çekme mesafeleri içinde verandasıyla yerleşir; vaziyet planı, 3D ve DXF'te çizilir.
+- Eğimli arsa: `site.slope` / `design.slope` (%; sokaktan arkaya artı yükselir). Bina düz bir platforma oturur; kesitte doğal zemin kesikli çizgiyle, arkadaki kot farkı ve istinat hattıyla gösterilir; yan ve arka cephelerde, 3D'de ve DXF'te zemin eğimlidir. Kademeli (yarım kat kaydırmalı) plan henüz üretilmez.

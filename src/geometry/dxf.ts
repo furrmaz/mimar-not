@@ -4,9 +4,9 @@
 import type { BuildingLayout, Opening, Rect } from "./layout";
 import { legacyStairInfo, stairGeom } from "./stair";
 import { near } from "./layout";
-import { facadeFaces, floorRects, openingOnFacade, spansAtX } from "./massing";
+import { facadeFaces, floorRects, openingOnFacade, slabSpansAtX, spansAtX } from "./massing";
 import type { Program } from "../shared/schema";
-import { parkingStalls, zoningCheck } from "./zoning";
+import { parkingStalls, sitePool, zoningCheck } from "./zoning";
 import { furnishFloor, furnitureSymbol } from "./furniture";
 
 export type DxfUnit = "m" | "cm" | "mm";
@@ -199,6 +199,12 @@ function drawPlan(d: Dxf, L: BuildingLayout, fl: BuildingLayout["floors"][number
     d.solid("MN-DUVAR-DOLGU", x, y, ww, hh);
   }
   for (const o of fl.openings) drawOpeningPlan(d, L, o, P);
+  for (const r of fl.rooms.filter((q) => q.void)) {
+    const a = r.rect;
+    d.line("MN-DOSEME", ...P(a.x, a.y), ...P(a.x + a.w, a.y + a.h));
+    d.line("MN-DOSEME", ...P(a.x, a.y + a.h), ...P(a.x + a.w, a.y));
+  }
+  for (const rl of fl.rails ?? []) d.line("MN-BALKON", ...(rl.orient === "h" ? P(rl.a, rl.line) : P(rl.line, rl.a)), ...(rl.orient === "h" ? P(rl.b, rl.line) : P(rl.line, rl.b)));
   for (const f of furnishFloor(fl))
       for (const p of furnitureSymbol(f)) {
         if (p.t === "rect") { const [x, y] = P(p.x, p.y); d.rect("MN-MOBILYA", x, y, p.w, p.h); }
@@ -313,7 +319,13 @@ function drawSection(d: Dxf, L: BuildingLayout, ox: number, oy: number) {
   const Z = (z: number) => oy + z;
   const groundZ = -0.3;
   const clear = L.H - L.slab;
-  d.line("MN-ZEMIN", X(-4), Z(groundZ), X(L.D + 6), Z(groundZ));
+  const slope = L.siteSlope ?? 0;
+  d.line("MN-ZEMIN", X(-4), Z(groundZ), X(slope ? L.D : L.D + 6), Z(groundZ));
+  if (slope) {
+    d.line("MN-ZEMIN", X(L.D), Z(groundZ), X(L.D), Z(groundZ + slope * L.D));
+    d.line("MN-ZEMIN", X(L.D), Z(groundZ + slope * L.D), X(L.D + 6), Z(groundZ + slope * (L.D + 6)));
+    d.line("MN-ZEMIN", X(0), Z(groundZ), X(L.D), Z(groundZ + slope * L.D));
+  }
   const floors = [...L.floors].sort((a, b) => a.z - b.z);
   const spans = (fs: typeof floors): [number, number][] => (L.massing ? spansAtX(fs.flatMap((q) => floorRects(q, L)), L.cutX) : [[0, L.D]]);
   const e = L.extWall / 2;
@@ -321,7 +333,7 @@ function drawSection(d: Dxf, L: BuildingLayout, ox: number, oy: number) {
   for (const yy of spans([floors[0]]).flatMap(([a, b]) => [a, b])) d.rect("MN-DOSEME", X(yy - 0.45), Z(floors[0].z - L.slab - 0.6), 0.9, 0.6);
   for (const f of floors) {
     const fi = floors.indexOf(f);
-    for (const [a, b] of spans(fi > 0 ? [f, floors[fi - 1]] : [f])) {
+    for (const [a, b] of L.massing ? slabSpansAtX(L, f, L.cutX) : spans(fi > 0 ? [f, floors[fi - 1]] : [f])) {
       d.rect("MN-DOSEME", X(a - e), Z(f.z - L.slab), b - a + 2 * e, L.slab);
       d.solid("MN-DUVAR-DOLGU", X(a - e), Z(f.z - L.slab), b - a + 2 * e, L.slab);
     }
@@ -397,7 +409,10 @@ function drawElevation(d: Dxf, L: BuildingLayout, facade: Facade, ox: number, oy
   const toU = (x: number, y: number) => (facade === "front" ? x : facade === "back" ? L.W - x : facade === "left" ? L.D - y : y);
   const groundZ = -0.3;
   const top = L.totalHeight;
-  d.line("MN-ZEMIN", U(-2), Z(groundZ), U(len + 2), Z(groundZ));
+  const slope = L.siteSlope ?? 0;
+  const gAt = (u: number) => groundZ + slope * (facade === "front" ? 0 : facade === "back" ? L.D : Math.max(0, Math.min(L.D, facade === "left" ? L.D - u : u)));
+  if (slope && (facade === "left" || facade === "right")) { d.line("MN-ZEMIN", U(-2), Z(gAt(-2)), U(0), Z(gAt(0))); d.line("MN-ZEMIN", U(0), Z(gAt(0)), U(len), Z(gAt(len))); d.line("MN-ZEMIN", U(len), Z(gAt(len)), U(len + 2), Z(gAt(len + 2))); }
+  else d.line("MN-ZEMIN", U(-2), Z(gAt(0)), U(len + 2), Z(gAt(0)));
   const above = L.floors.filter((f) => f.z >= 0);
   if (!L.massing) {
     d.rect("MN-CEPHE", U(0), Z(groundZ), len, top - groundZ);
@@ -468,6 +483,12 @@ function drawSite(d: Dxf, L: BuildingLayout, p: Program, ox: number, oy: number)
     d.rect("MN-DUVAR", ox + b.x, oy + b.y, b.L.W, b.L.D);
     for (const f of b.L.floors) for (const o of f.outdoor) d.rect("MN-BALKON", ox + b.x + o.rect.x, oy + b.y + o.rect.y, o.rect.w, o.rect.h);
     if (z.blocks) d.text("MN-MAHAL", ox + b.x + b.L.W / 2, oy + b.y + b.L.D / 2 - 0.8, 0.5, b.name.toUpperCase());
+  }
+  const pool = sitePool(p, L, z);
+  if (pool) {
+    d.rect("MN-ARSA", ox + pool.x - 1.2, oy + pool.y - 1.2, pool.w + 2.4, pool.h + 2.4);
+    d.rect("MN-PENCERE", ox + pool.x, oy + pool.y, pool.w, pool.h);
+    d.text("MN-MAHAL", ox + pool.x + pool.w / 2, oy + pool.y + pool.h / 2, 0.3, `${pool.name.toUpperCase()} ${pool.w.toFixed(1)}x${pool.h.toFixed(1)}`);
   }
   const stalls = parkingStalls(p, L, z);
   for (const st of stalls) d.rect("MN-ARSA", ox + st.x, oy + st.y, st.w, st.h);
