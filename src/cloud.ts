@@ -169,3 +169,16 @@ export async function runJob<T>(kind: "generate" | "render", body: unknown, opts
 export const remaining = (m: Me | null, k: "generate" | "render") => (m ? Math.max(0, m.limits[k] - m.used[k]) : 0);
 export const fmtDate = (t: number) => new Date(t).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
 export const fmtTry = (n: number) => `${n.toLocaleString("tr-TR")} TL`;
+
+// ---------- müşteri paylaşım bağlantıları ----------
+export interface ShareRow { token: string; projectId: string; title: string; createdAt: number; updatedAt: number; views: number; comments: number; lastCommentAt: number | null }
+export interface ShareComment { id: number; name: string; text: string; at: number }
+export interface PublicShare { title: string; office: string; updatedAt: number; program: unknown; comments: ShareComment[] }
+export const createShare = (program: unknown, projectId: string, title: string) => req<{ token: string; updated: boolean }>("/api/share", { method: "POST", json: { program, projectId, title } });
+export const listShares = () => req<{ shares: ShareRow[] }>("/api/share").then((r) => r.shares);
+export const shareComments = (token: string) => req<{ comments: ShareComment[] }>(`/api/share/${token}/comments`).then((r) => r.comments);
+export const deleteShare = (token: string) => req(`/api/share/${token}`, { method: "DELETE" });
+export const getPublicShare = (token: string) => req<PublicShare>(`/api/public/share/${token}`);
+export const postShareComment = (token: string, name: string, text: string) => req<{ comments: ShareComment[] }>(`/api/public/share/${token}/comments`, { method: "POST", json: { name, text } }).then((r) => r.comments);
+/** Müşteriye gönderilecek adres (web uygulaması salt okunur görünümde açılır). */
+export const shareUrl = (token: string) => `${cloudBase().replace(/\/$/, "")}/app/?p=${token}`;

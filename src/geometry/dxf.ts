@@ -1,6 +1,7 @@
 // AutoCAD için DXF (AC1009 / R12 ASCII) dışa aktarma.
 // Tek dosyada: tüm kat planları, A-A kesiti, 4 cephe ve vaziyet planı; katmanlara ayrılmış.
 // Model uzayında çizimler yan yana dizilir; birim seçilebilir (m / cm / mm).
+import { structurePlan } from "./structure";
 import type { BuildingLayout, Opening, Rect } from "./layout";
 import { legacyStairInfo, stairGeom } from "./stair";
 import { near } from "./layout";
@@ -20,6 +21,8 @@ const LAYERS: [string, number][] = [
   ["MN-PENCERE", 4],
   ["MN-KAPI", 3],
   ["MN-MERDIVEN", 8],
+  ["MN-AKS", 1],
+  ["MN-KOLON", 5],
   ["MN-BALKON", 6],
   ["MN-MAHAL", 2],
   ["MN-MOBILYA", 9],
@@ -199,6 +202,16 @@ function drawPlan(d: Dxf, L: BuildingLayout, fl: BuildingLayout["floors"][number
     d.solid("MN-DUVAR-DOLGU", x, y, ww, hh);
   }
   for (const o of fl.openings) drawOpeningPlan(d, L, o, P);
+  // taşıyıcı sistem ön önerisi: akslar ve kolonlar (ayrı katmanlarda, istenirse kapatılır)
+  const st = structurePlan(L);
+  for (const x of st.xs) d.line("MN-AKS", ...P(x, -1.2), ...P(x, L.D + 1.2));
+  for (const y of st.ys) d.line("MN-AKS", ...P(-1.2, y), ...P(L.W + 1.2, y));
+  for (const c of st.columns) {
+    const horiz = c.x < 0.01 || c.x > L.W - 0.01 ? true : !(c.y < 0.01 || c.y > L.D - 0.01);
+    const w = (horiz ? c.d : c.w) / 100, h = (horiz ? c.w : c.d) / 100;
+    const cx = Math.min(L.W - w / 2, Math.max(w / 2, c.x)), cy = Math.min(L.D - h / 2, Math.max(h / 2, c.y));
+    d.rect("MN-KOLON", ...P(cx - w / 2, cy - h / 2), w, h);
+  }
   for (const r of fl.rooms.filter((q) => q.void)) {
     const a = r.rect;
     d.line("MN-DOSEME", ...P(a.x, a.y), ...P(a.x + a.w, a.y + a.h));

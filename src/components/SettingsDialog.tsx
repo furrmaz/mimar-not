@@ -1,3 +1,4 @@
+import { loadLessons, saveLessons, type Lessons } from "../lessons";
 import { useEffect, useState } from "react";
 import { desktop } from "../desktop";
 import { loadOffice, saveOffice, type OfficeInfo } from "../office";
@@ -74,6 +75,7 @@ export function SettingsDialog({ onClose, onOffice }: { onClose: () => void; onO
           <label className="field"><span>İletişim</span><input value={office.contact} onChange={(e) => setO("contact", e.target.value)} placeholder="telefon / e-posta" /></label>
         </div>
         <p className="muted small">Bu bilgiler tüm paftaların (SVG, PNG, PDF, DXF) antet kutusuna yazılır; değişiklik hemen kaydedilir.</p>
+        <LessonsCard />
         <Advanced on={cloudConfigured()}>
         {canKeys && (
           <>
@@ -111,5 +113,32 @@ export function SettingsDialog({ onClose, onOffice }: { onClose: () => void; onO
         </div>
       </div>
     </div>
+  );
+}
+
+/** Ofis tercihleri ve düzeltmelerden öğrenme. */
+function LessonsCard() {
+  const [l, setL] = useState<Lessons>(loadLessons);
+  const set = (next: Lessons) => { setL(next); saveLessons(next); };
+  return (
+    <>
+      <h3 className="settings-sub">Ofis tercihleri</h3>
+      <label className="field"><span>Claude her yeni projede dikkate alır</span>
+        <textarea rows={3} value={l.prefs} maxLength={2000} onChange={(e) => set({ ...l, prefs: e.target.value })} placeholder={"Ör: ebeveyn banyosu en az 6 m² olsun, mutfak her zaman bahçe tarafında, koridor yerine hol tercih ederiz, modern projede düz çatı."} />
+      </label>
+      <label className="check"><input type="checkbox" checked={l.enabled} onChange={(e) => set({ ...l, enabled: e.target.checked })} /> Yazdığım düzeltmelerden öğren (sonraki projelerde tercih olarak kullanılır)</label>
+      {l.items.length > 0 && (
+        <details>
+          <summary className="small">Öğrenilen düzeltmeler ({l.items.length})</summary>
+          <ul className="lessons">
+            {l.items.slice().reverse().map((i) => (
+              <li key={i.at + i.text}><span>{i.text}</span><button className="link" title="Bu düzeltmeyi unut" onClick={() => set({ ...l, items: l.items.filter((q) => q !== i) })}>Sil</button></li>
+            ))}
+          </ul>
+          <button className="link" onClick={() => set({ ...l, items: [] })}>Tümünü sil</button>
+        </details>
+      )}
+      <p className="muted small">Tercihler ve düzeltmeler yalnız bu cihazda saklanır; proje üretirken notlarla birlikte Claude'a gönderilir. Müşterinin isteği her zaman önce gelir.</p>
+    </>
   );
 }

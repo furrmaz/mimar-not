@@ -1,3 +1,4 @@
+import { officePrefsText } from "./lessons";
 import { callGenerate, ApiError, isNative } from "./platform";
 import type { Program } from "./shared/schema";
 import { desktop } from "./desktop";
@@ -84,7 +85,8 @@ export async function generateProgram(
   signal?: AbortSignal,
 ): Promise<Program> {
   try {
-    const data = await callGenerate({ notes, previous: previous ?? undefined, ...extra }, signal);
+    // düzeltmede tercihler gönderilmez: yalnız istenen değişiklik uygulanır
+    const data = await callGenerate({ notes, previous: previous ?? undefined, ...extra, ...(extra.revision ? {} : { officePrefs: officePrefsText() }) }, signal);
     lastGen.raw = data.raw ?? null;
     lastGen.warnings = Array.isArray(data.warnings) ? data.warnings : [];
     lastGen.at = Date.now();

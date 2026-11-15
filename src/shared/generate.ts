@@ -18,6 +18,8 @@ export interface GenerateRequest {
   revision?: string;
   brief?: Record<string, unknown>;
   images?: { mediaType: string; data: string }[];
+  /** Ofisin kalıcı tercihleri ve önceki düzeltmeleri (mimarın cihazında saklanır) */
+  officePrefs?: string;
 }
 export interface GenerateResult {
   program: Program;
@@ -46,14 +48,18 @@ export function buildUserContent(body: GenerateRequest): Anthropic.Beta.BetaCont
   const imgText = images.length
     ? `\n\nEkte ${images.length} görsel var (sırayla Görsel 1${images.length > 1 ? `…${images.length}` : ""}). Her birinin ne olduğunu belirle (cephe referansı, plan eskizi, el yazısı not, imar belgesi…) ve sistem talimatındaki kurallara göre programa yansıt; ne okuduğunu "imageReadings" alanına yaz. Cephe referansıysa "facade" renkleri ve biçimleri görseldekiyle aynı olsun.`
     : "";
+  const prefs = String(body.officePrefs ?? "").trim().slice(0, 5000);
+  const prefsText = prefs
+    ? `\n\nOfis tercihleri (bu mimarın alışkanlıkları; bu projeyle ilgili olanları varsayılan olarak uygula, ilgisiz ya da bu projenin notlarıyla çelişenleri yok say, müşteri isteği her zaman önce gelir; uyguladıklarını "assumptions" listesinde "Ofis tercihi:" diye belirt):\n<ofis_tercihleri>\n${prefs}\n</ofis_tercihleri>`
+    : "";
   const notesText = notes || "(Not yazılmadı; programı ekteki görsellerden ve formdan çıkar.)";
   let text: string;
   if (revision) {
     text = `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın düzeltme isteği:\n<duzeltme>\n${revision}\n</duzeltme>${imgText}\n\nYalnızca istenen değişikliği uygula. İstekle ilgisi olmayan her şeyi (oda adları, alanlar, katlar, imar değerleri, varsayımlar) aynen koru. Değişikliğin yan etkisi varsa (ör. oturum alanı büyümeli) onu da düzelt ve "assumptions" listesine kısa bir not ekle. "requirements" listesini güncelle: düzeltilen maddelerin durumunu yeniden değerlendir.`;
   } else if (previous) {
-    text = `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın yeni/ek notları — programı bunlara göre güncelle:\n<notlar>\n${notesText}\n</notlar>${briefText}${imgText}`;
+    text = `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın yeni/ek notları — programı bunlara göre güncelle:\n<notlar>\n${notesText}\n</notlar>${briefText}${imgText}${prefsText}`;
   } else {
-    text = `Müşteri görüşmesinde alınan mimar notları:\n<notlar>\n${notesText}\n</notlar>${briefText}${imgText}`;
+    text = `Müşteri görüşmesinde alınan mimar notları:\n<notlar>\n${notesText}\n</notlar>${briefText}${imgText}${prefsText}`;
   }
   return [
     ...images.flatMap((im, i) => [

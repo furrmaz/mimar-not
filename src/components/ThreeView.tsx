@@ -16,7 +16,7 @@ import { RenderDialog, type RenderCapture } from "./RenderDialog";
 import { aspectValue, nearestAspect, type CameraInfo } from "../shared/render";
 import { FACING_NAMES, MONTHS, facingFromText, sunAngles, sunVector, type Facing } from "../geometry/sun";
 
-export function ThreeView({ layout, program, refImages = [], onSettings }: { layout: BuildingLayout; program: Program; refImages?: string[]; onSettings?: () => void }) {
+export function ThreeView({ layout, program, refImages = [], onSettings, viewer = false }: { layout: BuildingLayout; program: Program; refImages?: string[]; onSettings?: () => void; /** Müşteri görünümü: render ve dışa aktarma düğmeleri gizlenir */ viewer?: boolean }) {
   const [rendering, setRendering] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const ctx = useRef<{
@@ -308,9 +308,11 @@ export function ThreeView({ layout, program, refImages = [], onSettings }: { lay
           </>
         )}
         <span className="spacer" />
+{!viewer && <>
         <button className="btn primary" onClick={() => { if (!opts.realistic) setOpts({ ...opts, realistic: true }); setTimeout(() => setRendering(true), 50); }} title="Bu açıdan Higgsfield ile fotoğraf gerçekliğinde görsel">✦ Gerçekçi render</button>
         <button className="btn ghost" onClick={exportPNG}>PNG</button>
         <button className="btn ghost" onClick={exportGLB}>GLB (3D model)</button>
+        </>}
       </div>
       <div ref={host} className="three-host" />
       <div className="hint">Sürükle: döndür · Tekerlek/iki parmak: yakınlaş · Sağ tık/iki parmak sürükle: kaydır</div>

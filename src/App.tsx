@@ -28,6 +28,10 @@ import { SITE_NOTES, SITE_PROGRAM } from "./sample-site";
 import { RequirementsCard } from "./components/RequirementsCard";
 import { STANDALONE, isNative, loadKeys } from "./platform";
 import { AccountChip, AccountDialog } from "./components/AccountDialog";
+import { ShareDialog } from "./components/ShareDialog";
+import { recordLesson } from "./lessons";
+import { takeoff } from "./geometry/takeoff";
+import { areaTable } from "./geometry/roomcheck";
 import { OfficeDialog } from "./components/OfficeDialog";
 import { cachedMe, cloudConfigured, onAccount, refreshMe, signedIn, type Me } from "./cloud";
 
@@ -66,6 +70,8 @@ export default function App() {
   const [apiInfo, setApiInfo] = useState<{ ok: boolean; hasKey: boolean; model?: string } | null>(null);
   const project = projects.find((p) => p.id === activeId) ?? projects[0];
   const [showSettings, setShowSettings] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [printMode, setPrintMode] = useState<"set" | "sunum">("set");
   const [showOffice, setShowOffice] = useState(false);
   const CLOUD = !DEMO && cloudConfigured();
   const [me, setMe] = useState<Me | null>(() => (signedIn() ? cachedMe() : null));
@@ -191,6 +197,7 @@ export default function App() {
       const raw = await generateProgram(project.notes, program, { revision: text }, startCall());
       const p = { ...raw, design: program.design };
       update({ program: p, history: [...(project.history ?? []), { program, label: `Düzeltme: ${text.slice(0, 80)}`, at: Date.now() }].slice(-10) });
+      recordLesson(text);
       setToast("Düzeltme uygulandı. Beğenmezseniz 'Geri al'.");
       syncGen();
       return true;
@@ -301,10 +308,13 @@ export default function App() {
       await saveOutput(name, "dxf", dxf);
     }
   };
-  const savePDF = async () => {
+  const savePDF = async (mode: "set" | "sunum" = "set") => {
     if (!view) return;
+    setPrintMode(mode);
+    // yazdırma içeriğinin (çizim seti / müşteri sunumu) ekrana işlenmesini bekle
+    await new Promise((r) => setTimeout(r, 120));
     if (desktop) {
-      const r = await desktop.savePDF(view.projectName, `${view.projectName} - cizim seti`);
+      const r = await desktop.savePDF(view.projectName, `${view.projectName} - ${mode === "sunum" ? "musteri sunumu" : "cizim seti"}`);
       if (r.saved) setToast(`PDF kaydedildi: ${r.path}`);
     } else window.print();
   };
@@ -354,6 +364,7 @@ export default function App() {
           projects={projects.map((p) => ({ id: p.id, title: p.title }))} onOpenProject={setActiveId} />
       )}
       {account && <AccountDialog reason={account.reason} onClose={() => setAccount(null)} />}
+      {showShare && program && <ShareDialog program={program} projectId={project.id} onClose={() => setShowShare(false)} />}
       {showSettings && <SettingsDialog onOffice={setOffice} onClose={() => { setShowSettings(false); refreshHealth(); }} />}
       {toast && <div className="toast" role="status">{toast}</div>}
 
@@ -452,7 +463,9 @@ export default function App() {
                   </button>
                   <button className="btn ghost small" onClick={() => saveOutput(view.projectName, "ifc", buildIFC(layout, view, office.architect))} title="IFC4 BIM modeli: katlar, duvarlar, kapı/pencere, döşeme ve mahaller (Revit, ArchiCAD, BricsCAD)">IFC (BIM)</button>
                   <button className="btn ghost small" onClick={() => saveOutput(`${program!.projectName}-program`, "json", JSON.stringify(program, null, 2))}>JSON</button>
-                  {!isNative() && <button className="btn small" onClick={savePDF}>Çizim seti (PDF)</button>}
+                  {!isNative() && <button className="btn small" onClick={() => void savePDF("set")}>Çizim seti (PDF)</button>}
+                  {!isNative() && <button className="btn small" onClick={() => void savePDF("sunum")} title="Müşteriye verilecek sunum: kapak, proje özeti, mekân listesi, renkli planlar, cepheler ve yaklaşık maliyet">Müşteri sunumu (PDF)</button>}
+                  {CLOUD && <button className="btn small" onClick={() => setShowShare(true)} title="Müşterinize salt okunur bağlantı gönderin: 3D modeli döndürür, planlara bakar, yorum bırakır">Müşteriyle paylaş</button>}
                 </div>
               </nav>
               <div className="tab-body">
@@ -519,7 +532,7 @@ export default function App() {
                 {tab === "zoning" && <ZoningPanel program={view} layout={layout} onChange={setView} />}
                 {tab === "areas" && <AreasPanel program={view} layout={layout} />}
               </div>
-              <PrintSet program={view} root={program!} layout={layout} office={office} />
+              {printMode === "sunum" ? <Presentation program={view} root={program!} layout={layout} office={office} /> : <PrintSet program={view} root={program!} layout={layout} office={office} />}
             </>
           )}
         </main>
@@ -574,6 +587,74 @@ function PrintSet({ program, root, layout, office }: { program: Program; root: P
       {sheets.map((s, i) => (
         <div className="print-sheet" key={i} dangerouslySetInnerHTML={{ __html: s }} />
       ))}
+    </div>
+  );
+}
+
+/** Müşteri sunumu: yalnızca yazdırırken görünür (kapak, özet, mekân listesi, planlar, cepheler, yaklaşık maliyet). */
+function Presentation({ program, root, layout, office }: { program: Program; root: Program; layout: ReturnType<typeof buildLayout>; office: OfficeInfo }) {
+  const { rows, total } = areaTable(layout);
+  const prices = useMemo(() => { try { return JSON.parse(localStorage.getItem("mimar-not.prices") ?? "null") as Record<string, number> | null; } catch { return null; } }, []);
+  const tk = takeoff(layout, prices ?? undefined);
+  const multi = isMultiBlock(root);
+  const tl = (v: number) => (Math.round(v / 10000) * 10000).toLocaleString("tr-TR") + " ₺";
+  const facades = Object.keys(FACADE_NAMES) as Facade[];
+  return (
+    <div className="print-set sunum">
+      <div className="sunum-cover">
+        <div className="sunum-cover-text">
+          <div className="sunum-office">{office.office || office.architect || "Mimarlık Ofisi"}</div>
+          <h1>{root.projectName}</h1>
+          <p className="sunum-sub">{[root.buildingType, root.clientName].filter(Boolean).join(" · ")}</p>
+          <p>{root.summary}</p>
+          <p className="small">Ön tasarım sunumu · {todayTR()}</p>
+        </div>
+        <div className="sunum-cover-img" dangerouslySetInnerHTML={{ __html: elevationSVG(layout, program, "front") }} />
+      </div>
+      <div className="sunum-page">
+        <h2>Proje özeti</h2>
+        <div className="sunum-stats">
+          <div><b>{layout.floors.length}</b><span>kat</span></div>
+          <div><b>{Math.round(total.net)} m²</b><span>net alan</span></div>
+          <div><b>{Math.round(total.gross)} m²</b><span>brüt alan</span></div>
+          <div><b>{Math.round(total.outdoor)} m²</b><span>balkon ve teras</span></div>
+          <div><b>{root.site.width} × {root.site.depth} m</b><span>arsa</span></div>
+        </div>
+        <p>{root.style}</p>
+        <div className="sunum-cols">
+          {layout.floors.map((f, i) => (
+            <div key={f.level}>
+              <h3>{f.name} · {Math.round(rows[i].net)} m²</h3>
+              <ul>
+                {f.rooms.filter((r) => r.type !== "merdiven" && !r.void).map((r) => <li key={r.id}><span>{r.unit ? `${r.unit} · ` : ""}{r.name}</span><span>{(r.rect.w * r.rect.h).toFixed(1)} m²</span></li>)}
+                {f.outdoor.map((o, k) => <li key={"o" + k}><span>{o.name}</span><span>{o.area.toFixed(1)} m²</span></li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+        {multi && <p className="small">Mekân listesi {root.blocks![root.blockIndex ?? 0]?.name} içindir; site {root.blocks!.length} bloktan oluşur.</p>}
+      </div>
+      {layout.floors.map((f) => <div className="print-sheet" key={f.level} dangerouslySetInnerHTML={{ __html: planSVG(layout, f, program) }} />)}
+      <div className="sunum-page">
+        <h2>Cepheler</h2>
+        <div className="sunum-grid">{facades.map((f) => <div key={f} dangerouslySetInnerHTML={{ __html: elevationSVG(layout, program, f) }} />)}</div>
+      </div>
+      <div className="print-sheet" dangerouslySetInnerHTML={{ __html: sectionSVG(layout, program) }} />
+      <div className="print-sheet" dangerouslySetInnerHTML={{ __html: sitePlanSVG(layout, program) }} />
+      <div className="sunum-page">
+        <h2>Yaklaşık yapım maliyeti{multi ? ` · ${root.blocks![root.blockIndex ?? 0]?.name}` : ""}</h2>
+        <table className="sunum-table">
+          <tbody>
+            {tk.groups.map((g) => <tr key={g.group}><td>{g.group}</td><td>{tl(g.total)}</td></tr>)}
+            <tr className="sum"><td>Toplam (yaklaşık)</td><td>{tl(tk.total * 0.9)} – {tl(tk.total * 1.15)}</td></tr>
+          </tbody>
+        </table>
+        <p className="small">Ön tasarım aşamasındaki metrajdan hesaplanmış yaklaşık değerdir; KDV, arsa, proje ve harç bedelleri, peyzaj ve mobilya dahil değildir. Kesin maliyet uygulama projesi ve güncel tekliflerle belirlenir.</p>
+        {root.openQuestions.length > 0 && (<><h2>Birlikte netleştireceğimiz konular</h2><ul className="sunum-list">{root.openQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul></>)}
+        <h2>Sonraki adımlar</h2>
+        <ol className="sunum-list"><li>Bu sunum üzerindeki görüş ve değişiklik isteklerinizin alınması</li><li>Ön tasarımın onaylanması ve avan projenin hazırlanması</li><li>Statik, mekanik ve elektrik projeleriyle birlikte ruhsat projesi</li><li>Uygulama projesi ve detaylar</li></ol>
+        <p className="sunum-contact">{[office.office, office.architect, office.regNo && `Sicil ${office.regNo}`, office.contact].filter(Boolean).join(" · ")}</p>
+      </div>
     </div>
   );
 }

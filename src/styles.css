@@ -159,6 +159,31 @@ td.warn { color: #a05a00; font-weight: 600; }
   .print-cover { page-break-after: always; font-size: 14px; line-height: 1.5; }
   .print-sheet { page-break-after: always; display: flex; justify-content: center; }
   .print-sheet svg { max-width: 100%; max-height: 260mm; width: auto; height: auto; }
+  .sunum { font-size: 15px; line-height: 1.55; color: #222; }
+  .sunum-cover { page-break-after: always; display: grid; grid-template-columns: 2fr 3fr; gap: 14mm; align-items: center; height: 262mm; }
+  .sunum-cover h1 { font-size: 44px; line-height: 1.1; margin: 6px 0 8px; }
+  .sunum-office { text-transform: uppercase; letter-spacing: 0.12em; font-size: 13px; color: #a4552b; font-weight: 600; }
+  .sunum-sub { font-size: 18px; color: #555; margin: 0 0 14px; }
+  .sunum-cover-img svg { width: 100%; height: auto; max-height: 240mm; }
+  .sunum-page { page-break-after: always; }
+  .sunum-page h2 { font-size: 24px; margin: 0 0 10px; border-bottom: 2px solid #a4552b; padding-bottom: 6px; }
+  .sunum-page h3 { font-size: 15px; margin: 0 0 4px; }
+  .sunum-stats { display: flex; gap: 14mm; margin: 6mm 0; }
+  .sunum-stats div { display: flex; flex-direction: column; }
+  .sunum-stats b { font-size: 26px; }
+  .sunum-stats span { font-size: 12px; color: #666; }
+  .sunum-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm; margin-top: 6mm; }
+  .sunum-cols > div { break-inside: avoid; }
+  .sunum-cols ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+  .sunum-cols li { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #ccc; padding: 2px 0; }
+  .sunum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+  .sunum-grid svg { width: 100%; height: auto; max-height: 118mm; }
+  .sunum-table { width: 60%; border-collapse: collapse; font-size: 16px; margin: 4mm 0; }
+  .sunum-table td { padding: 6px 4px; border-bottom: 1px solid #ddd; }
+  .sunum-table td:last-child { text-align: right; }
+  .sunum-table tr.sum td { font-weight: 700; font-size: 19px; border-bottom: none; border-top: 2px solid #222; }
+  .sunum-list { margin: 0 0 6mm; padding-left: 20px; }
+  .sunum-contact { margin-top: 10mm; font-weight: 600; }
 }
 
 /* Demo derlemesi: tarayıcı çerçevesinde çalışmayan indirme/yazdırma/mikrofon düğmeleri gizlenir */
@@ -394,3 +419,35 @@ details.advanced summary { cursor: pointer; font-size: 13px; color: var(--muted)
 .style-pack.active { border-color: #b5532b; box-shadow: 0 0 0 1px #b5532b; }
 .style-pack .swatches { display: flex; gap: 3px; }
 .style-pack .swatches i { width: 22px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.15); }
+
+/* Metraj ve taşıyıcı sistem */
+table.takeoff tr.group td { background: #f6f3ee; }
+table.takeoff td.num input { width: 96px; }
+.struct-svg { overflow-x: auto; margin-bottom: 10px; }
+.struct-svg svg { max-width: 100%; height: auto; }
+
+/* Müşteri paylaşımı */
+.share-link { display: flex; gap: 8px; }
+.share-link input { flex: 1; min-width: 0; font-size: 13px; }
+.share-comments { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow: auto; }
+.share-comments li { background: #f7f5f0; border-radius: 8px; padding: 8px 10px; font-size: 14px; line-height: 1.45; }
+.share-modal { width: min(600px, 94vw); max-height: 90vh; overflow: auto; }
+.share-page { max-width: 1180px; margin: 0 auto; padding: 18px 16px 40px; }
+.share-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.share-head h1 { margin: 0 0 2px; font-size: 26px; }
+.share-stats { display: flex; gap: 18px; }
+.share-stats div { display: flex; flex-direction: column; align-items: flex-end; }
+.share-stats b { font-size: 18px; }
+.share-stats span { font-size: 12px; color: var(--muted, #777); }
+.share-summary { margin: 4px 0 14px; line-height: 1.55; max-width: 80ch; }
+.share-sheet { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+.share-sheet svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.share-body { margin-bottom: 18px; }
+.share-comment-box { display: flex; flex-direction: column; gap: 8px; }
+.share-comment-box input { max-width: 280px; }
+.share-empty { min-height: 60vh; display: grid; place-content: center; text-align: center; }
+.share-foot { margin-top: 18px; }
+
+.lessons { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; font-size: 13px; }
+.lessons li { display: flex; justify-content: space-between; gap: 10px; background: #f7f5f0; border-radius: 6px; padding: 4px 8px; }
+table.takeoff td.num { white-space: nowrap; }

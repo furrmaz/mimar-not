@@ -65,3 +65,11 @@ Kaynaklar: [imarx – Madde 41 özeti](https://www.imarx.com.tr/imar-yonetmeligi
 - `cekme_kat` (apartman): en üst kat sokak ve bahçe cephesinde 1,5–3 m geri çekilir, daireler daralan derinliğe yeniden yerleşir, çıkma balkon yerine teras kapısı açılır. En üst kat dubleks üst katıysa uygulanmaz.
 - Havuz: programda adı "Havuz" olan dış mekân ya da "Havuz" seçeneği; arka bahçeye (sığmazsa yan bahçeye) çekme mesafeleri içinde verandasıyla yerleşir; vaziyet planı, 3D ve DXF'te çizilir.
 - Eğimli arsa: `site.slope` / `design.slope` (%; sokaktan arkaya artı yükselir). Bina düz bir platforma oturur; kesitte doğal zemin kesikli çizgiyle, arkadaki kot farkı ve istinat hattıyla gösterilir; yan ve arka cephelerde, 3D'de ve DXF'te zemin eğimlidir. Kademeli (yarım kat kaydırmalı) plan henüz üretilmez.
+
+## 8. Metraj, taşıyıcı ön önerisi, müşteri sunumu ve paylaşımı, ofis tercihleri (v0.17.0)
+
+- Metraj (`src/geometry/takeoff.ts`): kazı, temel, betonarme, duvar, çatı, cephe, sıva-boya, zemin, doğrama, kapı, ıslak hacim, tesisat miktarları çizilen plandan çıkar (± %10–15). Birim fiyatlar örnek değerdir; ofis kendi fiyatını yazar, cihazda saklanır.
+- Taşıyıcı ön önerisi (`src/geometry/structure.ts`): akslar duvar çizgilerine oturtulur (aralık 2,8–6,2 m), kolonlar zemin kat oturumundaki aks kesişimlerine konur. Ön boyut kuralları: kiriş yüksekliği ≈ açıklık / 11 (konsolda konsol boyu / 4,5), plak ≈ açıklık / 30, kolon alanı ≈ N / (0,4·fck) + %30 pay, en küçük kenar 30 cm; 4 kat ve üzerinde çekirdekte perde. Statik hesap değildir. DXF'te `MN-AKS`, `MN-KOLON` katmanları.
+- Müşteri sunumu: "Müşteri sunumu (PDF)" kapak, proje özeti, mekân listesi, planlar, cepheler, kesit, vaziyet ve yaklaşık maliyet aralığını basar.
+- Müşteriyle paylaş (`cloud/share.ts`, `ShareViewer`): salt okunur bağlantı (`/app/?p=…`); müşteri 3D modeli döndürür, planlara bakar, yorum bırakır. Görüşme notları ve görseller paylaşılmaz; mimar bağlantıyı kapatabilir.
+- Ofis tercihleri (`src/lessons.ts`): mimarın yazdığı düzeltme istekleri ve elle girdiği tercihler cihazda saklanır, yeni proje üretirken Claude'a "ofis tercihleri" olarak gider. Model eğitimi yapılmaz.
