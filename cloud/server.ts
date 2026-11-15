@@ -104,6 +104,7 @@ export function createCloudApp(o: CloudOptions) {
       id: u.id, email: u.email, name: u.name, office: u.office, phone: u.phone, ref: ref(u),
       status: e.status, plan: e.plan ? { id: e.plan.id, label: e.plan.label } : null,
       until: e.until, periodEnd: e.periodEnd, limits: e.limits, used: e.used,
+      ...(e.status === "frozen" ? { frozenAt: e.frozenAt, frozenLeft: e.frozenLeft } : {}),
     };
   };
 
@@ -196,6 +197,7 @@ export function createCloudApp(o: CloudOptions) {
     const running = [...jobs.values()].filter((j) => j.userId === u.id && j.status === "running");
     if (running.some((j) => j.kind === kind)) return { status: 409, error: kind === "generate" ? "Zaten devam eden bir üretiminiz var. Bitmesini bekleyin ya da durdurun." : "Zaten devam eden bir render var." };
     if (e.status === "disabled") return { status: 403, error: "Hesabınız kapatılmış. Bizimle iletişime geçin.", code: "disabled" };
+    if (e.status === "frozen") return { status: 403, code: "frozen", error: `Üyeliğiniz ${new Date(e.frozenAt!).toLocaleDateString("tr-TR")} tarihinde donduruldu. Kalan ${Math.ceil(e.frozenLeft! / DAY)} gününüz korunuyor; üyelik yeniden açıldığında kaldığı yerden devam eder. Açtırmak için bizimle iletişime geçin.` };
     if (e.status === "expired") return { status: 402, error: e.plan || u.plan_until ? "Aboneliğinizin süresi doldu. Devam etmek için aboneliğinizi yenileyin." : "Deneme süreniz bitti. Devam etmek için abone olun.", code: "expired" };
     if (e.used[kind] >= e.limits[kind]) {
       const what = kind === "generate" ? "üretim" : "render";
@@ -299,7 +301,7 @@ export function createCloudApp(o: CloudOptions) {
   const adminUser = (u: UserRow) => {
     const e = entitlement(db, u, plans());
     const cost = db.prepare("SELECT COALESCE(SUM(cost_usd),0) AS c FROM usage WHERE user_id=? AND at>=?").get(u.id, e.periodStart) as { c: number };
-    return { ...me(u), createdAt: u.created_at, lastSeen: u.last_seen, disabled: Boolean(u.disabled), note: u.note, planId: u.plan, planStart: u.plan_start, planUntil: u.plan_until, trialUntil: u.trial_until, periodCostUsd: cost.c };
+    return { ...me(u), createdAt: u.created_at, lastSeen: u.last_seen, disabled: Boolean(u.disabled), frozenNote: u.frozen_note, note: u.note, planId: u.plan, planStart: u.plan_start, planUntil: u.plan_until, trialUntil: u.trial_until, periodCostUsd: cost.c };
   };
 
   app.get("/api/admin/stats", admin, (_req, res) => {
@@ -310,8 +312,9 @@ export function createCloudApp(o: CloudOptions) {
     const n = (sql: string, ...a: (number | string)[]) => (db.prepare(sql).get(...a) as { n: number }).n;
     res.json({
       users: n("SELECT COUNT(*) AS n FROM users"),
-      active: n("SELECT COUNT(*) AS n FROM users WHERE plan_until>? AND disabled=0", now),
-      trials: n("SELECT COUNT(*) AS n FROM users WHERE plan_until IS NULL AND trial_until>? AND disabled=0", now),
+      active: n("SELECT COUNT(*) AS n FROM users WHERE plan_until>? AND disabled=0 AND frozen_at IS NULL", now),
+      trials: n("SELECT COUNT(*) AS n FROM users WHERE plan_until IS NULL AND trial_until>? AND disabled=0 AND frozen_at IS NULL", now),
+      frozen: n("SELECT COUNT(*) AS n FROM users WHERE frozen_at IS NOT NULL AND disabled=0"),
       signups30: n("SELECT COUNT(*) AS n FROM users WHERE created_at>?", now - 30 * DAY),
       monthRevenueTry: n("SELECT COALESCE(SUM(amount_try),0) AS n FROM payments WHERE at>=?", ms),
       monthCostUsd: n("SELECT COALESCE(SUM(cost_usd),0) AS n FROM usage WHERE at>=?", ms),
@@ -341,12 +344,26 @@ export function createCloudApp(o: CloudOptions) {
     });
   });
 
+  /** Dondurmayı kaldırır: dondurulduğu süre kadar abonelik (ya da deneme) bitişi ve dönem başı ileri kayar. */
+  const unfreeze = (u: UserRow) => {
+    if (!u.frozen_at) return;
+    const shift = Math.max(0, Date.now() - u.frozen_at);
+    if (u.plan_until) {
+      if (u.plan_until > u.frozen_at) db.prepare("UPDATE users SET plan_until=plan_until+?, plan_start=COALESCE(plan_start,?)+? WHERE id=?").run(shift, u.frozen_at, shift, u.id);
+    } else if (u.trial_until > u.frozen_at) {
+      db.prepare("UPDATE users SET trial_until=trial_until+? WHERE id=?").run(shift, u.id);
+    }
+    db.prepare("UPDATE users SET frozen_at=NULL, frozen_note='' WHERE id=?").run(u.id);
+  };
+
   /** Havale/EFT geldikten sonra aboneliği aç ya da uzat */
   app.post("/api/admin/users/:id/activate", admin, (req, res) => {
     const u = getUser(Number(req.params.id));
     const plan = plans().find((p) => p.id === req.body?.plan);
     const months = Math.round(Number(req.body?.months ?? 1));
     if (!u || !plan || !(months >= 1 && months <= 36)) { res.status(400).json({ error: "Kullanıcı, plan ya da ay sayısı geçersiz." }); return; }
+    // Ödeme gelince dondurulmuş üyelik de açılır (kalan süre korunarak)
+    if (u.frozen_at) { unfreeze(u); Object.assign(u, getUser(u.id)); }
     const now = Date.now();
     // Süresi bitmemiş abonelik uzatılır; plan değişirse dönem şimdi başlar
     const continuing = u.plan_until && u.plan_until > now;
@@ -369,7 +386,10 @@ export function createCloudApp(o: CloudOptions) {
     }
     if (b.note != null) db.prepare("UPDATE users SET note=? WHERE id=?").run(String(b.note).slice(0, 1000), u.id);
     if (b.trialDays != null) db.prepare("UPDATE users SET trial_until=? WHERE id=?").run(Date.now() + Number(b.trialDays) * DAY, u.id);
-    if (b.cancelPlan) db.prepare("UPDATE users SET plan_until=? WHERE id=?").run(Date.now(), u.id);
+    if (b.freeze === true && !u.frozen_at) {
+      db.prepare("UPDATE users SET frozen_at=?, frozen_note=? WHERE id=?").run(Date.now(), String(b.freezeNote ?? "").slice(0, 300), u.id);
+    } else if (b.freeze === false) unfreeze(u);
+    if (b.cancelPlan) db.prepare("UPDATE users SET plan_until=?, frozen_at=NULL, frozen_note='' WHERE id=?").run(Date.now(), u.id);
     res.json(adminUser(getUser(u.id)!));
   });
 

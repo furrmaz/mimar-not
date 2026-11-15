@@ -116,9 +116,9 @@
 <script>
 (async () => {
   const fallback = { plans: [
-    { id: "baslangic", label: "Başlangıç", priceTry: 990, features: ["Ayda 25 proje üretimi / düzeltme", "Ayda 10 gerçekçi render", "Tüm çizimler, DXF, IFC, PDF", "Windows, Android ve web"] },
-    { id: "profesyonel", label: "Profesyonel", priceTry: 1990, highlight: true, features: ["Ayda 80 proje üretimi / düzeltme", "Ayda 40 gerçekçi render", "Çok bloklu site projeleri", "Öncelikli destek"] },
-    { id: "ofis", label: "Ofis", priceTry: 4490, features: ["Ayda 250 proje üretimi / düzeltme", "Ayda 120 gerçekçi render", "Aynı hesapla birden çok cihaz", "Telefonla destek"] },
+    { id: "baslangic", label: "Başlangıç", priceTry: 1490, features: ["Ayda 25 proje üretimi / düzeltme", "Ayda 10 gerçekçi render", "Tüm çizimler, DXF, IFC, PDF", "Windows, Android ve web"] },
+    { id: "profesyonel", label: "Profesyonel", priceTry: 2490, highlight: true, features: ["Ayda 80 proje üretimi / düzeltme", "Ayda 40 gerçekçi render", "Çok bloklu site projeleri", "Öncelikli destek"] },
+    { id: "ofis", label: "Ofis", priceTry: 3990, features: ["Ayda 250 proje üretimi / düzeltme", "Ayda 120 gerçekçi render", "Aynı hesapla birden çok cihaz", "Telefonla destek"] },
   ], trial: { days: 7, generate: 3, render: 2 }, payment: {} };
   let cfg = fallback;
   try { const r = await fetch("api/public/config"); if (r.ok) cfg = await r.json(); } catch {}

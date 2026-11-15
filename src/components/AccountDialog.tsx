@@ -4,7 +4,7 @@ import {
   type Me, type PublicConfig,
 } from "../cloud";
 
-const STATUS: Record<Me["status"], string> = { trial: "Deneme", active: "Abone", expired: "Süresi doldu", disabled: "Kapalı" };
+const STATUS: Record<Me["status"], string> = { trial: "Deneme", active: "Abone", frozen: "Donduruldu", expired: "Süresi doldu", disabled: "Kapalı" };
 
 /** Planhane hesabı: giriş / kayıt, abonelik durumu, kalan haklar, havale/EFT ile abone olma. */
 export function AccountDialog({ onClose, reason }: { onClose: () => void; reason?: string | null }) {
@@ -90,7 +90,9 @@ export function AccountDialog({ onClose, reason }: { onClose: () => void; reason
                 </p>
               </>
             ) : (
-              <p>{me.status === "expired" ? "Aboneliğiniz ya da deneme süreniz bitti. Projeleriniz bu cihazda duruyor; çizimleri açıp dışa aktarabilirsiniz. Yeni üretim için abone olun." : "Hesabınız kapalı. Bizimle iletişime geçin."}</p>
+              <p>{me.status === "frozen"
+                ? `Üyeliğiniz ${me.frozenAt ? fmtDate(me.frozenAt) + " tarihinde " : ""}donduruldu. Kalan ${Math.ceil((me.frozenLeft ?? 0) / 86_400_000)} gününüz korunuyor; üyelik yeniden açıldığında kaldığı yerden devam eder. Bu sürede projelerinizi açıp dışa aktarabilirsiniz, yeni üretim ve render yapılamaz. Açtırmak için bizimle iletişime geçin.`
+                : me.status === "expired" ? "Aboneliğiniz ya da deneme süreniz bitti. Projeleriniz bu cihazda duruyor; çizimleri açıp dışa aktarabilirsiniz. Yeni üretim için abone olun." : "Hesabınız kapalı. Bizimle iletişime geçin."}</p>
             )}
             {!showPlans && <button className="link" onClick={() => setShowPlans(true)}>Planlar ve aboneliği uzatma →</button>}
             {showPlans && cfg && <Subscribe cfg={cfg} me={me} />}
@@ -198,10 +200,10 @@ function PasswordForm() {
 export function AccountChip({ me, onClick }: { me: Me | null; onClick: () => void }) {
   if (!me) return <button className="btn small primary" onClick={onClick}>Giriş yap / Ücretsiz dene</button>;
   const left = remaining(me, "generate");
-  const warn = me.status === "expired" || me.status === "disabled" || left === 0;
+  const warn = me.status === "expired" || me.status === "disabled" || me.status === "frozen" || left === 0;
   return (
     <button className={`badge as-button ${warn ? "warn" : "ok"}`} onClick={onClick} title="Hesap ve abonelik">
-      {me.status === "expired" ? "Abonelik bitti · Yenile" : me.status === "disabled" ? "Hesap kapalı" : `${me.status === "trial" ? "Deneme" : me.plan?.label ?? "Abone"} · ${left} üretim kaldı`}
+      {me.status === "expired" ? "Abonelik bitti · Yenile" : me.status === "disabled" ? "Hesap kapalı" : me.status === "frozen" ? "Üyelik donduruldu" : `${me.status === "trial" ? "Deneme" : me.plan?.label ?? "Abone"} · ${left} üretim kaldı`}
     </button>
   );
 }
