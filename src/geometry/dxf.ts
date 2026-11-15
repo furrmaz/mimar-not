@@ -4,6 +4,7 @@
 import type { BuildingLayout, Opening, Rect } from "./layout";
 import { legacyStairInfo, stairGeom } from "./stair";
 import { near } from "./layout";
+import { facadeFaces, floorRects, openingOnFacade, spansAtX } from "./massing";
 import type { Program } from "../shared/schema";
 import { parkingStalls, zoningCheck } from "./zoning";
 import { furnishFloor, furnitureSymbol } from "./furniture";
@@ -28,6 +29,7 @@ const LAYERS: [string, number][] = [
   ["MN-CATI", 30],
   ["MN-ZEMIN", 32],
   ["MN-CEPHE", 7],
+  ["MN-CEPHE-GERI", 8],
   ["MN-ARSA", 3],
   ["MN-CEKME", 1],
   ["MN-BASLIK", 7],
@@ -313,11 +315,23 @@ function drawSection(d: Dxf, L: BuildingLayout, ox: number, oy: number) {
   const clear = L.H - L.slab;
   d.line("MN-ZEMIN", X(-4), Z(groundZ), X(L.D + 6), Z(groundZ));
   const floors = [...L.floors].sort((a, b) => a.z - b.z);
+  const spans = (fs: typeof floors): [number, number][] => (L.massing ? spansAtX(fs.flatMap((q) => floorRects(q, L)), L.cutX) : [[0, L.D]]);
+  const e = L.extWall / 2;
   // temel
-  for (const yy of [0, L.D]) d.rect("MN-DOSEME", X(yy - 0.45), Z(floors[0].z - L.slab - 0.6), 0.9, 0.6);
+  for (const yy of spans([floors[0]]).flatMap(([a, b]) => [a, b])) d.rect("MN-DOSEME", X(yy - 0.45), Z(floors[0].z - L.slab - 0.6), 0.9, 0.6);
   for (const f of floors) {
-    d.rect("MN-DOSEME", X(-L.extWall / 2), Z(f.z - L.slab), L.D + L.extWall, L.slab);
-    d.solid("MN-DUVAR-DOLGU", X(-L.extWall / 2), Z(f.z - L.slab), L.D + L.extWall, L.slab);
+    const fi = floors.indexOf(f);
+    for (const [a, b] of spans(fi > 0 ? [f, floors[fi - 1]] : [f])) {
+      d.rect("MN-DOSEME", X(a - e), Z(f.z - L.slab), b - a + 2 * e, L.slab);
+      d.solid("MN-DUVAR-DOLGU", X(a - e), Z(f.z - L.slab), b - a + 2 * e, L.slab);
+    }
+    for (const o of f.outdoor) {
+      if (o.carved !== "teras" || L.cutX < o.rect.x || L.cutX > o.rect.x + o.rect.w) continue;
+      for (const sd of o.rails ?? []) if (sd === "front" || sd === "back") {
+        const yy = sd === "front" ? o.rect.y : o.rect.y + o.rect.h;
+        d.line("MN-BALKON", X(yy), Z(f.z), X(yy), Z(f.z + 1.1));
+      }
+    }
     for (const w of f.wallLines) {
       if (w.orient !== "h" || L.cutX < w.a || L.cutX > w.b) continue;
       const op = f.openings.find((o) => o.orient === "h" && near(o.line, w.line) && Math.abs(o.center - L.cutX) <= o.width / 2);
@@ -337,6 +351,7 @@ function drawSection(d: Dxf, L: BuildingLayout, ox: number, oy: number) {
       d.text("MN-MAHAL", X(r.rect.y + r.rect.h / 2), Z(f.z + 1.3), 0.2, r.name);
     }
     for (const o of f.outdoor) {
+      if (o.carved) continue;
       const front = o.rect.y < 0;
       const base = front ? 0 : L.D, ey = front ? o.rect.y : o.rect.y + o.rect.h;
       d.rect("MN-BALKON", X(Math.min(base, ey)), Z(f.z - 0.18), Math.abs(ey - base), 0.18);
@@ -346,10 +361,13 @@ function drawSection(d: Dxf, L: BuildingLayout, ox: number, oy: number) {
     d.dim(X(0), Z(f.z), X(0), Z(f.z + L.H), -1.2);
   }
   const top = L.totalHeight;
-  d.rect("MN-DOSEME", X(-L.extWall / 2), Z(top - L.slab), L.D + L.extWall, L.slab);
-  d.solid("MN-DUVAR-DOLGU", X(-L.extWall / 2), Z(top - L.slab), L.D + L.extWall, L.slab);
+  const topSpans = spans([floors[floors.length - 1]]);
+  for (const [a, b] of topSpans) {
+    d.rect("MN-DOSEME", X(a - e), Z(top - L.slab), b - a + 2 * e, L.slab);
+    d.solid("MN-DUVAR-DOLGU", X(a - e), Z(top - L.slab), b - a + 2 * e, L.slab);
+  }
   if (L.roof === "duz") {
-    for (const yy of [0, L.D]) d.rect("MN-DUVAR", X(yy - L.extWall / 2), Z(top), L.extWall, L.roofHeight);
+    for (const yy of topSpans.flatMap(([a, b]) => [a, b])) d.rect("MN-DUVAR", X(yy - L.extWall / 2), Z(top), L.extWall, L.roofHeight);
   } else {
     const oh = 0.6, rise = L.roofHeight, slope = rise / (L.D / 2);
     const p1: [number, number] = [X(-oh), Z(top - oh * slope)];
@@ -380,16 +398,20 @@ function drawElevation(d: Dxf, L: BuildingLayout, facade: Facade, ox: number, oy
   const groundZ = -0.3;
   const top = L.totalHeight;
   d.line("MN-ZEMIN", U(-2), Z(groundZ), U(len + 2), Z(groundZ));
-  d.rect("MN-CEPHE", U(0), Z(groundZ), len, top - groundZ);
   const above = L.floors.filter((f) => f.z >= 0);
-  for (const f of above) if (f.z > 0) d.line("MN-CEPHE", U(0), Z(f.z), U(len), Z(f.z));
-  const onFacade = (o: Opening) =>
-    facade === "front" ? o.orient === "h" && near(o.line, 0)
-      : facade === "back" ? o.orient === "h" && near(o.line, L.D)
-        : facade === "left" ? o.orient === "v" && near(o.line, 0)
-          : o.orient === "v" && near(o.line, L.W);
+  if (!L.massing) {
+    d.rect("MN-CEPHE", U(0), Z(groundZ), len, top - groundZ);
+    for (const f of above) if (f.z > 0) d.line("MN-CEPHE", U(0), Z(f.z), U(len), Z(f.z));
+  } else {
+    // girintili kütle: her katın bu cepheye bakan yüzleri; geri çekilen yüzler ayrı katmanda
+    above.forEach((f, i) => {
+      const zb = i === 0 ? groundZ : f.z;
+      for (const fc of facadeFaces(L, f, facade)) d.rect(fc.depth > 0.05 ? "MN-CEPHE-GERI" : "MN-CEPHE", U(fc.u0), Z(zb), fc.u1 - fc.u0, f.z + L.H - zb);
+    });
+  }
+  const onFacade = (f: (typeof above)[number]) => (o: Opening) => openingOnFacade(L, f, o, facade);
   for (const f of above) {
-    for (const o of f.openings.filter(onFacade)) {
+    for (const o of f.openings.filter(onFacade(f))) {
       const u = o.orient === "h" ? toU(o.center, o.line) : toU(o.line, o.center);
       const layer = o.kind === "entrance" ? "MN-KAPI" : "MN-PENCERE";
       d.rect(layer, U(u - o.width / 2), Z(f.z + o.sill), o.width, o.head - o.sill);
@@ -398,6 +420,13 @@ function drawElevation(d: Dxf, L: BuildingLayout, facade: Facade, ox: number, oy
     }
     for (const o of f.outdoor) {
       if (f.z <= 0) continue;
+      if (o.carved) {
+        if (o.carved !== "teras" || !o.rails?.includes(facade)) continue;
+        const r = o.rect, hz = facade === "front" || facade === "back";
+        const ua = hz ? toU(r.x, 0) : toU(0, r.y), ub = hz ? toU(r.x + r.w, 0) : toU(0, r.y + r.h);
+        d.rect("MN-BALKON", U(Math.min(ua, ub)), Z(f.z), Math.abs(ub - ua), 1.1);
+        continue;
+      }
       let u0: number, w: number;
       if ((facade === "back" && o.rect.y >= 0) || (facade === "front" && o.rect.y < 0)) { u0 = Math.min(toU(o.rect.x + o.rect.w, 0), toU(o.rect.x, 0)); w = o.rect.w; }
       else if (facade === "left") { u0 = L.D - (o.rect.y + o.rect.h); w = o.rect.h; }
@@ -409,7 +438,9 @@ function drawElevation(d: Dxf, L: BuildingLayout, facade: Facade, ox: number, oy
   }
   // çatı
   const rise = L.roofHeight, oh = 0.6;
-  if (L.roof === "duz") {
+  if (L.roof === "duz" && L.massing && above.length) {
+    for (const fc of facadeFaces(L, above[above.length - 1], facade)) d.rect("MN-CEPHE", U(fc.u0), Z(top), fc.u1 - fc.u0, rise);
+  } else if (L.roof === "duz") {
     d.rect("MN-CEPHE", U(0), Z(top), len, rise);
   } else if (facade === "front" || facade === "back") {
     const inset = L.roof === "kirma" ? Math.min(L.D, L.W) / 2 : -oh;

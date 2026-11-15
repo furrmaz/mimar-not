@@ -151,6 +151,7 @@ function fillDefaults(o: any) {
   o.openQuestions ??= [];
   o.requirements ??= [];
   o.imageReadings ??= [];
+  o.massing = { features: [], cantilever: 1.5, terraceDepth: 2.6, notchDepth: 2.6, rationale: "", ...(o.massing ?? {}) };
   o.facade = { wallColor: "", accentColor: "", frameColor: "", roofColor: "", windowStyle: "kare", accentPlacement: "zemin", balconyRail: "metal", shutters: false, cornice: false, ...(o.facade ?? {}) };
   if (Array.isArray(o.requirements)) o.requirements = o.requirements.map((r: any) => (typeof r === "string" ? { text: r, source: "not", status: "kismen", how: "" } : { source: "not", status: "kismen", how: "", ...r }));
   if (Array.isArray(o.floors)) o.floors = o.floors.map((f: any) => ({ ...f, rooms: (f?.rooms ?? []).map(room) }));

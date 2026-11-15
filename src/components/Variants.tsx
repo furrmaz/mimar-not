@@ -3,10 +3,11 @@ import type { Adjacency, Program } from "../shared/schema";
 import type { BuildingLayout } from "../geometry/layout";
 import { planSVG } from "../geometry/svg";
 import { allVariants, scoreLayout } from "../geometry/score";
+import { MASS_FEATURES, MASS_LABELS, effectiveMassing, type MassFeature } from "../geometry/massing";
 
 /** Üç plan alternatifi: küçük önizleme + puan; tıklanınca seçilir. */
 export function VariantPicker({ program, onChange }: { program: Program; onChange: (p: Program) => void }) {
-  const variants = useMemo(() => allVariants(program), [program.floors, program.adjacencies, program.footprint, program.floorHeight]);
+  const variants = useMemo(() => allVariants(program), [program.floors, program.adjacencies, program.footprint, program.floorHeight, program.massing, program.design?.massing, program.roof]);
   const current = program.design?.variant ?? 0;
   const edited = !!(program.design?.cols && Object.keys(program.design.cols).length) || program.design?.frontDepth != null;
   const best = Math.max(...variants.map((v) => v.score.score));
@@ -16,7 +17,7 @@ export function VariantPicker({ program, onChange }: { program: Program; onChang
         <button
           key={v.id}
           className={`variant ${current === v.id ? "active" : ""}`}
-          onClick={() => current !== v.id && onChange({ ...program, design: { variant: v.id } })}
+          onClick={() => current !== v.id && onChange({ ...program, design: { variant: v.id, massing: program.design?.massing } })}
           title={current === v.id ? "Seçili alternatif" : "Bu alternatife geç"}
         >
           <div className="variant-head">
@@ -90,6 +91,42 @@ export function AdjacencyEditor({ program, onChange }: { program: Program; onCha
         <button className="btn ghost small" onClick={() => set([...list, { a: names[0], b: names[1], relation: "bitisik", reason: "" }])}>+ İlişki ekle</button>
       )}
       <div className="muted small">Yerleşim aynı kattaki odaları bu isteklere göre sıralar. Hol üzerinden karşılıklı gelen odalar bitişik sayılmaz.</div>
+    </section>
+  );
+}
+
+/** Kütle biçimi: konsol, kademeli teras, köşe oyuğu. Claude'un önerisi varsayılan; mimar açıp kapatabilir. */
+export function MassingPicker({ program, layout, onChange }: { program: Program; layout: BuildingLayout; onChange: (p: Program) => void }) {
+  const spec = effectiveMassing(program);
+  const base = program.design?.massing ?? program.massing ?? { features: [], cantilever: 1.5, terraceDepth: 2.6, notchDepth: 2.6, rationale: "" };
+  const set = (patch: Partial<typeof base>) =>
+    onChange({ ...program, design: { ...(program.design ?? {}), cols: undefined, frontDepth: undefined, massing: { ...base, ...patch } } });
+  const toggle = (f: MassFeature) => set({ features: spec.features.includes(f) ? spec.features.filter((x) => x !== f) : [...spec.features, f] });
+  const applied = layout.massing?.features ?? [];
+  const needsFlat = (f: MassFeature) => (f === "ust_kat_teras" || f === "kose_oyugu") && program.roof !== "duz";
+  return (
+    <section className="card">
+      <h3>Kütle biçimi</h3>
+      <div className="massing-list">
+        {MASS_FEATURES.map((f) => (
+          <label key={f} className="massing-item" title={MASS_LABELS[f].hint}>
+            <input type="checkbox" checked={spec.features.includes(f)} onChange={() => toggle(f)} />{" "}
+            <b>{MASS_LABELS[f].name}</b>
+            {spec.features.includes(f) && (applied.includes(f) ? <span className="pill ok">uygulandı</span> : <span className="pill no">uygulanamadı</span>)}
+            {needsFlat(f) && <span className="muted small"> · düz çatı ister</span>}
+            <div className="muted small">{MASS_LABELS[f].hint}</div>
+          </label>
+        ))}
+      </div>
+      <div className="massing-nums">
+        <label>Konsol (m) <input type="number" step={0.1} min={1} max={3} value={base.cantilever} onChange={(e) => set({ cantilever: +e.target.value })} /></label>
+        <label>Teras genişliği (m) <input type="number" step={0.1} min={1.8} max={4.5} value={base.terraceDepth} onChange={(e) => set({ terraceDepth: +e.target.value })} /></label>
+        <label>Avlu genişliği (m) <input type="number" step={0.1} min={1.8} max={4.5} value={base.notchDepth} onChange={(e) => set({ notchDepth: +e.target.value })} /></label>
+        {program.roof !== "duz" && <button className="btn ghost small" onClick={() => onChange({ ...program, roof: "duz" })}>Çatıyı düz yap</button>}
+      </div>
+      {base.rationale && <div className="muted small">Öneri gerekçesi: {base.rationale}</div>}
+      {(layout.massing?.notes ?? []).map((n, i) => <div key={i} className="muted small">⚠ {n}</div>)}
+      <div className="muted small">Kapalı çıkma yönetmelikte en fazla 1,50 m, çıkma altı en az 2,40 m (PAİY md. 41). Konsollar statik projede kiriş/perde ile çözülmelidir.</div>
     </section>
   );
 }

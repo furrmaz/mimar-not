@@ -7,6 +7,18 @@ import { furnishFloor, type FurnitureKind } from "./furniture";
 import { DEFAULT_MATERIALS, normalizeFacade, type Facade, type Materials } from "../shared/schema";
 import { texturedMaterial, worldUV } from "./materials3d";
 import { legacyStairInfo, stairGeom } from "./stair";
+import { floorRects, slabCells, unionCells } from "./massing";
+import type { Rect } from "./layout";
+
+/** Hücreleri dış kenarlarında yarım duvar kalınlığı kadar genişletir (döşeme duvar dış yüzüne kadar). */
+function grow(cells: Rect[], e: number): Rect[] {
+  const inAny = (x: number, y: number) => cells.some((c) => x > c.x + 1e-6 && x < c.x + c.w - 1e-6 && y > c.y + 1e-6 && y < c.y + c.h - 1e-6);
+  return cells.map((c) => {
+    const l = inAny(c.x - 0.02, c.y + c.h / 2) ? 0 : e, r = inAny(c.x + c.w + 0.02, c.y + c.h / 2) ? 0 : e;
+    const f = inAny(c.x + c.w / 2, c.y - 0.02) ? 0 : e, b = inAny(c.x + c.w / 2, c.y + c.h + 0.02) ? 0 : e;
+    return { x: c.x - l, y: c.y - f, w: c.w + l + r, h: c.h + f + b };
+  });
+}
 
 export interface ModelOptions {
   showRoof: boolean;
@@ -96,7 +108,7 @@ function addFacadeAccents(root: THREE.Group, L: BuildingLayout, visible: FloorLa
   const t = L.extWall;
   const g = new THREE.Group();
   g.name = "Cephe vurguları";
-  if (fac.accentPlacement === "kose") {
+  if (fac.accentPlacement === "kose" && !L.massing) {
     const w = Math.min(1.2, L.W * 0.08);
     for (const [x, z] of [[0, 0], [L.W, 0], [0, L.D], [L.W, L.D]] as const) {
       g.add(box(w, h, 0.06, acc, x + (x === 0 ? w / 2 - t / 2 : -w / 2 + t / 2), z0 + h / 2, z + (z === 0 ? -t / 2 - 0.03 : t / 2 + 0.03)));
@@ -133,7 +145,7 @@ function addFacadeAccents(root: THREE.Group, L: BuildingLayout, visible: FloorLa
         }
       }
   }
-  if (fac.cornice) {
+  if (fac.cornice && !L.massing) {
     for (const f of visible.slice(1)) {
       g.add(box(L.W + t + 0.16, 0.16, 0.12, mats.slab, L.W / 2, f.z - 0.05, -t / 2 - 0.06));
       g.add(box(L.W + t + 0.16, 0.16, 0.12, mats.slab, L.W / 2, f.z - 0.05, L.D + t / 2 + 0.06));
@@ -203,7 +215,8 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
   else if (topVisible && !opts.cutaway) {
     // tavan döşemesi
     const top = topVisible.z + L.H;
-    root.add(box(L.W + L.extWall, L.slab, L.D + L.extWall, mats.slab, L.W / 2, top - L.slab / 2, L.D / 2, "Tavan"));
+    if (L.massing) for (const c of grow(unionCells(floorRects(topVisible, L)), L.extWall / 2)) root.add(box(c.w, L.slab, c.h, mats.slab, c.x + c.w / 2, top - L.slab / 2, c.y + c.h / 2, "Tavan"));
+    else root.add(box(L.W + L.extWall, L.slab, L.D + L.extWall, mats.slab, L.W / 2, top - L.slab / 2, L.D / 2, "Tavan"));
   }
   return root;
 }
@@ -213,7 +226,9 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
   const wallH = cut ? 1.2 : L.H - L.slab;
   // Döşeme
   const lowest = f.level === L.floors[0].level;
-  if (L.stair && !lowest) {
+  if (L.massing) {
+    for (const c of grow(slabCells(L, f, !lowest), L.extWall / 2)) grp.add(box(c.w, L.slab, c.h, mats.slab, c.x + c.w / 2, z0 - L.slab / 2, c.y + c.h / 2, "Döşeme"));
+  } else if (L.stair && !lowest) {
     // merdiven boşluğu bırakılmış döşeme (boşluğun çevresinde dört parça)
     const st = L.stair, e = L.extWall / 2, y = z0 - L.slab / 2;
     const x0 = -e, x1 = L.W + e, y0 = -e, y1 = L.D + e;
@@ -262,6 +277,26 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
   // Balkon
   for (const o of f.outdoor) {
     const r = o.rect;
+    if (o.carved === "teras") {
+      // alt katın çatısı teras: döşeme zaten var; açık kenarlara korkuluk
+      for (const sd of o.rails ?? []) {
+        const hz = sd === "front" || sd === "back";
+        const at = sd === "front" ? r.y : sd === "back" ? r.y + r.h : sd === "left" ? r.x : r.x + r.w;
+        const len = hz ? r.w : r.h, mid = hz ? r.x + r.w / 2 : r.y + r.h / 2;
+        const put = (l: number, h: number, d: number, m: THREE.Material, y: number) => (hz ? box(l, h, d, m, mid, y, at) : box(d, h, l, m, at, y, mid));
+        if (fac.balconyRail === "dolu") grp.add(put(len, 1.05, 0.15, mats.wall, z0 + 0.52));
+        else {
+          grp.add(put(len, 1.0, 0.03, mats.glass, z0 + 0.5));
+          grp.add(put(len, 0.05, 0.06, mats.rail, z0 + 1.05));
+        }
+      }
+      continue;
+    }
+    if (o.carved) {
+      // sundurma / avlu döşemesi (zemin kaplaması)
+      grp.add(box(r.w, 0.04, r.h, mats.slab, r.x + r.w / 2, z0 + 0.02 - L.slab, r.y + r.h / 2, o.name));
+      continue;
+    }
     if (f.z <= 0) {
       grp.add(box(r.w, 0.12, r.h, mats.slab, r.x + r.w / 2, z0 - 0.24, r.y + r.h / 2, o.name));
       continue;
@@ -340,6 +375,17 @@ function buildRoof(L: BuildingLayout): THREE.Group {
   const g = new THREE.Group();
   g.name = "Çatı";
   const top = L.totalHeight;
+  if (L.massing && L.roof === "duz") {
+    const tf = L.floors[L.floors.length - 1];
+    for (const c of grow(unionCells(floorRects(tf, L)), L.extWall / 2)) g.add(box(c.w, L.slab, c.h, mats.slab, c.x + c.w / 2, top - L.slab / 2, c.y + c.h / 2, "Çatı döşemesi"));
+    const ph = L.roofHeight;
+    for (const w of tf.wallLines) {
+      if (!w.exterior) continue;
+      const len = w.b - w.a, mid = (w.a + w.b) / 2;
+      g.add(w.orient === "h" ? box(len, ph, w.thickness, mats.wall, mid, top + ph / 2, w.line) : box(w.thickness, ph, len, mats.wall, w.line, top + ph / 2, mid));
+    }
+    return g;
+  }
   g.add(box(L.W + L.extWall, L.slab, L.D + L.extWall, mats.slab, L.W / 2, top - L.slab / 2, L.D / 2, "Çatı döşemesi"));
   if (L.roof === "duz") {
     const ph = L.roofHeight;

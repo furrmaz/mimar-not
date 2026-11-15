@@ -3,6 +3,7 @@
 import type { Program } from "../shared/schema";
 import { buildLayout, type BuildingLayout } from "./layout";
 import { blockTypeKey, blockView, isMultiBlock } from "./blocks";
+import { floorFootprintArea } from "./massing";
 
 export interface SiteBlock { name: string; index: number; L: BuildingLayout; x: number; y: number }
 
@@ -132,10 +133,11 @@ export function zoningCheck(p: Program, L: BuildingLayout): ZoningResult {
   if (isMultiBlock(p)) return zoningMulti(p, L);
   const z = p.zoning ?? { taks: null, kaks: null, maxFloors: null, hmax: null, frontSetback: null, sideSetback: null, rearSetback: null };
   const siteArea = p.site.width * p.site.depth;
-  const footprintArea = L.W * L.D;
   const above = L.floors.filter((f) => f.z >= 0);
-  const outdoorArea = above.reduce((s, f) => s + f.outdoor.reduce((a, o) => a + o.area, 0), 0);
-  const grossTotal = above.length * footprintArea + outdoorArea;
+  // taban alanı: zemin katın oturumu (girintili kütlede konsol altı ve avlu hariç)
+  const footprintArea = above.length ? floorFootprintArea(L, above[0]) : L.W * L.D;
+  const outdoorArea = above.reduce((s, f) => s + f.outdoor.filter((o) => o.carved !== "avlu" && o.carved !== "sundurma").reduce((a, o) => a + o.area, 0), 0);
+  const grossTotal = above.reduce((s, f) => s + floorFootprintArea(L, f), 0) + outdoorArea;
   const setbacks = {
     front: z.frontSetback ?? DEFAULT_SETBACKS.front,
     side: z.sideSetback ?? DEFAULT_SETBACKS.side,
