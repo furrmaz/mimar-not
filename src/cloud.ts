@@ -11,8 +11,13 @@ const ls = {
   set: (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* depolama kapalı */ } },
 };
 
+// Alan adı etkinleşmeden önceki geçici adres (v0.7.2-v0.11.0); artık planhane.com.tr
+const OLD_HOST = /^https?:\/\/104-233-4-32\.sslip\.io\/?$/i;
+const CURRENT = "https://planhane.com.tr";
+
 export function cloudBase(): string {
-  const v = (ls.get(URL_KEY) || import.meta.env.VITE_CLOUD_URL || "").trim();
+  let v = (ls.get(URL_KEY) || import.meta.env.VITE_CLOUD_URL || "").trim();
+  if (OLD_HOST.test(v)) v = CURRENT;
   if (!v) return "";
   if (v === "same-origin") return location.origin;
   return v.replace(/\/+$/, "");
