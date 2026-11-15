@@ -37,7 +37,7 @@ Modern ama sıcak, ahşap + taş. Beşik çatı.`;
       for (let k = 0; k < frames.length; k++) {
         if (!(await until(id))) return;
         show(k);
-        if (!(await wait(k === 0 ? 3200 : 2600, id))) return;
+        if (!(await wait(k === 0 ? 3200 : k === frames.length - 1 ? 4000 : 2600, id))) return;
       }
     }
     steps.forEach((s, k) => s.addEventListener("click", () => { run++; clearTimeout(timer); pre.textContent = NOTES; player.classList.add("ready"); show(k); }));
@@ -47,6 +47,26 @@ Modern ama sıcak, ahşap + taş. Beşik çatı.`;
     }, { threshold: 0.35 }).observe(player);
     document.getElementById("pReplay")?.addEventListener("click", () => play());
     if (reduce) { pre.textContent = NOTES; show(1); }
+  }
+
+  // --- Menü: kahraman alanından çıkınca opak olur.
+  const nav = document.getElementById("nav");
+  if (nav && document.body.classList.contains("home")) {
+    const onScroll = () => nav.classList.toggle("solid", scrollY > 40);
+    addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  }
+
+  // --- Model ↔ render karşılaştırma kaydırıcısı
+  const cmp = document.getElementById("compare");
+  const range = document.getElementById("compareRange");
+  if (cmp && range) range.addEventListener("input", () => cmp.style.setProperty("--pos", `${range.value}%`));
+
+  // --- Kaydırınca belirme
+  const els = document.querySelectorAll("main > section:not(.hero) > *, .grid article, .steps li, .plan");
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -8% 0px" });
+    els.forEach((el) => { el.classList.add("reveal"); io.observe(el); });
   }
 
   // --- İndirme: GitHub'daki son sürümün dosyalarına doğrudan bağlan. Olmazsa sürümler sayfası kalır.

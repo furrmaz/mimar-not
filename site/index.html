@@ -4,27 +4,30 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Planhane · Görüşme notundan çizim setine</title>
-<meta name="description" content="Müşteri görüşmesinde aldığınız notlardan dakikalar içinde kat planı, kesit, cephe, 3D model, DXF ve IFC. Türk imar yönetmeliğine göre TAKS/KAKS kontrolü. 7 gün ücretsiz deneyin." />
+<meta name="description" content="Müşteri görüşmesinde aldığınız notlardan dakikalar içinde kat planı, kesit, cephe, 3D model, gerçekçi render, DXF ve IFC. Türk imar yönetmeliğine göre TAKS/KAKS kontrolü. 7 gün ücretsiz deneyin." />
 <meta property="og:title" content="Planhane · Görüşme notundan çizim setine" />
-<meta property="og:description" content="Notları yazın ya da sesle söyleyin; plan, kesit, cephe, 3D ve AutoCAD DXF hazır." />
+<meta property="og:description" content="Notları yazın ya da sesle söyleyin; plan, kesit, cephe, 3D, render ve AutoCAD DXF hazır." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://planhane.com.tr/" />
-<meta property="og:image" content="https://planhane.com.tr/img/3d.jpg" />
+<meta property="og:image" content="https://planhane.com.tr/img/hero.jpg" />
 <meta property="og:locale" content="tr_TR" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="theme-color" content="#b5532e" />
+<meta name="theme-color" content="#1b1814" />
 <link rel="canonical" href="https://planhane.com.tr/" />
+<link rel="icon" href="img/icon.png" />
+<link rel="preload" href="fonts/fraunces-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="img/hero.jpg" as="image" />
+<link rel="stylesheet" href="site.css" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Planhane","applicationCategory":"DesignApplication","operatingSystem":"Windows, Android, Web","inLanguage":"tr","url":"https://planhane.com.tr/","description":"Mimarlar için görüşme notlarından kat planı, kesit, cephe, 3D model, render ve AutoCAD DXF üreten yapay zekâ destekli ön tasarım uygulaması.","offers":{"@type":"AggregateOffer","priceCurrency":"TRY","lowPrice":"1490","highPrice":"3990","offerCount":"3"}}
 </script>
-<link rel="icon" href="img/icon.png" />
-<link rel="stylesheet" href="site.css" />
 </head>
-<body>
-<header class="nav">
-  <a class="brand" href="./"><svg viewBox="0 0 24 24" width="24" height="24"><path d="M3 21V9l9-6 9 6v12h-6v-7H9v7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Planhane</a>
+<body class="home">
+<header class="nav" id="nav">
+  <a class="brand" href="./"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 21V9l9-6 9 6v12h-6v-7H9v7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Planhane</a>
   <nav>
     <a href="#demo">Demo</a>
+    <a href="#render">Render</a>
     <a href="#ozellikler">Özellikler</a>
     <a href="#fiyatlar">Fiyatlar</a>
     <a href="#indir">İndir</a>
@@ -35,37 +38,43 @@
 
 <main>
   <section class="hero">
-    <div>
+    <img class="hero-bg" src="img/hero.jpg" alt="" width="2048" height="1152" />
+    <div class="hero-in">
       <p class="eyebrow">Mimarlar için yapay zekâ destekli ön tasarım</p>
-      <h1>Görüşme notundan çizim setine, tek tuşla.</h1>
-      <p class="lead">Müşteriniz anlatırken not alın ya da sesle söyleyin. Planhane notlardan bina programını çıkarır; ölçülü kat planlarını, kesiti, dört cepheyi, 3D modeli ve imar kontrolünü dakikalar içinde hazırlar. AutoCAD'de açın, üstüne çizin.</p>
+      <h1>Görüşme notundan<br /><em>çizim setine</em>, tek tuşla.</h1>
+      <p class="lead">Müşteriniz anlatırken not alın ya da sesle söyleyin. Planhane bina programını çıkarır; ölçülü kat planlarını, kesiti, cepheleri, 3D modeli ve gerçekçi render'ı dakikalar içinde hazırlar. AutoCAD'de açın, üstüne çizin.</p>
       <div class="cta">
         <a class="btn primary big" href="app/"><span id="trialText">7 gün ücretsiz dene</span></a>
-        <a class="btn big" href="#indir">Windows / Android indir</a>
+        <a class="btn glass big" href="#demo">▶ Nasıl çalıştığını izle</a>
       </div>
-      <p class="muted small">Kart bilgisi istemiyoruz. API anahtarı, kurulum ya da teknik ayar gerekmez.</p>
+      <p class="small hero-note">Kart bilgisi istemiyoruz · API anahtarı ya da kurulum gerekmez</p>
     </div>
-    <figure class="shot"><img src="img/3d.jpg" alt="Planhane 3D model görünümü" width="1468" height="850" /></figure>
+    <figure class="hero-card" aria-hidden="true">
+      <img src="img/plan.jpg" alt="" width="1470" height="1079" />
+      <figcaption><b>Zemin kat planı</b><span>notlardan otomatik · 1/100</span></figcaption>
+    </figure>
+    <p class="hero-credit">Görsel: Planhane'nin ürettiği 3D modelden render</p>
   </section>
 
   <section class="strip">
-    <div><b>1 dk</b><span>notları programa çevirme</span></div>
+    <div><b>~1 dk</b><span>notları bina programına çevirme</span></div>
     <div><b>DXF + IFC</b><span>AutoCAD, Revit, ArchiCAD</span></div>
-    <div><b>TAKS / KAKS</b><span>çekme ve Hmax kontrolü</span></div>
+    <div><b>TAKS · KAKS</b><span>çekme ve Hmax kontrolü</span></div>
     <div><b>Türkçe</b><span>arayüz, dikte ve yönetmelik</span></div>
   </section>
 
   <section id="demo" class="demo">
+    <p class="kicker">Demo</p>
     <h2>Görüşmeden çizime, kırk saniyede</h2>
-    <p class="muted">Gerçek bir görüşme notu, Planhane'nin ondan çıkardığı program ve çizimler. Görüntüler uygulamanın kendisinden alınmıştır.</p>
+    <p class="sub">Gerçek bir görüşme notu, Planhane'nin ondan çıkardığı program ve çizimler. Görüntüler uygulamanın kendisinden alınmıştır.</p>
     <div class="player" id="player">
       <div class="p-notes">
-        <div class="p-head">Görüşme notları</div>
+        <div class="p-head"><span class="dot"></span>Görüşme notları</div>
         <pre id="pNotes" aria-live="off"></pre>
       </div>
       <div class="p-stage">
         <ol class="p-steps" id="pSteps">
-          <li>Program</li><li>Kat planı</li><li>Kesit</li><li>Cephe</li><li>3D</li>
+          <li>Program</li><li>Kat planı</li><li>Kesit</li><li>Cephe</li><li>3D</li><li>Render</li>
         </ol>
         <div class="p-frames" id="pFrames">
           <div class="p-frame p-program">
@@ -80,15 +89,33 @@
           <img class="p-frame" src="img/plan.jpg" alt="Planhane'nin ürettiği ölçülü zemin kat planı" loading="lazy" />
           <img class="p-frame" src="img/kesit.jpg" alt="Kotlu A-A kesiti" loading="lazy" />
           <img class="p-frame" src="img/cephe.jpg" alt="Ön cephe çizimi" loading="lazy" />
-          <img class="p-frame" src="img/3d.jpg" alt="3D model" loading="lazy" />
+          <img class="p-frame cover" src="img/model-3d.jpg" alt="3D model" loading="lazy" />
+          <img class="p-frame cover" src="img/render.jpg" alt="3D modelden gerçekçi render" loading="lazy" />
         </div>
       </div>
     </div>
-    <div class="cta center"><a class="btn primary" href="app/">Kendi notunuzla deneyin</a><button class="btn" id="pReplay" type="button">Baştan oynat</button></div>
+    <div class="cta center"><a class="btn primary" href="app/">Kendi notunuzla deneyin</a><button class="btn" id="pReplay" type="button">↺ Baştan oynat</button></div>
+  </section>
+
+  <section id="render" class="dark render">
+    <div class="render-copy">
+      <p class="kicker">Gerçekçi render</p>
+      <h2>Model ekranından müşterinin hayaline</h2>
+      <p>3D modeli istediğiniz açıya çevirin, tek tuşla fotoğraf gerçekliğinde görsel alın. Kütle, pencereler ve malzemeler sizin modelinizden gelir; Planhane yalnız ışığı, dokuyu ve çevreyi ekler.</p>
+      <p class="muted-l small">Kaydırıcıyı sürükleyin: solda uygulamadaki 3D model, sağda aynı açıdan alınan render.</p>
+    </div>
+    <div class="compare" id="compare" style="--pos: 50%">
+      <img src="img/render.jpg" alt="Gerçekçi render" loading="lazy" width="2048" height="1152" />
+      <div class="compare-top"><img src="img/model-3d.jpg" alt="Uygulamadaki 3D model" loading="lazy" width="2048" height="1152" /></div>
+      <span class="compare-tag l">3D model</span><span class="compare-tag r">Render</span>
+      <div class="compare-handle" aria-hidden="true"><span>⟷</span></div>
+      <input type="range" min="0" max="100" value="50" aria-label="Model ve render karşılaştırma" id="compareRange" />
+    </div>
   </section>
 
   <section id="nasil" class="how">
-    <h2>Nasıl çalışır?</h2>
+    <p class="kicker">Nasıl çalışır?</p>
+    <h2>Üç adım, bir kahve süresi</h2>
     <ol class="steps">
       <li><b>Notu alın</b><p>Görüşmede yazın, sesle dikte edin ya da el eskizinin, imar durumunun, beğenilen cephenin fotoğrafını ekleyin.</p></li>
       <li><b>Programı onaylayın</b><p>Mekânlar, alanlar, kat dağılımı, imar değerleri, varsayımlar ve müşteriye sorulacak sorular tek ekranda. Değiştirdiğiniz her değer çizimlere anında yansır.</p></li>
@@ -96,27 +123,27 @@
     </ol>
   </section>
 
-  <section class="who">
-    <h2>Kimler için?</h2>
-    <div class="grid three">
-      <article><h3>Bağımsız mimarlar</h3><p>Görüşmeden çıkar çıkmaz müşteriye plan ve render gönderin. İlk eskiz için ayırdığınız günü yeni işlere ayırın.</p></article>
-      <article><h3>Küçük ve orta ofisler</h3><p>Stajyerin ilk gününü çizimle değil, Planhane'nin hazırladığı set üzerinde tasarım tartışmasıyla geçirin. DXF ofis antetinizle gelir.</p></article>
-      <article><h3>Müteahhitler ve yapı firmaları</h3><p>Arsa başında imar değerlerini girin; kaç daire çıkar, TAKS/KAKS tutar mı, kaba maliyet ne olur, dakikalar içinde görün.</p></article>
-    </div>
+  <section class="band">
+    <img src="img/ic-mekan.jpg" alt="Şömineli salon ve ada tezgahlı açık mutfak" loading="lazy" width="2048" height="1152" />
+    <blockquote>
+      <p>“Şömineli geniş salon, ada tezgahlı açık mutfak, bahçeye açılan büyük camlar.”</p>
+      <cite>Notta yazan buydu. Gerisi Planhane'nin işi.</cite>
+    </blockquote>
   </section>
 
   <section id="ozellikler" class="features">
+    <p class="kicker">Özellikler</p>
     <h2>Ofisinizin ilk eskiz gününü kısaltır</h2>
     <div class="grid">
-      <article><h3>Ölçülü kat planları</h3><p>Duvarlar, kapı ve pencereler, merdiven, mobilya, ölçü zincirleri ve mahal alanları. Üç plan alternatifi arasından seçin, oda sınırlarını sürükleyerek düzeltin.</p></article>
-      <article><h3>Kesit ve cepheler</h3><p>Kotlu A-A kesiti, dört cephe ve vaziyet planı aynı modelden üretilir; biri değişince hepsi güncellenir.</p></article>
-      <article><h3>AutoCAD'e tek tık</h3><p>Katmanlı DXF (MN-DUVAR, MN-PENCERE, MN-OLCU…) ofisinizin antetiyle kaydedilir ve doğrudan AutoCAD'de açılır. BIM için IFC4.</p></article>
-      <article><h3>İmar kontrolü</h3><p>TAKS, KAKS, kat adedi, Hmax ve çekme mesafeleri Türk imar yönetmeliğine göre denetlenir; aşan değer kırmızıyla gösterilir.</p></article>
-      <article><h3>Apartman ve siteler</h3><p>Çok bloklu konut projelerinde blokları, daire tiplerini (2+1, 3+1, dubleks), çekirdeği ve daire listesini çıkarır.</p></article>
-      <article><h3>Gerçekçi render</h3><p>3D modelin istediğiniz açısından, referans fotoğraftaki malzeme ve renklerle fotoğraf gerçekliğinde görsel.</p></article>
-      <article><h3>Düzeltme iste</h3><p>"Salonu 40 m² yap, mutfak kapalı olsun" yazın; yalnız istenen yer değişir, beğenmezseniz geri alın.</p></article>
-      <article><h3>Alan ve maliyet</h3><p>Brüt/net alan tablosu, asgari ölçü uyarıları ve m² birim fiyatla yaklaşık maliyet.</p></article>
-      <article><h3>Her cihazda</h3><p>Windows masaüstü, Android telefon/tablet ve tarayıcı. Aynı hesapla her yerden.</p></article>
+      <article><i>▦</i><h3>Ölçülü kat planları</h3><p>Duvarlar, kapı ve pencereler, merdiven, mobilya, ölçü zincirleri ve mahal alanları. Üç plan alternatifi arasından seçin, oda sınırlarını sürükleyerek düzeltin.</p></article>
+      <article><i>◫</i><h3>Kesit ve cepheler</h3><p>Kotlu A-A kesiti, dört cephe ve vaziyet planı aynı modelden üretilir; biri değişince hepsi güncellenir.</p></article>
+      <article><i>⬡</i><h3>AutoCAD'e tek tık</h3><p>Katmanlı DXF (MN-DUVAR, MN-PENCERE, MN-OLCU…) ofisinizin antetiyle kaydedilir ve doğrudan AutoCAD'de açılır. BIM için IFC4.</p></article>
+      <article><i>✓</i><h3>İmar kontrolü</h3><p>TAKS, KAKS, kat adedi, Hmax ve çekme mesafeleri Türk imar yönetmeliğine göre denetlenir; aşan değer kırmızıyla gösterilir.</p></article>
+      <article><i>▤</i><h3>Apartman ve siteler</h3><p>Çok bloklu konut projelerinde blokları, daire tiplerini (2+1, 3+1, dubleks), çekirdeği ve daire listesini çıkarır.</p></article>
+      <article><i>◐</i><h3>Gerçekçi render</h3><p>3D modelin istediğiniz açısından, referans fotoğraftaki malzeme ve renklerle fotoğraf gerçekliğinde görsel.</p></article>
+      <article><i>✎</i><h3>Düzeltme iste</h3><p>"Salonu 40 m² yap, mutfak kapalı olsun" yazın; yalnız istenen yer değişir, beğenmezseniz geri alın.</p></article>
+      <article><i>₺</i><h3>Alan ve maliyet</h3><p>Brüt/net alan tablosu, asgari ölçü uyarıları ve m² birim fiyatla yaklaşık maliyet.</p></article>
+      <article><i>▣</i><h3>Her cihazda</h3><p>Windows masaüstü, Android telefon/tablet ve tarayıcı. Aynı hesapla her yerden.</p></article>
     </div>
     <div class="gallery">
       <figure><img src="img/plan.jpg" alt="Ölçülü kat planı" loading="lazy" /><figcaption>Kat planı</figcaption></figure>
@@ -126,44 +153,65 @@
     </div>
   </section>
 
+  <section class="who">
+    <div class="who-img"><img src="img/masa.jpg" alt="Müşteri görüşmesinde not alan mimar" loading="lazy" width="1600" height="1200" /></div>
+    <div class="who-copy">
+      <p class="kicker">Kimler için?</p>
+      <h2>Masada müşteri, elinizde not</h2>
+      <dl>
+        <dt>Bağımsız mimarlar</dt><dd>Görüşmeden çıkar çıkmaz müşteriye plan ve render gönderin. İlk eskiz için ayırdığınız günü yeni işlere ayırın.</dd>
+        <dt>Küçük ve orta ofisler</dt><dd>Ekibin ilk gününü çizimle değil, Planhane'nin hazırladığı set üzerinde tasarım tartışmasıyla geçirin. DXF ofis antetinizle gelir.</dd>
+        <dt>Müteahhitler ve yapı firmaları</dt><dd>Arsa başında imar değerlerini girin; kaç daire çıkar, TAKS/KAKS tutar mı, kaba maliyet ne olur, dakikalar içinde görün.</dd>
+      </dl>
+    </div>
+  </section>
+
   <section id="fiyatlar" class="pricing">
-    <h2>Fiyatlar</h2>
-    <p class="muted" id="trialLine">Her hesap 7 gün ücretsiz deneme ile başlar.</p>
+    <p class="kicker">Fiyatlar</p>
+    <h2>Ofisinizin boyutuna göre</h2>
+    <p class="sub" id="trialLine">Her hesap 7 gün ücretsiz deneme ile başlar.</p>
     <div class="plans" id="plans"></div>
-    <p class="muted small">Fiyatlara KDV dahildir. Ödeme havale/EFT ile alınır; dekontu gönderdiğiniz gün aboneliğiniz açılır. 3, 6 ve 12 aylık ödemeler de yapılabilir. Hata veren ya da durdurduğunuz üretimler haktan düşmez.</p>
+    <p class="muted small center-t">Fiyatlara KDV dahildir. Ödeme havale/EFT ile alınır; dekontu gönderdiğiniz gün aboneliğiniz açılır. 3, 6 ve 12 aylık ödemeler de yapılabilir. Hata veren ya da durdurduğunuz üretimler haktan düşmez.</p>
   </section>
 
   <section id="indir" class="download">
-    <h2>İndir</h2>
+    <p class="kicker">İndir</p>
+    <h2>Masaüstünde, sahada, tarayıcıda</h2>
     <div class="grid three">
-      <article><h3>Windows</h3><p>Kurulum dosyası; otomatik güncellenir. "AutoCAD'de aç" yalnız masaüstünde.</p><a class="btn primary" id="dlWin" href="https://github.com/furrmaz/mimar-not/releases/latest">Windows için indir</a><span class="muted small" id="dlWinInfo"></span></article>
-      <article><h3>Android</h3><p>Telefon ve tablet. Görüşmede sesle not alın, fotoğraf ekleyin.</p><a class="btn" id="dlApk" href="https://github.com/furrmaz/mimar-not/releases/latest">APK indir</a><span class="muted small" id="dlApkInfo"></span></article>
-      <article><h3>Tarayıcı</h3><p>Kurulum gerektirmez; Mac ve iPad dahil her cihazda çalışır.</p><a class="btn" href="app/">Web'de aç</a></article>
+      <article><i>⊞</i><h3>Windows</h3><p>Kurulum dosyası; otomatik güncellenir. "AutoCAD'de aç" yalnız masaüstünde.</p><a class="btn primary" id="dlWin" href="https://github.com/furrmaz/mimar-not/releases/latest">Windows için indir</a><span class="muted small" id="dlWinInfo"></span></article>
+      <article><i>▯</i><h3>Android</h3><p>Telefon ve tablet. Görüşmede sesle not alın, fotoğraf ekleyin.</p><a class="btn" id="dlApk" href="https://github.com/furrmaz/mimar-not/releases/latest">APK indir</a><span class="muted small" id="dlApkInfo"></span></article>
+      <article><i>◎</i><h3>Tarayıcı</h3><p>Kurulum gerektirmez; Mac ve iPad dahil her cihazda çalışır.</p><a class="btn" href="app/">Web'de aç</a></article>
     </div>
-    <p class="muted small">Sürümler sayfasında <b>Planhane-Kurulum-….exe</b> (Windows) ve <b>Planhane-Android-….apk</b> dosyalarını seçin. Windows ilk açılışta "bilinmeyen yayıncı" uyarısı verirse "Ek bilgi" → "Yine de çalıştır".</p>
+    <p class="muted small center-t">Windows ilk açılışta "bilinmeyen yayıncı" uyarısı verirse "Ek bilgi" → "Yine de çalıştır".</p>
   </section>
 
   <section id="sss" class="faq">
+    <p class="kicker">SSS</p>
     <h2>Sık sorulanlar</h2>
     <details><summary>Çıkan çizimler ruhsat projesi yerine geçer mi?</summary><p>Hayır. Planhane ön tasarım ve eskiz aracıdır: müşteriyle ilk toplantıdan sonra masaya oturacağınız sağlam bir başlangıç verir. Ölçüler program alanlarından otomatik türetilir; uygulama ve ruhsat projesi mimarın kontrolü ve sorumluluğundadır.</p></details>
     <details><summary>Notlarım ve müşteri bilgileri nerede saklanıyor?</summary><p>Projeleriniz kendi cihazınızda saklanır. Notlar yalnızca program çıkarmak için yapay zekâ sağlayıcısına (Anthropic, Claude) gönderilir; render için seçtiğiniz görüntü Higgsfield'a gider. Ayrıntılar <a href="kvkk">KVKK aydınlatma metninde</a>. Notlara müşterinin T.C. kimlik numarası gibi gereksiz kişisel veri yazmamanızı öneririz.</p></details>
     <details><summary>"Üretim hakkı" neyi kapsar?</summary><p>Notlardan yeni proje üretmek, "Notlarla güncelle" ve "Düzeltme iste" her biri bir üretimdir. Plan alternatifleri arasında geçiş, elle düzenleme, sınır sürükleme, dışa aktarma ve 3D sınırsızdır.</p></details>
     <details><summary>Hakkım biterse ne olur?</summary><p>Projeleriniz kaybolmaz; açıp düzenleyebilir, dışa aktarabilirsiniz. Yeni üretim için dönemin yenilenmesini bekleyebilir ya da üst plana geçebilirsiniz.</p></details>
-    <details><summary>Birden çok bilgisayarda kullanabilir miyim?</summary><p>Evet, aynı hesapla giriş yapın. Haklar hesap başınadır. Ofisteki her mimar için ayrı hesap açmanızı öneririz.</p></details>
     <details><summary>Deneme bitince ücret alınır mı?</summary><p>Hayır. Kart bilgisi istemediğimiz için otomatik çekim yoktur. Deneme bittiğinde beğendiyseniz planınızı seçip havale/EFT ile ödersiniz; beğenmediyseniz hiçbir şey yapmanız gerekmez.</p></details>
+    <details><summary>Birden çok bilgisayarda kullanabilir miyim?</summary><p>Evet, aynı hesapla giriş yapın. Haklar hesap başınadır. Ofisteki her mimar için ayrı hesap açmanızı öneririz.</p></details>
     <details><summary>Fatura kesiyor musunuz?</summary><p>Evet. Dekontla birlikte firma unvanınızı ve vergi numaranızı iletin.</p></details>
     <details><summary>iPhone / Mac sürümü var mı?</summary><p>Tarayıcı sürümü Mac, iPhone ve iPad'de çalışır. Ayrı uygulama şimdilik yok.</p></details>
   </section>
 
   <section class="final">
-    <h2>Bir sonraki müşteri görüşmenizde deneyin.</h2>
-    <a class="btn primary big" href="app/">Ücretsiz hesap aç</a>
+    <img src="img/aksam.jpg" alt="" loading="lazy" width="2048" height="1152" />
+    <div class="final-in">
+      <h2>Bir sonraki müşteri görüşmenizde deneyin.</h2>
+      <p>7 gün ücretsiz. Kart bilgisi yok, kurulum yok.</p>
+      <a class="btn primary big" href="app/">Ücretsiz hesap aç</a>
+    </div>
   </section>
 </main>
 
 <footer>
   <div><b>Planhane</b> <span class="muted" id="company"></span></div>
   <div class="links"><a href="kosullar">Kullanım koşulları</a><a href="kvkk">KVKK aydınlatma metni</a><a id="mail" href="#">İletişim</a></div>
+  <p class="muted small credit">Sayfadaki çizimler ve 3D model Planhane ile üretilmiştir; fotoğraf gerçekliğindeki görseller yapay zekâ ile oluşturulmuştur.</p>
 </footer>
 
 <script>

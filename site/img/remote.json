@@ -1,0 +1,10 @@
+{
+  "_": "Fotoğraf gerçekliğindeki tanıtım görselleri (yapay zekâ ile, Planhane'nin 3D modelinden üretildi). Docker derlemesinde scripts/fetch-site-images.mjs indirir; indirilemezse 'fallback' kopyalanır.",
+  "files": [
+    { "name": "hero.jpg", "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3JJFj1xW6HSQfFFykCSHNCjzbSM/1adf6a7a-c07a-4704-8698-db9d0e41596e.jpg", "sha256": "b9b4c26588f36ff874459fff9cf1e9d24e9daaf759c6b511e68946bb33e3d5db", "fallback": "3d.jpg" },
+    { "name": "render.jpg", "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3JJFj1xW6HSQfFFykCSHNCjzbSM/392cb0a2-a852-4ae6-838a-792f20876278.jpg", "sha256": "f47476c8e973a58a9886326dfb6797975fdb5ff0666d49014abe89e953c94bd5", "fallback": "3d.jpg" },
+    { "name": "aksam.jpg", "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3JJFj1xW6HSQfFFykCSHNCjzbSM/502c6903-403b-417d-9a94-9cd4b333d503.jpg", "sha256": "a0ecb6b9a38f9df1cd074d55dfbf3c871591d6cdbc745df86f689bff04dab0dc", "fallback": "3d.jpg" },
+    { "name": "ic-mekan.jpg", "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3JJFj1xW6HSQfFFykCSHNCjzbSM/e3254db9-dba0-4095-b8de-0f611d8ed9d7.jpg", "sha256": "b2fdf041d9e02c7d17ec10458a8985e737bc584272615854353fa6cef91e69b3", "fallback": "3d.jpg" },
+    { "name": "masa.jpg", "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3JJFj1xW6HSQfFFykCSHNCjzbSM/5ebc0897-683b-44d5-a4c4-4570397e2f2a.jpg", "sha256": "9b8ab53f416ebc792daf022c7d74047df7d2d6ad9cacc0b0059410173af01f2e", "fallback": "plan.jpg" }
+  ]
+}

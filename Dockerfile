@@ -4,7 +4,7 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
-RUN npm run build:web-cloud && npm run build:cloud
+RUN npm run build:web-cloud && npm run build:cloud && node scripts/fetch-site-images.mjs
 
 FROM node:24-slim
 WORKDIR /app
