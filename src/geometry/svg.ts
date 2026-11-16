@@ -1,6 +1,6 @@
 // Plan, kesit, cephe ve vaziyet planı için SVG üreticileri (saf fonksiyonlar → SVG metni).
 import type { BuildingLayout, FloorLayout, Opening, Rect } from "./layout";
-import { ZONE_COLORS, near } from "./layout";
+import { ZONE_COLORS, near, siteLevels } from "./layout";
 import type { Program } from "../shared/schema";
 import { parkingStalls, sitePool, zoningCheck } from "./zoning";
 import type { OfficeInfo } from "../office";
@@ -372,11 +372,14 @@ function stairPlan(st: Rect, info: StairInfo, H: number, X: (x: number) => numbe
 // ---------------------------------------------------------------- KESİT A-A
 
 export function sectionSVG(L: BuildingLayout, program: Program): string {
+  const lv = siteLevels(L);
   const M = 2.4;
-  const bottomZ = Math.min(0, ...L.floors.map((f) => f.z)) - 1.2;
+  const bottomZ = Math.min(0, lv.lot - 0.6, ...L.floors.map((f) => f.z)) - 1.2;
   const topZ = L.totalHeight + L.roofHeight + 0.6;
   const outMax = Math.max(0, ...L.floors.flatMap((f) => f.outdoor.map((o) => o.rect.y + o.rect.h - L.D)));
-  const outFront = Math.max(0, ...L.floors.flatMap((f) => f.outdoor.map((o) => -o.rect.y)));
+  // çukur arsada sokak, istinat duvarı ve köprü için ön bahçe de çizilir
+  const FY = lv.sunken ? 6 : 0;
+  const outFront = Math.max(FY, ...L.floors.flatMap((f) => f.outdoor.map((o) => -o.rect.y)));
   const widthM = L.D + outMax + outFront + 2 * M + 1.6;
   const heightM = topZ - bottomZ + 1.2;
   const titleH = 56;
@@ -386,12 +389,30 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
   p.push(text(16, 26, `${program.projectName} — A-A Kesiti`, 18, { anchor: "start", weight: 600 }));
   p.push(text(16, 44, `Kesit hattı x = ${f2(L.cutX)} m · ölçek ≈ 1:100`, 11, { anchor: "start", fill: THIN }));
 
-  const groundZ = -0.3;
+  const groundZ = lv.grade;
   // zemin
-  p.push(`<rect x="0" y="${Z(groundZ)}" width="${widthM * S}" height="${(groundZ - bottomZ + 1.2) * S}" fill="url(#earth)"/>`);
   p.push(`<defs><pattern id="earth" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#f3efe7"/><line x1="0" y1="0" x2="0" y2="10" stroke="#cbbfa8" stroke-width="1"/></pattern></defs>`);
-  const slope = (L.siteSlope ?? 0);
-  if (!slope) p.push(`<line x1="0" y1="${Z(groundZ)}" x2="${widthM * S}" y2="${Z(groundZ)}" stroke="${INK}" stroke-width="1.6"/>`);
+  const slope = lv.sunken ? 0 : (L.siteSlope ?? 0);
+  if (lv.sunken) {
+    // yol kotunun altındaki arsa: sokak + istinat duvarı, arsa zemini, binanın oturduğu teras, sokaktan girişe köprü
+    const yW = -FY, yP0 = Math.max(yW + 0.5, -4), yP1 = L.D + 5, xR = widthM * S, bot = Z(bottomZ - 1.2);
+    const earth = [`0,${Z(lv.road)}`, `${X(yW)},${Z(lv.road)}`, `${X(yW)},${Z(lv.lot)}`, `${X(yP0)},${Z(lv.lot)}`, `${X(yP0)},${Z(lv.grade)}`, `${X(yP1)},${Z(lv.grade)}`, `${X(yP1)},${Z(lv.lot)}`, `${xR},${Z(lv.lot)}`, `${xR},${bot}`, `0,${bot}`];
+    p.push(`<polygon points="${earth.join(" ")}" fill="url(#earth)"/>`);
+    p.push(`<polyline points="${earth.slice(0, 8).join(" ")}" fill="none" stroke="${INK}" stroke-width="1.6"/>`);
+    p.push(`<rect x="${X(yW - 0.35)}" y="${Z(lv.road + 0.05)}" width="${0.35 * S}" height="${(lv.road + 0.05 - lv.lot + 0.5) * S}" fill="#9a9a9a" stroke="${INK}" stroke-width="1"/>`);
+    p.push(`<line x1="${X(yW - 0.18)}" y1="${Z(lv.road)}" x2="${X(yW - 0.18)}" y2="${Z(lv.road + 1.05)}" stroke="${INK}" stroke-width="1.2"/>`);
+    // köprü (yol kotundan zemin kat girişine)
+    p.push(`<rect x="${X(yW)}" y="${Z(lv.road + 0.2)}" width="${-yW * S}" height="${0.25 * S}" fill="#b5b3ae" stroke="${INK}" stroke-width="1"/>`);
+    p.push(`<line x1="${X(yW)}" y1="${Z(lv.road + 1.25)}" x2="${X(0)}" y2="${Z(lv.road + 1.25)}" stroke="${INK}" stroke-width="1"/>`);
+    p.push(text(X(yW / 2), Z(lv.road + 1.25) - 5, "köprü", 10, { fill: THIN }));
+    p.push(text(X(yW) - 6, Z(lv.road) - 6, "YOL", 10, { anchor: "end", fill: THIN, weight: 700 }));
+    p.push(text(X(yW) + 6, Z((lv.road + lv.lot) / 2), "istinat duvarı", 10, { anchor: "start", fill: THIN }));
+    p.push(levelMark(X(yW) - 1.6 * S, Z(lv.road), lv.road));
+    p.push(levelMark(X((yW + yP0) / 2), Z(lv.lot), lv.lot));
+    p.push(text(X(yW) + 6, Z(lv.lot) + 14, `arsa zemini yolun ${f2(L.lotBelowRoad ?? 0)} m altında`, 10, { anchor: "start", fill: THIN }));
+  } else p.push(`<rect x="0" y="${Z(groundZ)}" width="${widthM * S}" height="${(groundZ - bottomZ + 1.2) * S}" fill="url(#earth)"/>`);
+  if (lv.sunken) { /* zemin yukarıda çizildi */ }
+  else if (!slope) p.push(`<line x1="0" y1="${Z(groundZ)}" x2="${widthM * S}" y2="${Z(groundZ)}" stroke="${INK}" stroke-width="1.6"/>`);
   else {
     // eğimli arsa: bina düz bir platforma oturur; arkada doğal zemin eğimle sürer, bina altındaki doğal zemin kesikli çizilir
     const yEnd = widthM - M - outFront, gB = groundZ + slope * L.D, gE = groundZ + slope * yEnd;
@@ -535,7 +556,8 @@ export const FACADE_NAMES: Record<Facade, string> = { front: "Ön (Sokak) Cephes
 export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade): string {
   const len = facade === "front" || facade === "back" ? L.W : L.D;
   const M = 2.4;
-  const groundZ = -0.3;
+  const lv = siteLevels(L);
+  const groundZ = lv.grade;
   const top = L.totalHeight;
   const topZ = top + L.roofHeight + 0.8;
   const titleH = 56;
@@ -550,16 +572,18 @@ export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade
   p.push(text(16, 26, `${program.projectName} — ${FACADE_NAMES[facade]}`, 18, { anchor: "start", weight: 600 }));
   p.push(text(16, 44, `Görünüş · ölçek ≈ 1:100 · ${program.style}`, 11, { anchor: "start", fill: THIN }));
 
-  const aboveGround = L.floors.filter((f) => f.z >= 0);
+  // zeminin üstünde kalan katlar (yol kotunun altındaki arsada bodrum cephesi de görünür)
+  const aboveGround = L.floors.filter((f) => f.z >= 0 || (lv.sunken && f.z + L.H > groundZ + 0.6));
   const wallBottom = Math.max(groundZ, Math.min(...aboveGround.map((f) => f.z), 0) - 0.3);
   p.push(`<defs><pattern id="stone" width="36" height="18" patternUnits="userSpaceOnUse"><rect width="36" height="18" fill="#e3dccf"/><path d="M0 9 H36 M12 0 V9 M30 9 V18" stroke="#c9bfae" stroke-width="1" fill="none"/></pattern><pattern id="wood" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#c9a27a"/><line x1="0" y1="0" x2="0" y2="8" stroke="#a9825a" stroke-width="1"/></pattern></defs>`);
   if (!L.massing) {
     // cephe yüzeyi
     p.push(`<rect x="${U(0)}" y="${Z(top)}" width="${len * S}" height="${(top - wallBottom) * S}" fill="#f4efe6" stroke="${INK}" stroke-width="1.6"/>`);
     // zemin kat taş kaplama bandı
-    p.push(`<rect x="${U(0)}" y="${Z(Math.min(L.H, top) - L.slab)}" width="${len * S}" height="${(Math.min(L.H, top) - L.slab - wallBottom) * S}" fill="url(#stone)" opacity="0.55"/>`);
+    const bandTop = Math.min((aboveGround[0]?.z ?? 0) + L.H, top) - L.slab;
+    p.push(`<rect x="${U(0)}" y="${Z(bandTop)}" width="${len * S}" height="${(bandTop - wallBottom) * S}" fill="url(#stone)" opacity="0.55"/>`);
     // kat döşeme çizgileri
-    for (const f of aboveGround) if (f.z > 0) p.push(`<rect x="${U(0)}" y="${Z(f.z)}" width="${len * S}" height="${L.slab * S}" fill="#d8d0c2"/>`);
+    for (const f of aboveGround) if (f.z > wallBottom + 0.5) p.push(`<rect x="${U(0)}" y="${Z(f.z)}" width="${len * S}" height="${L.slab * S}" fill="#d8d0c2"/>`);
   }
 
   const drawOpening = (f: FloorLayout, o: Opening) => {
@@ -680,6 +704,10 @@ export function elevationSVG(L: BuildingLayout, program: Program, facade: Facade
     p.push(`<polygon points="${pts} ${widthM * S},${heightM * S + titleH} 0,${heightM * S + titleH}" fill="#f3efe7"/>`);
     p.push(`<polyline points="${pts}" fill="none" stroke="${INK}" stroke-width="2"/>`);
   } else p.push(`<line x1="0" y1="${Z(groundZ)}" x2="${widthM * S}" y2="${Z(groundZ)}" stroke="${INK}" stroke-width="2"/>`);
+  if (lv.sunken) {
+    p.push(`<line x1="0" y1="${Z(lv.road)}" x2="${widthM * S}" y2="${Z(lv.road)}" stroke="${THIN}" stroke-width="1" stroke-dasharray="8 5"/>`);
+    p.push(text(6, Z(lv.road) - 5, `yol kotu (arsa ${f2(L.lotBelowRoad ?? 0)} m aşağıda)`, 10, { anchor: "start", fill: THIN }));
+  }
   p.push(person(U(len + 1.0), Z(gAt(len + 1.0))));
   p.push(tree(U(len + 2.9), Z(gAt(len + 2.9))));
   // yükseklik ölçüsü

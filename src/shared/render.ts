@@ -1,7 +1,7 @@
 // Higgsfield ile gerçekçi render: 3D görünümün ekran görüntüsü (+ referans görseller) bir görüntü modeline verilir,
 // model geometriyi koruyarak fotoğraf gerçekliğinde bir mimari görsel üretir.
 // Masaüstünde yerel sunucu, Android'de yerel HTTP, web panelinde doğrudan tarayıcı çağırır.
-import type { Program } from "./schema";
+import { lotBelowRoad, type Program } from "./schema";
 
 export interface RenderModel {
   id: string;
@@ -114,17 +114,26 @@ const MATERIAL_EN: Record<string, string> = { siva_beyaz: "white smooth render",
 const WINDOW_EN: Record<string, string> = { kare: "classic punched windows", dikey: "tall narrow vertical windows", serit: "horizontal ribbon windows", boy: "floor-to-ceiling glazing" };
 const RAIL_EN: Record<string, string> = { cam: "frameless glass balustrades", metal: "slim metal railings", dolu: "solid parapet balconies" };
 
+/** Yol kotunun altındaki arsa (render modeli bunu yeşil düz zemine çevirmesin). */
+function sunkenText(p: Program) {
+  const drop = lotBelowRoad(p);
+  if (!(drop > 0) || p.blocks?.length) return "";
+  const basement = p.floors.some((f) => f.level < 0);
+  return `Site: the whole plot is excavated about ${Math.round(drop * 10) / 10} m below the street, enclosed by concrete retaining walls; the entrance floor is at street level and reached by a footbridge from the pavement${basement ? "; the basement storey is fully exposed with large windows facing the sunken garden" : ""}. Keep this level difference.`;
+}
+
 /** Programdan İngilizce render talimatı (modeller İngilizcede daha iyi). */
 export function renderPrompt(p: Program, extra = "", refCount = 0, camera?: CameraInfo) {
   const f = p.facade;
   const m = p.materials;
-  const floors = Math.max(1, ...(p.blocks?.length ? [0] : [p.floors.filter((x) => x.level >= 0).length]));
+  const floors = Math.max(1, ...(p.blocks?.length ? [0] : [p.floors.filter((x) => x.level >= 0 || lotBelowRoad(p) >= 2).length]));
   const roof = p.roof === "duz" ? "flat roof with parapet" : p.roof === "besik" ? "gable roof" : "hipped roof";
   const parts = [
     "Turn this 3D model render into a photorealistic architectural photograph of exactly the same building, taken from exactly the same camera position, angle, lens and framing as the first image.",
     camera ? `Camera: ${cameraText(camera)}` : "",
     "Keep the exact massing, number of floors, roof shape, window and door positions and counts, balconies and the building's position in the frame; do not add or remove floors, wings or openings, do not change the perspective.",
     `Building: ${p.buildingType || "residential building"}${p.blocks?.length ? `, ${p.blocks.length} apartment blocks` : `, ${floors} storeys`}, ${roof}.`,
+    sunkenText(p),
     `Facade: main walls ${MATERIAL_EN[m.wall] ?? m.wall}${f ? ` (colour ${f.wallColor})` : ""}, accents in ${MATERIAL_EN[m.accent] ?? m.accent}${f ? ` (colour ${f.accentColor})` : ""}${f ? `, window frames ${f.frameColor}, ${WINDOW_EN[f.windowStyle]}, ${RAIL_EN[f.balconyRail]}${f.shutters ? ", wooden shutters" : ""}${f.cornice ? ", horizontal cornice bands" : ""}, roof colour ${f.roofColor}` : ""}.`,
     p.style && p.style !== "Belirtilmedi" ? `Architectural style (Turkish description): ${p.style}.` : "",
     refCount ? `Match the materials, colours, textures and overall look of the reference photo${refCount > 1 ? "s" : ""} that follow the first image, but keep the geometry of the first image.` : "",
