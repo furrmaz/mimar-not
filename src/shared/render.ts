@@ -77,6 +77,20 @@ export const CUSTOM_MODEL_ID = "custom";
 export const USD_TRY_HINT = 41; // yaklaşık kur, yalnız bilgi amaçlı
 
 export interface HiggsfieldKeys { keyId: string; secret: string }
+
+/** Higgsfield hesabıyla ilgili hata (anahtar geçersiz, bakiye yok): aboneye değil, servisi işletene gösterilir. */
+export class HiggsfieldAccountError extends Error {
+  constructor(message: string, public kind: "auth" | "balance") { super(message); }
+}
+
+/** Panele / .env'e girilen anahtarı temizler: boşluk, tırnak, "Key " öneki; "KeyID:Secret" tek parça girildiyse ayırır. */
+export function normalizeHiggsfieldKeys(idRaw: string | undefined, secretRaw: string | undefined): HiggsfieldKeys | undefined {
+  const clean = (v: string | undefined) => String(v ?? "").replace(/^\s*Key\s+/i, "").replace(/[\s"'`\u200b]/g, "");
+  let id = clean(idRaw), secret = clean(secretRaw);
+  // tek parça "KeyID:Secret": iki nokta sonrası gizli anahtardır (ayrı alandaki eski değerin önüne geçer)
+  if (id.includes(":")) { const i = id.indexOf(":"); secret = id.slice(i + 1) || secret; id = id.slice(0, i); }
+  return id && secret ? { keyId: id, secret } : undefined;
+}
 export interface RenderRequest {
   /** 3D görünümün PNG/JPEG data URL'i */
   view: string;
@@ -143,8 +157,8 @@ async function hfJson(f: Fetch, keys: HiggsfieldKeys, url: string, init: Request
   try { data = JSON.parse(text); } catch { /* metin */ }
   if (!res.ok) {
     const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? text).slice(0, 300);
-    if (res.status === 401) throw new Error("Higgsfield anahtarı geçersiz. Ayarlar'dan anahtar kimliği (Key ID) ve gizli anahtarı (Secret) kontrol edin.");
-    if (res.status === 402) throw new Error("Higgsfield bakiyesi yetersiz. Hesabınıza bakiye yükleyin.");
+    if (res.status === 401 || res.status === 403) throw new HiggsfieldAccountError(`Higgsfield anahtarı geçersiz (${res.status}${detail && detail !== '""' ? `: ${detail}` : ""}). Ayarlar'dan anahtar kimliği (Key ID) ve gizli anahtarı (Secret) kontrol edin.`, "auth");
+    if (res.status === 402) throw new HiggsfieldAccountError("Higgsfield bakiyesi yetersiz. Hesabınıza bakiye yükleyin.", "balance");
     if ([404, 423, 503].includes(res.status)) throw new Error(`Bu model hesabınızda şu an kullanılamıyor (${res.status}). Başka bir model seçin.`);
     throw new Error(`Higgsfield hatası (${res.status}): ${detail}`);
   }
@@ -189,6 +203,10 @@ export async function renderWithHiggsfield(
   let prompt = String(req.prompt ?? "");
   let promptSource: "claude" | "template" | "manual" = "manual";
   let promptUsage: unknown, promptModel: string | undefined;
+  // Görüntü, Claude talimatından önce yüklenir: anahtar geçersizse ücretli Claude çağrısı yapılmadan hata verilir
+  opts.onStatus?.("Görseller yükleniyor…");
+  const urls = [await upload(f, keys, req.view, api)];
+  for (const r of refs) urls.push(await upload(f, keys, r, api));
   if (req.autoPrompt && req.program) {
     opts.onStatus?.("Claude görsel talimatını yazıyor…");
     const w = opts.writePrompt
@@ -201,9 +219,6 @@ export async function renderWithHiggsfield(
     promptModel = w.model;
   }
   if (!prompt.trim()) throw new Error("Render talimatı boş.");
-  opts.onStatus?.("Görseller yükleniyor…");
-  const urls = [await upload(f, keys, req.view, api)];
-  for (const r of refs) urls.push(await upload(f, keys, r, api));
   const aspect = req.aspect ?? "16:9";
   const body = model ? model.body({ prompt, urls, aspect, hi: req.hi ?? true }) : { prompt, image_urls: urls, aspect_ratio: aspect };
   opts.onStatus?.("Render sıraya alındı…");

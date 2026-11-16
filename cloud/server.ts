@@ -10,7 +10,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { DB, UserRow } from "./db";
 import { claudeCost, entitlement, loadPlans, loadTrial, parsePlans, setConfigSource, type Plan } from "./plans";
 import { generateWithClaude, GenerateError, DEFAULT_MODEL, type GenerateRequest } from "../src/shared/generate";
-import { renderWithHiggsfield, testHiggsfield, RENDER_MODELS, type RenderRequest } from "../src/shared/render";
+import { renderWithHiggsfield, testHiggsfield, normalizeHiggsfieldKeys, HiggsfieldAccountError, RENDER_MODELS, type RenderRequest } from "../src/shared/render";
 import { writeRenderPrompt } from "../src/shared/renderprompt";
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminSessions, checkAdminPassword, hashAdminPassword, readCookie, validAdminHash } from "./adminauth";
 import { openSettings } from "./settings";
@@ -96,16 +96,15 @@ export function createCloudApp(o: CloudOptions) {
   };
   const settings = openSettings(db, (k) => (k in fallback ? fallback[k] ?? "" : process.env[k] ?? "").trim());
   setConfigSource((k) => settings.get(k));
+  /** Son render, servis hesabı yüzünden (anahtar / bakiye) başarısız olduysa: yönetim panelinde gösterilir */
+  let renderAlert: { at: number; message: string } | null = null;
   const conf = () => {
     const g = (k: string) => settings.get(k);
     // Higgsfield anahtarı "KeyID:Secret" tek parça girildiyse ayır
-    const hfRaw = g("HF_API_KEY_ID");
-    const hfId = hfRaw.includes(":") && !g("HF_API_KEY_SECRET") ? hfRaw.split(":")[0] : hfRaw;
-    const hfSecret = g("HF_API_KEY_SECRET") || (hfRaw.includes(":") ? hfRaw.slice(hfRaw.indexOf(":") + 1) : "");
     return {
       anthropicKey: g("ANTHROPIC_API_KEY"),
       model: g("CLAUDE_MODEL") || DEFAULT_MODEL,
-      higgsfield: hfId && hfSecret ? { keyId: hfId, secret: hfSecret } : undefined,
+      higgsfield: normalizeHiggsfieldKeys(g("HF_API_KEY_ID"), g("HF_API_KEY_SECRET")),
       payment: {
         bank: g("PAY_BANK"), holder: g("PAY_HOLDER"), iban: g("PAY_IBAN"), email: g("CONTACT_EMAIL"),
         // WhatsApp: 0543… → 90543…
@@ -329,11 +328,18 @@ export function createCloudApp(o: CloudOptions) {
         const f = o.renderFetch ?? fetch;
         const img = await f(out.url);
         const buf = Buffer.from(await img.arrayBuffer());
+        renderAlert = null;
         const pCost = out.promptModel ? claudeCost(out.promptModel, out.promptUsage as Parameters<typeof claudeCost>[1]) : 0;
         logUsage(u.id, "render", true, { model: out.model, cost: (out.price ?? 0) + pCost, detail: `prompt:${out.promptSource}` });
         return { url: out.url, model: out.model, price: null, prompt: out.prompt, promptSource: out.promptSource, data: `data:${img.headers.get("content-type") ?? "image/png"};base64,${buf.toString("base64")}` };
       } catch (e) {
         if (!job.ac.signal.aborted) logUsage(u.id, "render", false, { detail: (e as Error).message });
+        if (e instanceof HiggsfieldAccountError) {
+          // servis hesabının sorunu: aboneye ayar / anahtar söylenmez, yönetim panelinde uyarı çıkar
+          renderAlert = { at: Date.now(), message: e.message };
+          console.error("[render] Higgsfield hesabı:", e.message);
+          throw new Error("Gerçekçi render şu an kullanılamıyor. Render hakkınız düşmedi; biraz sonra yeniden deneyin ya da bizimle iletişime geçin.");
+        }
         throw e;
       }
     });
@@ -415,7 +421,7 @@ export function createCloudApp(o: CloudOptions) {
   // ---------- ayarlar (API anahtarları, ödeme bilgileri, deneme, planlar) ----------
   const settingsView = () => {
     const c = conf();
-    return { items: settings.view(), plans: plans(), trial: loadTrial(), model: c.model, hasClaude: Boolean(c.anthropicKey), hasHiggsfield: Boolean(c.higgsfield), adminUser: adminCreds()?.user ?? "", tokenLogin: Boolean(adminToken()) };
+    return { items: settings.view(), plans: plans(), trial: loadTrial(), model: c.model, hasClaude: Boolean(c.anthropicKey), hasHiggsfield: Boolean(c.higgsfield), renderAlert, adminUser: adminCreds()?.user ?? "", tokenLogin: Boolean(adminToken()) };
   };
   app.get("/api/admin/settings", admin, (_req, res) => { res.json(settingsView()); });
   app.post("/api/admin/settings", admin, (req, res) => {
@@ -458,9 +464,10 @@ export function createCloudApp(o: CloudOptions) {
         res.json({ ok: true, message: `Claude anahtarı çalışıyor (${j.display_name ?? model}).` });
       } else if (b.kind === "higgsfield") {
         const id = String(b.keyId ?? "").trim(), sec = String(b.secret ?? "").trim();
-        const keys = id ? (id.includes(":") && !sec ? { keyId: id.split(":")[0], secret: id.slice(id.indexOf(":") + 1) } : { keyId: id, secret: sec || c.higgsfield?.secret || "" }) : c.higgsfield;
+        const keys = id ? normalizeHiggsfieldKeys(id, sec || c.higgsfield?.secret) : c.higgsfield;
         if (!keys) throw new Error("Higgsfield anahtarı girilmemiş.");
         await testHiggsfield(keys, f, o.higgsfieldApi);
+        if (!id) renderAlert = null;
         res.json({ ok: true, message: "Higgsfield anahtarı çalışıyor." });
       } else res.status(400).json({ error: "Bilinmeyen deneme." });
     } catch (e) {
