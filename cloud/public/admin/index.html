@@ -258,7 +258,7 @@ async function loadSettings(note) {
   $("#settingsView").innerHTML = `
     ${note ? `<div class="msg">${note}</div>` : ""}
     <datalist id="models">${MODELS.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</datalist>
-    ${box("ai", "Yapay zekâ servisleri", `Üretim (Claude) ve gerçekçi render (Higgsfield) ücretleri bu hesaplardan ödenir. Durum: Claude <b>${S.hasClaude ? "açık" : "kapalı"}</b>, render <b>${S.hasHiggsfield ? "açık" : "kapalı"}</b>. Anahtarlar sunucuda saklanır, buraya yalnız maskeli gelir.`,
+    ${box("ai", "Yapay zekâ servisleri", `Üretim (Claude) ve gerçekçi render (Higgsfield) ücretleri bu hesaplardan ödenir. Durum: Claude <b>${S.hasClaude ? "açık" : "kapalı"}</b>, render <b>${S.hasHiggsfield ? "açık" : "kapalı"}</b>. Anahtarlar sunucuda saklanır, buraya yalnız maskeli gelir.${S.renderAlert ? `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fdecea;color:#8a1c12"><b>Render çalışmıyor.</b> Son hata (${new Date(S.renderAlert.at).toLocaleString("tr-TR")}): ${esc(S.renderAlert.message)} Anahtarı yeniden girip "Higgsfield'ı dene" düğmesine basın.</div>` : ""}`,
       `<div class="grid">
         ${fld("ANTHROPIC_API_KEY", "Claude API anahtarı", { help: 'platform.claude.com → Settings → Keys. Aynı yerden aylık harcama sınırı koyun.' })}
         ${fld("CLAUDE_MODEL", "Claude modeli", { list: "models", ph: S.model, help: "Boşsa claude-opus-5-5." })}
