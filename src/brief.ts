@@ -21,7 +21,9 @@ export interface Brief {
 }
 
 export const BUILDING_KINDS = ["Müstakil konut", "Dubleks villa", "Apartman", "Site (çok bloklu)", "Ofis / ticari", "Yazlık"];
-export const STYLES = ["Claude seçsin", "Modern", "Minimalist", "Çağdaş yerel (taş + ahşap)", "Akdeniz / Ege", "Klasik", "Endüstriyel", "İskandinav"];
+export const STYLES = ["Planhane seçsin", "Modern", "Minimalist", "Çağdaş yerel (taş + ahşap)", "Akdeniz / Ege", "Klasik", "Endüstriyel", "İskandinav"];
+/** "Planhane seçsin" (eski projelerde "Claude seçsin"): üslup kullanıcı tarafından belirlenmemiş. */
+export const isAutoStyle = (v: unknown) => v === STYLES[0] || v === "Claude seçsin";
 
 const LABELS: Record<keyof Brief, string> = {
   buildingKind: "Yapı türü", style: "Mimari üslup", roof: "Çatı tipi", floors: "Kat sayısı (zemin dahil, bodrum hariç)", blockCount: "Blok sayısı", unitsPerFloor: "Normal katta kat başına daire sayısı",
@@ -34,7 +36,7 @@ export function briefForPrompt(b: Brief | undefined): Record<string, string> | u
   if (!b) return undefined;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(b) as [keyof Brief, unknown][]) {
-    if (v === undefined || v === "" || v === null || (k === "style" && v === STYLES[0])) continue;
+    if (v === undefined || v === "" || v === null || (k === "style" && isAutoStyle(v))) continue;
     out[LABELS[k]] = k === "roof" ? ROOF[v as string] : String(v);
   }
   return Object.keys(out).length ? out : undefined;

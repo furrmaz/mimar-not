@@ -142,7 +142,7 @@ export default function App() {
   const canGenerate = project.notes.trim().length >= 10 || (project.refImages?.length ?? 0) > 0 || Boolean(briefForPrompt(project.brief));
   const run = async (mode: "new" | "update") => {
     if (DEMO) {
-      setError("Bu demo sürümünde Claude bağlantısı yok. Notları düzenleyip programı elle değiştirebilirsiniz; tam sürümde bu düğme notlardan yeni program üretir.");
+      setError("Bu demo sürümünde yapay zekâ bağlantısı yok. Notları düzenleyip programı elle değiştirebilirsiniz; tam sürümde bu düğme notlardan yeni program üretir.");
       return;
     }
     setBusy(true);
@@ -188,7 +188,7 @@ export default function App() {
   const revise = async (text: string) => {
     if (!program) return false;
     if (DEMO) {
-      setError("Bu demo sürümünde Claude bağlantısı yok; düzeltmeler tam sürümde Claude ile uygulanır.");
+      setError("Bu demo sürümünde yapay zekâ bağlantısı yok; düzeltmeler tam sürümde Planhane ile uygulanır.");
       return false;
     }
     setBusy(true);
@@ -394,7 +394,7 @@ export default function App() {
           />
           <div className="actions">
             <button className="btn primary" disabled={busy || !canGenerate} onClick={() => run("new")}>
-              {busy ? "Claude programı çıkarıyor…" : "Proje üret"}
+              {busy ? "Planhane programı çıkarıyor…" : "Proje üret"}
             </button>
             {program && (
               <button className="btn" disabled={busy || !canGenerate} onClick={() => run("update")} title="Mevcut programı koruyarak notlardaki değişiklikleri uygula">
@@ -405,19 +405,19 @@ export default function App() {
           {busy && (
             <div className="busy-row">
               <div className="progress"><div /></div>
-              <button className="btn small stop" onClick={stop} title="Claude çağrısını iptal et">■ Durdur</button>
+              <button className="btn small stop" onClick={stop} title="Üretimi iptal et">■ Durdur</button>
             </div>
           )}
           {error && <div className="error">{error}</div>}
           {genInfo && genInfo.warnings.length > 0 && (
             <div className="warn-box">
-              <b>Claude yanıtında onarılanlar</b>
+              <b>Yapay zekâ yanıtında onarılanlar</b>
               <ul>{genInfo.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
             </div>
           )}
           {genInfo?.hasRaw && (error || genInfo.warnings.length > 0) && (
-            <button className="link small" onClick={() => download(`claude-yaniti-${new Date(lastGen.at).toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`, JSON.stringify(lastGen.raw, null, 2), "application/json")}>
-              Claude'un ham yanıtını indir (hata bildirimi için)
+            <button className="link small" onClick={() => download(`planhane-yaniti-${new Date(lastGen.at).toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`, JSON.stringify(lastGen.raw, null, 2), "application/json")}>
+              Ham yapay zekâ yanıtını indir (hata bildirimi için)
             </button>
           )}
           {program && <RevisionBox busy={busy} history={project.history ?? []} onRevise={revise} onUndo={undo} />}
@@ -426,7 +426,7 @@ export default function App() {
             <button className="link" onClick={loadSiteSample}>Örnek görüşme: 4 bloklu site</button>
           </div>
           <div className="muted small how">
-            Akış: notlar → Claude yapılandırılmış bina programı çıkarır → plan, kesit, cephe, 3D ve imar kontrolü aynı modelden üretilir. Programı sağdan düzenleyince tüm çizimler anında güncellenir.
+            Akış: notlar → Planhane yapılandırılmış bina programı çıkarır → plan, kesit, cephe, 3D ve imar kontrolü aynı modelden üretilir. Programı sağdan düzenleyince tüm çizimler anında güncellenir.
           </div>
         </aside>
 
@@ -436,7 +436,7 @@ export default function App() {
               <h1>Görüşme notundan çizim setine, tek tuşla.</h1>
               <p>Soldaki alana müşterinin isteklerini yazın ya da sesle dikte edin, sonra <b>Proje üret</b>'e basın.</p>
               <ol>
-                <li>Claude notlardan mekân listesi, alanlar, kat dağılımı, imar değerleri, varsayımlar ve müşteriye sorulacak soruları çıkarır.</li>
+                <li>Planhane notlardan mekân listesi, alanlar, kat dağılımı, imar değerleri, varsayımlar ve müşteriye sorulacak soruları çıkarır.</li>
                 <li>Uygulama bu programdan ölçülü kat planlarını, A-A kesitini, dört cepheyi ve 3D modeli üretir.</li>
                 <li>Programı düzenleyin, SVG / PNG / DXF / GLB olarak indirin ya da tüm seti PDF olarak yazdırın.</li>
               </ol>

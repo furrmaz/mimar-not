@@ -130,7 +130,7 @@ export async function generateWithClaude(client: Anthropic, body: GenerateReques
         else parseError = r.error.issues.slice(0, 4).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
       }
     }
-    if (!wire && parseError) throw new GenerateError(502, `Claude'un yanıtı bina programı şemasına uymadı (${parseError}). Tekrar deneyin.`, raw);
+    if (!wire && parseError) throw new GenerateError(502, `Yapay zekâ yanıtı bina programı şemasına uymadı (${parseError}). Tekrar deneyin.`, raw);
     if (!wire) throw new GenerateError(502, "Modelden geçerli bir bina programı alınamadı.", raw);
     const fixed = sanitize(normalizeProgram(wire));
     const warnings = repairProgram(fixed);
@@ -140,8 +140,8 @@ export async function generateWithClaude(client: Anthropic, body: GenerateReques
     if (err instanceof Anthropic.AuthenticationError || (err instanceof Anthropic.AnthropicError && /authentication/i.test(err.message)))
       throw new GenerateError(401, "Claude API anahtarı geçersiz. Anahtarı kontrol edin.");
     if (err instanceof Anthropic.RateLimitError) throw new GenerateError(429, "API hız sınırına takıldı, biraz sonra tekrar deneyin.");
-    if (err instanceof Anthropic.APIConnectionError) throw new GenerateError(503, "Claude API'ye bağlanılamadı. İnternet bağlantınızı kontrol edin.");
-    if (err instanceof Anthropic.APIError) throw new GenerateError(502, `Claude API hatası (${err.status}): ${err.message}`);
+    if (err instanceof Anthropic.APIConnectionError) throw new GenerateError(503, "Yapay zekâ servisine bağlanılamadı. İnternet bağlantınızı kontrol edin.");
+    if (err instanceof Anthropic.APIError) throw new GenerateError(502, `Yapay zekâ servisi hatası (${err.status}): ${err.message}`);
     throw new GenerateError(500, "Hata: " + (err as Error).message);
   }
 }

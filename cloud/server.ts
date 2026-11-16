@@ -273,7 +273,10 @@ export function createCloudApp(o: CloudOptions) {
         job.status = "error"; job.at = Date.now();
         if (job.ac.signal.aborted) { job.error = "Durduruldu"; job.errorStatus = 499; return; }
         job.error = (err as Error)?.message ?? String(err);
+        // Sunucu anahtarı geçersizse abone sağlayıcı/anahtar ayrıntısı görmez; yönetici sunucu kaydından görür
+        if (err instanceof GenerateError && err.status === 401) { job.error = "Proje üretimi şu an yapılamıyor. Kısa süre içinde düzelecek; sorun sürerse bizimle iletişime geçin."; console.error(`[${kind}] sunucu yapay zekâ anahtarı reddedildi`); }
         job.errorStatus = err instanceof GenerateError ? err.status : 502;
+        if (err instanceof GenerateError && err.status === 401) job.errorStatus = 503;
         job.raw = err instanceof GenerateError ? err.raw : undefined;
         if (!(err instanceof GenerateError) || err.status >= 500) console.error(`[${kind}] kullanıcı ${u.id}:`, err);
       },
@@ -287,11 +290,11 @@ export function createCloudApp(o: CloudOptions) {
     if (q) { res.status(q.status).json(q); return; }
     const body = (req.body ?? {}) as GenerateRequest;
     const c = conf();
-    if (!c.anthropicKey) { res.status(503).json({ error: "Proje üretimi şu an kapalı (sunucuda Claude anahtarı tanımlı değil). Bizimle iletişime geçin." }); return; }
+    if (!c.anthropicKey) { res.status(503).json({ error: "Proje üretimi şu an kapalı. Bizimle iletişime geçin." }); return; }
     const model = c.model;
     const client = claude(c.anthropicKey, 2);
     const job = startJob(u, "generate", async (job) => {
-      job.stage = "Claude programı çıkarıyor…";
+      job.stage = "Planhane programı çıkarıyor…";
       try {
         const out = await generateWithClaude(client, body, { model, signal: job.ac.signal });
         if (!out || job.ac.signal.aborted) throw new DOMException("Durduruldu", "AbortError");

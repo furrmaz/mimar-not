@@ -1,15 +1,15 @@
 import { useRef } from "react";
-import { BUILDING_KINDS, STYLES, shrinkImage, type Brief } from "../brief";
+import { BUILDING_KINDS, STYLES, isAutoStyle, shrinkImage, type Brief } from "../brief";
 
 type NumKey = "siteWidth" | "siteDepth" | "footprintWidth" | "footprintDepth" | "floors" | "blockCount" | "unitsPerFloor" | "taks" | "kaks" | "hmax" | "frontSetback" | "sideSetback" | "rearSetback";
 const NUMS: { k: NumKey; label: string; step: number; ph?: string }[] = [
   { k: "siteWidth", label: "Arsa eni (m)", step: 0.5 },
   { k: "siteDepth", label: "Arsa boyu (m)", step: 0.5 },
-  { k: "footprintWidth", label: "Bina eni (m)", step: 0.5, ph: "Claude" },
-  { k: "footprintDepth", label: "Bina boyu (m)", step: 0.5, ph: "Claude" },
-  { k: "floors", label: "Kat sayısı", step: 1, ph: "Claude" },
+  { k: "footprintWidth", label: "Bina eni (m)", step: 0.5, ph: "Planhane" },
+  { k: "footprintDepth", label: "Bina boyu (m)", step: 0.5, ph: "Planhane" },
+  { k: "floors", label: "Kat sayısı", step: 1, ph: "Planhane" },
   { k: "blockCount", label: "Blok sayısı", step: 1, ph: "1" },
-  { k: "unitsPerFloor", label: "Kat başı daire", step: 1, ph: "Claude" },
+  { k: "unitsPerFloor", label: "Kat başı daire", step: 1, ph: "Planhane" },
   { k: "taks", label: "TAKS", step: 0.05 },
   { k: "kaks", label: "KAKS / emsal", step: 0.05 },
   { k: "hmax", label: "Hmax (m)", step: 0.5 },
@@ -30,7 +30,7 @@ export function BriefPanel({ brief, images, onBrief, onImages, onError }: {
 }) {
   const file = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Brief>(k: K, v: Brief[K]) => onBrief({ ...brief, [k]: v });
-  const filled = Object.values(brief).filter((v) => v !== undefined && v !== "" && v !== STYLES[0]).length;
+  const filled = Object.values(brief).filter((v) => v !== undefined && v !== "" && !isAutoStyle(v)).length;
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
     const list = [...images];
@@ -45,7 +45,7 @@ export function BriefPanel({ brief, images, onBrief, onImages, onError }: {
     <>
     <div className="refs refs-top">
       <div className="small"><b>Görseller</b> <span className="muted">(en fazla {MAX_IMG})</span></div>
-      <div className="muted small">Referans cephe fotoğrafı, el eskizi / kroki, el yazısı not ya da imar durumu ekleyebilirsiniz. Claude her görselin ne olduğunu anlar: cepheyi renk ve biçimiyle aynen alır, eskizden odaları ve ölçüleri, imar belgesinden değerleri okur. Görselle tek başına da proje üretebilirsiniz.</div>
+      <div className="muted small">Referans cephe fotoğrafı, el eskizi / kroki, el yazısı not ya da imar durumu ekleyebilirsiniz. Planhane her görselin ne olduğunu anlar: cepheyi renk ve biçimiyle aynen alır, eskizden odaları ve ölçüleri, imar belgesinden değerleri okur. Görselle tek başına da proje üretebilirsiniz.</div>
       <div className="ref-list">
         {images.map((src, i) => (
           <div className="ref" key={i}>
@@ -72,14 +72,14 @@ export function BriefPanel({ brief, images, onBrief, onImages, onError }: {
         </label>
         <label className="field">
           <span>Mimari üslup</span>
-          <select value={brief.style ?? STYLES[0]} onChange={(e) => set("style", e.target.value)}>
+          <select value={isAutoStyle(brief.style) || !brief.style ? STYLES[0] : brief.style} onChange={(e) => set("style", e.target.value)}>
             {STYLES.map((k) => <option key={k}>{k}</option>)}
           </select>
         </label>
         <label className="field">
           <span>Çatı</span>
           <select value={brief.roof ?? ""} onChange={(e) => set("roof", e.target.value as Brief["roof"])}>
-            <option value="">Claude seçsin</option>
+            <option value="">Planhane seçsin</option>
             <option value="duz">Düz / teras</option>
             <option value="besik">Beşik</option>
             <option value="kirma">Kırma</option>
@@ -93,7 +93,7 @@ export function BriefPanel({ brief, images, onBrief, onImages, onError }: {
           </label>
         ))}
       </div>
-      <div className="muted small">Boş bıraktıklarınızı Claude notlardan çıkarır. Doldurduklarınız aynen kullanılır.</div>
+      <div className="muted small">Boş bıraktıklarınızı Planhane notlardan çıkarır. Doldurduklarınız aynen kullanılır.</div>
     </details>
     </>
   );

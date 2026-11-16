@@ -123,7 +123,7 @@ function LessonsCard() {
   return (
     <>
       <h3 className="settings-sub">Ofis tercihleri</h3>
-      <label className="field"><span>Claude her yeni projede dikkate alır</span>
+      <label className="field"><span>Planhane her yeni projede dikkate alır</span>
         <textarea rows={3} value={l.prefs} maxLength={2000} onChange={(e) => set({ ...l, prefs: e.target.value })} placeholder={"Ör: ebeveyn banyosu en az 6 m² olsun, mutfak her zaman bahçe tarafında, koridor yerine hol tercih ederiz, modern projede düz çatı."} />
       </label>
       <label className="check"><input type="checkbox" checked={l.enabled} onChange={(e) => set({ ...l, enabled: e.target.checked })} /> Yazdığım düzeltmelerden öğren (sonraki projelerde tercih olarak kullanılır)</label>
@@ -138,7 +138,7 @@ function LessonsCard() {
           <button className="link" onClick={() => set({ ...l, items: [] })}>Tümünü sil</button>
         </details>
       )}
-      <p className="muted small">Tercihler ve düzeltmeler yalnız bu cihazda saklanır; proje üretirken notlarla birlikte Claude'a gönderilir. Müşterinin isteği her zaman önce gelir.</p>
+      <p className="muted small">Tercihler ve düzeltmeler yalnız bu cihazda saklanır; proje üretirken notlarla birlikte yapay zekâya gönderilir. Müşterinin isteği her zaman önce gelir.</p>
     </>
   );
 }

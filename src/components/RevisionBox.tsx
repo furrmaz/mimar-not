@@ -28,7 +28,7 @@ export function RevisionBox({ busy, history, onRevise, onUndo }: {
         rows={3}
       />
       <button className="btn" disabled={busy || !text.trim()} onClick={send}>
-        {busy ? "Claude düzeltiyor…" : "Düzeltmeyi uygula"} <span className="muted small">Ctrl+Enter</span>
+        {busy ? "Planhane düzeltiyor…" : "Düzeltmeyi uygula"} <span className="muted small">Ctrl+Enter</span>
       </button>
       {history.length > 0 && (
         <ul className="rev-list">
