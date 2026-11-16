@@ -208,7 +208,7 @@ export async function renderWithHiggsfield(
   const urls = [await upload(f, keys, req.view, api)];
   for (const r of refs) urls.push(await upload(f, keys, r, api));
   if (req.autoPrompt && req.program) {
-    opts.onStatus?.("Claude görsel talimatını yazıyor…");
+    opts.onStatus?.("Planhane görsel talimatını yazıyor…");
     const w = opts.writePrompt
       ? await opts.writePrompt({ ...req, program: req.program }, refs)
       : { prompt: renderPrompt(req.program, req.extra ?? "", refs.length, req.camera), source: "template" as const };

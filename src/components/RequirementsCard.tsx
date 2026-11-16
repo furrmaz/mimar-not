@@ -44,7 +44,7 @@ export function RequirementsCard({ program, brief, busy, onFix }: { program: Pro
     return (
       <section className="card req-card">
         <h3>İstek kontrol listesi</h3>
-        <p className="muted small">Bu proje eski bir sürümle üretilmiş; istek listesi yok. "Notlarla güncelle" ile Claude her isteği tek tek kontrol eder.</p>
+        <p className="muted small">Bu proje eski bir sürümle üretilmiş; istek listesi yok. "Notlarla güncelle" ile Planhane her isteği tek tek kontrol eder.</p>
       </section>
     );
   }
@@ -60,7 +60,7 @@ export function RequirementsCard({ program, brief, busy, onFix }: { program: Pro
           İstek kontrol listesi <span className="muted small">{done}/{items.length} karşılandı{units ? ` · ${units} daire` : ""}</span>
         </h3>
         <div className="row" style={{ gap: 8 }}>
-          {miss.length > 0 && <button className="btn small primary" disabled={busy} onClick={() => onFix(fixText())}>{busy ? "Claude düzeltiyor…" : `Eksikleri tamamla (${miss.length})`}</button>}
+          {miss.length > 0 && <button className="btn small primary" disabled={busy} onClick={() => onFix(fixText())}>{busy ? "Planhane düzeltiyor…" : `Eksikleri tamamla (${miss.length})`}</button>}
           <button className="link small" onClick={() => setOpen(!open)}>{open ? "Gizle" : "Göster"}</button>
         </div>
       </div>

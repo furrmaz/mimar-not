@@ -127,7 +127,7 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
             </div>
             <label className="check" style={{ marginTop: 8 }}>
               <input type="checkbox" checked={pref.autoPrompt && manual == null} onChange={(e) => { setManual(e.target.checked ? null : renderPrompt(program, extra.trim(), refs.length, shot?.camera)); set({ autoPrompt: e.target.checked }); }} />
-              Görsel talimatını Claude yazsın (görüntüye ve plana bakarak)
+              Görsel talimatını Planhane yazsın (görüntüye ve plana bakarak)
             </label>
             {manual != null && (
               <label className="field" style={{ marginTop: 4 }}>
@@ -159,7 +159,7 @@ export function RenderDialog({ program, refImages, capture, onClose, onSettings 
             </figcaption>
             {r.prompt && (
               <details className="small">
-                <summary className="muted">{r.promptSource === "claude" ? "Claude'un yazdığı görsel talimatı" : r.promptSource === "template" ? "Kullanılan görsel talimatı (Claude'a ulaşılamadı, şablon)" : "Kullanılan görsel talimatı"}</summary>
+                <summary className="muted">{r.promptSource === "claude" ? "Planhane'nin yazdığı görsel talimatı" : r.promptSource === "template" ? "Kullanılan görsel talimatı (otomatik talimat yazılamadı, şablon)" : "Kullanılan görsel talimatı"}</summary>
                 <p style={{ whiteSpace: "pre-wrap" }}>{r.prompt}</p>
                 <button className="link small" onClick={() => { setManual(r.prompt!); set({ autoPrompt: false }); }}>Bu talimatı düzenleyip tekrar kullan</button>
               </details>
