@@ -135,6 +135,15 @@ td.warn { color: #a05a00; font-weight: 600; }
 .toolbar label { display: flex; gap: 6px; align-items: center; }
 .toolbar select { padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; }
 .three-host { height: min(70vh, 680px); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg-btn { border: 0; background: transparent; padding: 6px 12px; font: inherit; cursor: pointer; color: inherit; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+.seg-btn.on { background: var(--accent, #2f6f5e); color: #fff; }
+.sel-name { font-weight: 600; }
+.btn.danger { color: #b42318; }
+.joystick { position: absolute; left: 18px; bottom: 40px; width: 112px; height: 112px; border-radius: 50%; background: rgba(255,255,255,.35); border: 2px solid rgba(255,255,255,.8); box-shadow: 0 2px 10px rgba(0,0,0,.2); touch-action: none; display: grid; place-items: center; user-select: none; }
+.joystick .knob { width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,.92); box-shadow: 0 1px 6px rgba(0,0,0,.3); pointer-events: none; }
+.mode-gezi .three-host { cursor: grab; }
 .hint { position: absolute; bottom: 8px; left: 12px; font-size: 11px; color: var(--muted); background: rgba(255,255,255,.8); padding: 2px 8px; border-radius: 6px; }
 
 .print-set { display: none; }

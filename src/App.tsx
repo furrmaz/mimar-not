@@ -528,7 +528,7 @@ export default function App() {
                     <SvgSheet svg={elevationSVG(layout, view, facade)} name={`${view.projectName}-${FACADE_NAMES[facade]}`} />
                   </>
                 )}
-                {tab === "3d" && <ThreeView layout={layout} program={view} refImages={project.refImages ?? []} onSettings={() => setShowSettings(true)} />}
+                {tab === "3d" && <ThreeView layout={layout} program={view} refImages={project.refImages ?? []} onSettings={() => setShowSettings(true)} onChange={DEMO ? undefined : setView} />}
                 {tab === "zoning" && <ZoningPanel program={view} layout={layout} onChange={setView} />}
                 {tab === "areas" && <AreasPanel program={view} layout={layout} />}
               </div>

@@ -1,13 +1,17 @@
-// Oda tipine göre basit mobilya yerleşimi (plan, DXF ve 3D için).
+// Oda tipine göre mobilya yerleşimi (plan, DXF ve 3D için) ve mimarın elle yaptığı düzenlemeler.
 // Mobilyalar odanın hole bakmayan "arka" duvarına yaslanır; kapılar çoğunlukla hol tarafında olduğundan kanatlarla çakışmaz.
 import type { FloorLayout, PlacedRoom } from "./layout";
 
 export type FurnitureKind =
   | "bed" | "nightstand" | "wardrobe" | "sofa" | "armchair" | "coffeeTable" | "tvUnit" | "table" | "chair"
   | "counter" | "island" | "fridge" | "hob" | "sink" | "wc" | "basin" | "shower" | "bathtub" | "desk"
-  | "washer" | "car" | "shelf";
+  | "washer" | "car" | "shelf" | "rug" | "plant" | "floorLamp" | "dresser" | "bench";
 
+/** facing: mobilyanın sırtının yaslandığı kenar. n: y küçük kenar (+y yönüne bakar), s: y büyük kenar,
+ *  w: x küçük kenar (+x yönüne bakar), e: x büyük kenar. x, y, w, h her zaman plandaki (dünya) kutudur. */
 export interface Furniture {
+  /** Düzenleme için kimlik (otomatik yerleşimde a0, a1…; elle eklenende u…) */
+  id?: string;
   kind: FurnitureKind;
   x: number;
   y: number;
@@ -15,27 +19,68 @@ export interface Furniture {
   h: number;
   /** 3D yüksekliği (m) */
   height: number;
-  /** Plan sembolü yönü: bakılan yön (dünya ekseninde +y ya da -y, +x ya da -x) */
   facing: "n" | "s" | "e" | "w";
 }
 
 const HEIGHTS: Record<FurnitureKind, number> = {
   bed: 0.5, nightstand: 0.5, wardrobe: 2.2, sofa: 0.8, armchair: 0.8, coffeeTable: 0.4, tvUnit: 0.5, table: 0.75, chair: 0.85,
   counter: 0.9, island: 0.9, fridge: 1.85, hob: 0.9, sink: 0.9, wc: 0.4, basin: 0.85, shower: 0.05, bathtub: 0.55, desk: 0.75,
-  washer: 0.85, car: 1.45, shelf: 2.0,
+  washer: 0.85, car: 1.45, shelf: 2.0, rug: 0.01, plant: 1.2, floorLamp: 1.6, dresser: 0.85, bench: 0.45,
 };
 
+/** "Ekle" menüsü: Türkçe ad ve varsayılan ölçü (sırt boyunca genişlik × derinlik, m) */
+export const FURNITURE_CATALOG: { kind: FurnitureKind; label: string; group: string; w: number; d: number }[] = [
+  { kind: "sofa", label: "Kanepe", group: "Oturma", w: 2.2, d: 0.9 },
+  { kind: "armchair", label: "Berjer", group: "Oturma", w: 0.8, d: 0.8 },
+  { kind: "coffeeTable", label: "Orta sehpa", group: "Oturma", w: 1.1, d: 0.6 },
+  { kind: "tvUnit", label: "TV ünitesi", group: "Oturma", w: 1.8, d: 0.45 },
+  { kind: "rug", label: "Halı", group: "Oturma", w: 2.0, d: 1.4 },
+  { kind: "floorLamp", label: "Lambader", group: "Oturma", w: 0.4, d: 0.4 },
+  { kind: "plant", label: "Saksı bitkisi", group: "Oturma", w: 0.5, d: 0.5 },
+  { kind: "shelf", label: "Kitaplık", group: "Oturma", w: 1.2, d: 0.35 },
+  { kind: "table", label: "Yemek masası", group: "Yemek", w: 1.6, d: 0.9 },
+  { kind: "chair", label: "Sandalye", group: "Yemek", w: 0.45, d: 0.45 },
+  { kind: "bench", label: "Bank", group: "Yemek", w: 1.2, d: 0.4 },
+  { kind: "bed", label: "Çift kişilik yatak", group: "Yatak odası", w: 1.6, d: 2.0 },
+  { kind: "nightstand", label: "Komodin", group: "Yatak odası", w: 0.45, d: 0.4 },
+  { kind: "wardrobe", label: "Gardırop", group: "Yatak odası", w: 1.8, d: 0.6 },
+  { kind: "dresser", label: "Şifonyer", group: "Yatak odası", w: 1.2, d: 0.5 },
+  { kind: "desk", label: "Çalışma masası", group: "Çalışma", w: 1.4, d: 0.7 },
+  { kind: "counter", label: "Mutfak tezgâhı", group: "Mutfak", w: 2.4, d: 0.6 },
+  { kind: "island", label: "Mutfak adası", group: "Mutfak", w: 1.8, d: 0.9 },
+  { kind: "fridge", label: "Buzdolabı", group: "Mutfak", w: 0.7, d: 0.7 },
+  { kind: "hob", label: "Ocak", group: "Mutfak", w: 0.6, d: 0.5 },
+  { kind: "sink", label: "Eviye", group: "Mutfak", w: 0.8, d: 0.45 },
+  { kind: "wc", label: "Klozet", group: "Islak hacim", w: 0.4, d: 0.6 },
+  { kind: "basin", label: "Lavabo", group: "Islak hacim", w: 0.6, d: 0.45 },
+  { kind: "shower", label: "Duş teknesi", group: "Islak hacim", w: 0.9, d: 0.9 },
+  { kind: "bathtub", label: "Küvet", group: "Islak hacim", w: 1.7, d: 0.75 },
+  { kind: "washer", label: "Çamaşır makinesi", group: "Islak hacim", w: 0.6, d: 0.6 },
+  { kind: "car", label: "Otomobil", group: "Diğer", w: 1.9, d: 4.6 },
+];
+export const furnitureLabel = (k: FurnitureKind) => FURNITURE_CATALOG.find((c) => c.kind === k)?.label ?? k;
+
+/** Döşemede düz duran (çakışma denetimine girmeyen) parçalar */
+const FLAT = new Set<FurnitureKind>(["rug", "shower"]);
+/** Gezintide üstünden geçilebilen parçalar */
+export const WALKABLE = new Set<FurnitureKind>(["rug", "shower"]);
+
+type Face = "same" | "rev" | "left" | "right";
+
 export function furnishRoom(r: PlacedRoom): Furniture[] {
-  if (r.band === "hall" || r.type === "merdiven") return [];
+  if (r.band === "hall" || r.type === "merdiven" || r.void) return [];
   const W = r.rect.w, H = r.rect.h;
   // yerel çerçeve: u = x boyunca (0..W), v = arka duvardan hole doğru (0..H)
   const front = r.band === "front"; // ön bantta arka duvar sokak cephesi (y küçük)
   const out: Furniture[] = [];
-  const put = (kind: FurnitureKind, u: number, v: number, w: number, d: number) => {
+  /** face: same = sırtı arka duvarda; rev = sırtı hol tarafında; left/right = sırtı u=0 / u=W duvarında */
+  const put = (kind: FurnitureKind, u: number, v: number, w: number, d: number, face: Face = "same") => {
     if (u < 0.05 || v < 0.05 || u + w > W - 0.05 || v + d > H - 0.05 || w <= 0 || d <= 0) return;
     const x = r.rect.x + u;
     const y = front ? r.rect.y + v : r.rect.y + H - v - d;
-    out.push({ kind, x, y, w, h: d, height: HEIGHTS[kind], facing: front ? "n" : "s" });
+    const back: Furniture["facing"] = front ? "n" : "s", fwd: Furniture["facing"] = front ? "s" : "n";
+    const facing = face === "same" ? back : face === "rev" ? fwd : face === "left" ? "w" : "e";
+    out.push({ kind, x, y, w, h: d, height: HEIGHTS[kind], facing });
   };
   const cu = (w: number) => (W - w) / 2;
   const area = W * H;
@@ -50,32 +95,41 @@ export function furnishRoom(r: PlacedRoom): Furniture[] {
       const bl = 2.0;
       // yatak başı arka duvarda, odanın ortasında; yer yoksa yana
       const bu = W >= bw + 1.4 ? cu(bw) : 0.1;
+      put("rug", Math.max(0.1, bu - 0.35), 0.9, Math.min(W - 0.2, bw + 0.7), Math.min(1.6, H - 1.0));
       put("bed", bu, 0.1, bw, bl);
       put("nightstand", bu - 0.5, 0.1, 0.45, 0.4);
       if (double) put("nightstand", bu + bw + 0.05, 0.1, 0.45, 0.4);
       // dolap: hol tarafı duvarında değil, yan duvarda
       const wl = Math.min(2.4, H - 1.4);
-      if (W - (bu + bw) > 1.4 && wl > 1) put("wardrobe", W - 0.65, 0.1, 0.6, wl);
-      else if (bu > 1.4 && wl > 1) put("wardrobe", 0.05, 0.1, 0.6, wl);
-      if (r.type === "cocuk" && H > 3.2) put("desk", W - 1.3, H - 1.6, 1.2, 0.6);
+      if (W - (bu + bw) > 1.4 && wl > 1) put("wardrobe", W - 0.65, 0.1, 0.6, wl, "right");
+      else if (bu > 1.4 && wl > 1) put("wardrobe", 0.05, 0.1, 0.6, wl, "left");
+      if (r.type === "cocuk" && H > 3.2) {
+        put("desk", W - 1.3, H - 1.6, 1.2, 0.6);
+        put("chair", W - 0.95, H - 0.95, 0.45, 0.45, "rev");
+      } else if (r.type === "ebeveyn" && H > 3.6 && W > 3.2) put("dresser", cu(1.2), H - 0.6, 1.2, 0.5, "rev");
+      if (r.type !== "cocuk" && W > 3) put("plant", 0.12, H - 0.65, 0.5, 0.5);
       break;
     }
     case "salon": {
       const sw = Math.min(2.6, W - 1.2);
       if (sw > 1.6) {
+        put("rug", cu(Math.min(2.6, W - 0.6)), 1.15, Math.min(2.6, W - 0.6), Math.min(2.0, H - 1.6));
         put("sofa", cu(sw), 0.4, sw, 0.9);
         put("coffeeTable", cu(1.1), 1.6, 1.1, 0.6);
-        put("tvUnit", cu(1.8), Math.min(H - 0.55, 3.6), 1.8, 0.45);
+        put("tvUnit", cu(1.8), Math.min(H - 0.55, 3.6), 1.8, 0.45, "rev");
+        put("floorLamp", cu(sw) - 0.45, 0.4, 0.4, 0.4);
       }
-      if (W > 5 && H > 3) put("armchair", 0.3, 1.3, 0.8, 0.8);
+      if (W > 5 && H > 3) put("armchair", 0.3, 1.3, 0.8, 0.8, "left");
+      put("plant", W - 0.6, 0.1, 0.5, 0.5);
       // yemek masası, salon büyükse ve yemek odası yoksa
       if (area > 26 && W > 7) {
         put("table", W - 2.2, 0.6, 1.6, 0.9);
         for (const du of [0.25, 0.95]) {
           put("chair", W - 2.2 + du, 0.15, 0.45, 0.4);
-          put("chair", W - 2.2 + du, 1.55, 0.45, 0.4);
+          put("chair", W - 2.2 + du, 1.55, 0.45, 0.4, "rev");
         }
       }
+      if (W > 4.2 && H > 4) put("shelf", 0.05, H - 1.6, 0.35, 1.2, "left");
       break;
     }
     case "yemek": {
@@ -84,7 +138,7 @@ export function furnishRoom(r: PlacedRoom): Furniture[] {
         put("table", cu(tw), 1.0, tw, 0.9);
         for (let i = 0; i < Math.floor(tw / 0.6); i++) {
           put("chair", cu(tw) + 0.1 + i * 0.6, 0.55, 0.45, 0.4);
-          put("chair", cu(tw) + 0.1 + i * 0.6, 1.95, 0.45, 0.4);
+          put("chair", cu(tw) + 0.1 + i * 0.6, 1.95, 0.45, 0.4, "rev");
         }
       }
       break;
@@ -94,7 +148,7 @@ export function furnishRoom(r: PlacedRoom): Furniture[] {
       put("counter", 0.05, 0.05, W - 0.1, 0.6);
       put("hob", cu(0.6), 0.1, 0.6, 0.5);
       put("sink", Math.min(W - 1.0, cu(0.8) + 1.2), 0.1, 0.8, 0.45);
-      if (H > 2.6) put("counter", 0.05, 0.7, 0.6, Math.min(1.8, H - 1.6));
+      if (H > 2.6) put("counter", 0.05, 0.7, 0.6, Math.min(1.8, H - 1.6), "left");
       put("fridge", W - 0.75, 0.05, 0.7, 0.7);
       if (area > 13 && W > 3.2 && H > 3.0) put("island", cu(1.8), 1.7, 1.8, 0.9);
       else if (area > 10 && H > 3.2) put("table", cu(1.2), H - 1.7, 1.2, 0.8);
@@ -102,7 +156,7 @@ export function furnishRoom(r: PlacedRoom): Furniture[] {
     }
     case "banyo": {
       put("shower", 0.05, 0.05, Math.min(0.9, W - 0.1), 0.9);
-      if (W > 2.2 && H > 2.2 && area > 6.5) put("bathtub", W - 0.8, 1.1, 0.75, 1.7);
+      if (W > 2.2 && H > 2.2 && area > 6.5) put("bathtub", W - 0.8, 1.1, 0.75, 1.7, "right");
       put("wc", W > 1.6 ? W - 0.5 : cu(0.4), W > 1.6 ? 0.1 : 1.1, 0.4, 0.6);
       put("basin", W > 1.6 ? cu(0.6) + 0.2 : cu(0.6), H > 2.4 ? 1.3 : 1.75, 0.6, 0.45);
       break;
@@ -121,19 +175,20 @@ export function furnishRoom(r: PlacedRoom): Furniture[] {
     case "calisma":
     case "ofis": {
       put("desk", cu(1.4), 0.3, 1.4, 0.7);
-      put("chair", cu(0.5), 1.1, 0.5, 0.5);
-      if (W > 2.6) put("shelf", 0.05, 0.6, 0.35, Math.min(2.0, H - 1.4));
+      put("chair", cu(0.5), 1.1, 0.5, 0.5, "rev");
+      if (W > 2.6) put("shelf", 0.05, 0.6, 0.35, Math.min(2.0, H - 1.4), "left");
+      if (W > 3) put("plant", W - 0.6, 0.1, 0.5, 0.5);
       break;
     }
     case "giyinme": {
       put("wardrobe", 0.05, 0.05, W - 0.1, 0.6);
-      if (W > 1.8 && H > 1.6) put("wardrobe", 0.05, 0.7, 0.6, H - 1.5);
+      if (W > 1.8 && H > 1.6) put("wardrobe", 0.05, 0.7, 0.6, H - 1.5, "left");
       break;
     }
     case "kiler":
     case "depo": {
       put("shelf", 0.05, 0.05, W - 0.1, 0.45);
-      if (W > 1.2 && H > 1.4) put("shelf", 0.05, 0.55, 0.45, H - 1.4);
+      if (W > 1.2 && H > 1.4) put("shelf", 0.05, 0.55, 0.45, H - 1.4, "left");
       break;
     }
     case "garaj": {
@@ -152,8 +207,8 @@ type Box = { x: number; y: number; w: number; h: number };
 const overlap = (a: Box, b: Box) => a.x < b.x + b.w - 1e-6 && a.x + a.w > b.x + 1e-6 && a.y < b.y + b.h - 1e-6 && a.y + a.h > b.y + 1e-6;
 const ON_COUNTER = new Set<FurnitureKind>(["hob", "sink", "counter", "fridge"]);
 
-/** Kattaki tüm mobilyalar. Kapı kanadı / geçiş alanına giren parça önce kaydırılır, olmazsa atılır. */
-export function furnishFloor(fl: FloorLayout): Furniture[] {
+/** Otomatik yerleşim (elle düzenleme yok sayılır). Kapı kanadı / geçiş alanına giren parça önce kaydırılır, olmazsa atılır. */
+export function autoFurnish(fl: FloorLayout): Furniture[] {
   const keep: Box[] = [];
   for (const o of fl.openings) {
     if (o.kind === "window") continue;
@@ -170,10 +225,11 @@ export function furnishFloor(fl: FloorLayout): Furniture[] {
     const placed: Furniture[] = [];
     const R = r.rect;
     for (const f of furnishRoom(r)) {
+      const flat = FLAT.has(f.kind);
       const ok = (g: Furniture) =>
         g.x >= R.x + 0.04 && g.y >= R.y + 0.04 && g.x + g.w <= R.x + R.w - 0.04 && g.y + g.h <= R.y + R.h - 0.04 &&
-        !keep.some((k) => overlap(g, k)) &&
-        !placed.some((p) => overlap(g, p) && !(ON_COUNTER.has(g.kind) && ON_COUNTER.has(p.kind)));
+        (flat || (!keep.some((k) => overlap(g, k)) &&
+          !placed.some((p) => !FLAT.has(p.kind) && overlap(g, p) && !(ON_COUNTER.has(g.kind) && ON_COUNTER.has(p.kind)))));
       let done: Furniture | null = null;
       outer: for (const axis of ["x", "y"] as const)
         for (const d of shifts) {
@@ -184,7 +240,39 @@ export function furnishFloor(fl: FloorLayout): Furniture[] {
     }
     out.push(...placed);
   }
-  return out;
+  return out.map((f, i) => ({ ...f, id: `a${i}` }));
+}
+
+/** Kattaki mobilyalar: mimar düzenlediyse onun listesi, değilse otomatik yerleşim. */
+export function furnishFloor(fl: FloorLayout): Furniture[] {
+  return fl.furniture ?? autoFurnish(fl);
+}
+
+/** Oda düzeninin imzası: odalar değişince (yeniden üretim, sürükleme) elle düzenleme geçersiz sayılır. */
+export function roomSig(fl: FloorLayout): string {
+  return fl.rooms.map((r) => `${r.name}:${r.rect.x.toFixed(2)},${r.rect.y.toFixed(2)},${r.rect.w.toFixed(2)},${r.rect.h.toFixed(2)}`).join("|");
+}
+
+/** Düzenleme kaydının anahtarı (çok bloklu projede blok + kat) */
+export const furnitureKey = (blockIndex: number | undefined, level: number) => `${blockIndex ?? 0}:${level}`;
+
+/** Yeni parça: verilen merkezde, varsayılan ölçüde */
+export function newFurniture(kind: FurnitureKind, cx: number, cy: number): Furniture {
+  const c = FURNITURE_CATALOG.find((k) => k.kind === kind) ?? { w: 1, d: 0.6 };
+  return { id: `u${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, kind, x: cx - c.w / 2, y: cy - c.d / 2, w: c.w, h: c.d, height: HEIGHTS[kind], facing: "n" };
+}
+
+/** Saat yönünde 90° döndürme (merkez sabit) */
+export function rotateFurniture(f: Furniture): Furniture {
+  const next = { n: "e", e: "s", s: "w", w: "n" } as const;
+  const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+  return { ...f, facing: next[f.facing], w: f.h, h: f.w, x: cx - f.h / 2, y: cy - f.w / 2 };
+}
+
+/** Mobilyanın kendi çerçevesindeki genişliği (lw, sırt boyunca) ve derinliği (ld) */
+export function localSize(f: Furniture) {
+  const side = f.facing === "e" || f.facing === "w";
+  return { lw: side ? f.h : f.w, ld: side ? f.w : f.h };
 }
 
 // ---------------------------------------------------------------- SEMBOLLER
@@ -195,22 +283,34 @@ export type Prim =
 
 /** Mobilyanın plan sembolü, dünya koordinatlarında basit ilkellerle (SVG ve DXF ortak kullanır). */
 export function furnitureSymbol(f: Furniture): Prim[] {
-  // a: genişlik boyunca 0..w, b: arka kenardan öne 0..h
-  const X = (a: number) => f.x + a;
-  const Y = (b: number) => (f.facing === "s" ? f.y + f.h - b : f.y + b);
-  const R = (a: number, b: number, w: number, d: number): Prim => {
-    const y1 = Y(b), y2 = Y(b + d);
-    return { t: "rect", x: X(a), y: Math.min(y1, y2), w, h: Math.abs(y2 - y1) };
+  // a: sırt boyunca 0..w, b: arka kenardan öne 0..h
+  const { lw: w, ld: h } = localSize(f);
+  const P = (a: number, b: number): [number, number] => {
+    switch (f.facing) {
+      case "s": return [f.x + a, f.y + f.h - b];
+      case "w": return [f.x + b, f.y + a];
+      case "e": return [f.x + f.w - b, f.y + a];
+      default: return [f.x + a, f.y + b];
+    }
   };
-  const Ln = (a1: number, b1: number, a2: number, b2: number): Prim => ({ t: "line", x1: X(a1), y1: Y(b1), x2: X(a2), y2: Y(b2) });
-  const C = (a: number, b: number, r: number): Prim => ({ t: "circle", cx: X(a), cy: Y(b), r });
-  const { w, h } = f;
-  const out: Prim[] = [R(0, 0, w, h)];
+  const R = (a: number, b: number, rw: number, d: number): Prim => {
+    const [x1, y1] = P(a, b), [x2, y2] = P(a + rw, b + d);
+    return { t: "rect", x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) };
+  };
+  const Ln = (a1: number, b1: number, a2: number, b2: number): Prim => {
+    const [x1, y1] = P(a1, b1), [x2, y2] = P(a2, b2);
+    return { t: "line", x1, y1, x2, y2 };
+  };
+  const C = (a: number, b: number, r: number): Prim => {
+    const [cx, cy] = P(a, b);
+    return { t: "circle", cx, cy, r };
+  };
+  const out: Prim[] = f.kind === "plant" || f.kind === "floorLamp" ? [] : [R(0, 0, w, h)];
   switch (f.kind) {
     case "bed": {
-      const pw = f.w > 1.2 ? (w - 0.3) / 2 : w - 0.2;
+      const pw = w > 1.2 ? (w - 0.3) / 2 : w - 0.2;
       out.push(R(0.1, 0.08, pw, 0.35));
-      if (f.w > 1.2) out.push(R(0.2 + pw, 0.08, pw, 0.35));
+      if (w > 1.2) out.push(R(0.2 + pw, 0.08, pw, 0.35));
       out.push(Ln(0, 0.6, w, 0.6), Ln(0, 0.6, w * 0.35, h));
       break;
     }
@@ -250,13 +350,21 @@ export function furnitureSymbol(f: Furniture): Prim[] {
     case "car":
       out.push(R(0.15, h * 0.28, w - 0.3, h * 0.42), Ln(0.15, h * 0.4, w - 0.15, h * 0.4));
       break;
-    case "desk":
-    case "table":
-    case "coffeeTable":
-    case "island":
-    case "counter":
-    case "nightstand":
+    case "rug":
+      out.push(R(0.08, 0.08, w - 0.16, h - 0.16));
+      break;
+    case "plant":
+      out.push(C(w / 2, h / 2, Math.min(w, h) / 2), C(w / 2, h / 2, Math.min(w, h) / 4));
+      break;
+    case "floorLamp":
+      out.push(C(w / 2, h / 2, Math.min(w, h) / 2), C(w / 2, h / 2, 0.03));
+      break;
+    case "dresser":
+      out.push(Ln(w / 2, 0, w / 2, h));
+      break;
     case "chair":
+      out.push(R(0, 0, w, 0.08));
+      break;
     default:
       break;
   }
