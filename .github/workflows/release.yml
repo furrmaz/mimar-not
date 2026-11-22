@@ -60,6 +60,8 @@ jobs:
       - run: npm ci
       - name: Bulut sunucusu testleri
         run: npm run test:cloud
+      - name: Yol altındaki arsa / bodrum regresyon testi
+        run: npm run test:site
       - name: Web paketini derle ve Android'e aktar
         run: npm run android:sync
       # Depo sırlarında kendi imza anahtarınız yoksa, ilk derlemede bir anahtar üretilir ve

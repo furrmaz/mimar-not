@@ -3,7 +3,7 @@
 // Her katta üç bant vardır: ön bant (gündüz mekânları), orta bant (hol + merdiven), arka bant (gece mekânları).
 // Orta bant tüm katlarda aynı yerde olduğu için merdiven katlar arasında üst üste gelir.
 
-import { siteSlope, type Adjacency, type DesignOptions, type Program, type Room, type RoomType, type Zone } from "../shared/schema";
+import { lotBelowRoad, siteSlope, type Adjacency, type DesignOptions, type Program, type Room, type RoomType, type Zone } from "../shared/schema";
 import type { ApFloor, UnitSlot } from "./blocks";
 import { legacyStairInfo, stairCalc, type StairInfo } from "./stair";
 import { applyMassing, effectiveMassing, type CarvedKind, type MassFeature, type OpenEdge, type Side } from "./massing";
@@ -109,6 +109,8 @@ export interface BuildingLayout {
   apartment?: boolean;
   /** Arsa eğimi (oran), sokaktan arkaya artı yükselir; çizimler zemini buna göre çizer */
   siteSlope?: number;
+  /** Arsa zemini yol kotunun kaç metre altında (çukur / kazılmış arsa); bodrum katı cepheye açılır, girişe köprüyle varılır */
+  lotBelowRoad?: number;
   /** Merdiven hesabı ve yönü (yoksa eski hol bandı merdiveni) */
   stairInfo?: StairInfo;
   /** Uygulanan kütle artikülasyonu (yoksa sade dikdörtgen kutu) */
@@ -160,6 +162,8 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
   const L = buildLayoutInner(program, design);
   const s = siteSlope({ site: program.site, design });
   if (s) L.siteSlope = s;
+  const drop = lotBelowRoad({ site: program.site, design });
+  if (drop > 0) L.lotBelowRoad = drop;
   // iç mekân düzenlemesi: oda düzeni aynı kaldıkça mimarın mobilya listesi kullanılır
   const fur = design.furniture;
   if (fur) for (const f of L.floors) {
@@ -167,6 +171,19 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
     if (e && e.sig === roomSig(f)) f.furniture = e.items as Furniture[];
   }
   return L;
+}
+
+/** Yol kotunun altındaki arsada önemli kotlar (zemin kat döşemesi = 0).
+ *  road: yol / kaldırım kotu, lot: arsanın genel zemini, grade: binanın çevresindeki bitmiş zemin
+ *  (arsa en alt kattan da aşağıdaysa bina en alt kat kotunda bir dolgu terasına oturur). */
+export function siteLevels(L: Pick<BuildingLayout, "floors" | "lotBelowRoad">) {
+  const road = -0.3;
+  const drop = L.lotBelowRoad ?? 0;
+  if (!(drop > 0)) return { road, lot: road, grade: road, sunken: false };
+  const lowest = Math.min(0, ...L.floors.map((f) => f.z));
+  const lot = road - drop;
+  const grade = Math.min(road, Math.max(lot, lowest - 0.3));
+  return { road, lot, grade, sunken: true };
 }
 
 function buildLayoutInner(program: Program, design: DesignOptions): BuildingLayout {

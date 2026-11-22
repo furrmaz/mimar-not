@@ -18,6 +18,7 @@
     "cloud:start": "node cloud-dist/server.cjs",
     "test:cloud": "tsx cloud/test.ts && tsx cloud/test-office.ts && tsx cloud/test-share.ts && tsx cloud/test-render-alert.ts",
     "test:layout": "tsx scripts/check-layouts.ts",
+    "test:site": "tsx scripts/test-sunken-site.ts",
     "site:images": "node scripts/fetch-site-images.mjs"
   },
   "license": "UNLICENSED",

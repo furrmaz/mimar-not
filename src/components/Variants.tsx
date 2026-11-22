@@ -37,6 +37,9 @@ export function StylePicker({ program, apartment, onChange }: { program: Program
         <label className="small" title="Sokaktan arkaya doğru arsa eğimi: arka taraf yükseliyorsa artı, alçalıyorsa eksi. Kesitte, yan cephelerde, 3D'de ve DXF'te zemin buna göre çizilir">Arsa eğimi %
           <input type="number" min={-30} max={30} step={1} value={program.design?.slope ?? program.site.slope ?? 0} onChange={(e) => onChange({ ...program, design: { ...(program.design ?? {}), slope: Math.max(-30, Math.min(30, Number(e.target.value) || 0)) } })} />
         </label>
+        {!apartment && <label className="small" title="Arsa zemini yol (sokak) kotunun kaç metre altında: çukur ya da kazılmış arsa. Arsa istinat duvarlarıyla yolun altında çizilir, girişe köprüyle varılır, bodrum katının cepheleri açığa çıkar">Arsa yolun altında (m)
+          <input type="number" min={0} max={15} step={0.5} value={program.design?.lotBelowRoad ?? program.site.lotBelowRoad ?? 0} onChange={(e) => onChange({ ...program, design: { ...(program.design ?? {}), lotBelowRoad: Math.max(0, Math.min(15, Number(e.target.value) || 0)) } })} />
+        </label>}
       </div>
       <div className="muted small">Paket çatıyı, malzemeleri, renkleri, pencere biçimini{apartment ? "" : ", kütle biçimini"} ve cephe ayrıntılarını birlikte ayarlar; odalar değişmez. Ayrıntılar 3D modelde görünür.</div>
     </section>

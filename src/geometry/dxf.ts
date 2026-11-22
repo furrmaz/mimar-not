@@ -4,7 +4,7 @@
 import { structurePlan } from "./structure";
 import type { BuildingLayout, Opening, Rect } from "./layout";
 import { legacyStairInfo, stairGeom } from "./stair";
-import { near } from "./layout";
+import { near, siteLevels } from "./layout";
 import { facadeFaces, floorRects, openingOnFacade, slabSpansAtX, spansAtX } from "./massing";
 import type { Program } from "../shared/schema";
 import { parkingStalls, sitePool, zoningCheck } from "./zoning";
@@ -330,10 +330,23 @@ function drawSection(d: Dxf, L: BuildingLayout, ox: number, oy: number) {
   // yatay eksen: derinlik y (ön solda), dikey: kot z
   const X = (y: number) => ox + y;
   const Z = (z: number) => oy + z;
-  const groundZ = -0.3;
+  const lv = siteLevels(L);
+  const groundZ = lv.grade;
   const clear = L.H - L.slab;
-  const slope = L.siteSlope ?? 0;
-  d.line("MN-ZEMIN", X(-4), Z(groundZ), X(slope ? L.D : L.D + 6), Z(groundZ));
+  const slope = lv.sunken ? 0 : L.siteSlope ?? 0;
+  if (lv.sunken) {
+    // yol kotunun altındaki arsa: yol, istinat duvarı, arsa zemini, teras, köprü
+    const yW = -6, yP0 = -4, yP1 = L.D + 5;
+    d.line("MN-ZEMIN", X(-10), Z(lv.road), X(yW), Z(lv.road));
+    d.rect("MN-ZEMIN", X(yW - 0.35), Z(lv.lot - 0.5), 0.35, lv.road - lv.lot + 0.5);
+    d.line("MN-ZEMIN", X(yW), Z(lv.lot), X(yP0), Z(lv.lot));
+    if (lv.grade > lv.lot + 0.05) { d.line("MN-ZEMIN", X(yP0), Z(lv.lot), X(yP0), Z(lv.grade)); d.line("MN-ZEMIN", X(yP1), Z(lv.grade), X(yP1), Z(lv.lot)); }
+    d.line("MN-ZEMIN", X(yP0), Z(lv.grade), X(yP1), Z(lv.grade));
+    d.line("MN-ZEMIN", X(yP1), Z(lv.lot), X(yP1 + 4), Z(lv.lot));
+    d.rect("MN-ZEMIN", X(yW), Z(lv.road - 0.05), -yW, 0.25);
+    d.text("MN-ZEMIN", X(yW + 0.3), Z(lv.road + 1.2), 0.25, "KOPRU", 0);
+    d.text("MN-ZEMIN", X(yW + 0.3), Z((lv.road + lv.lot) / 2), 0.25, `ISTINAT DUVARI - ARSA YOLUN ${(L.lotBelowRoad ?? 0).toFixed(2)} m ALTINDA`, 0);
+  } else d.line("MN-ZEMIN", X(-4), Z(groundZ), X(slope ? L.D : L.D + 6), Z(groundZ));
   if (slope) {
     d.line("MN-ZEMIN", X(L.D), Z(groundZ), X(L.D), Z(groundZ + slope * L.D));
     d.line("MN-ZEMIN", X(L.D), Z(groundZ + slope * L.D), X(L.D + 6), Z(groundZ + slope * (L.D + 6)));
@@ -420,16 +433,18 @@ function drawElevation(d: Dxf, L: BuildingLayout, facade: Facade, ox: number, oy
   const U = (u: number) => ox + u;
   const Z = (z: number) => oy + z;
   const toU = (x: number, y: number) => (facade === "front" ? x : facade === "back" ? L.W - x : facade === "left" ? L.D - y : y);
-  const groundZ = -0.3;
+  const lv = siteLevels(L);
+  const groundZ = lv.grade;
   const top = L.totalHeight;
   const slope = L.siteSlope ?? 0;
   const gAt = (u: number) => groundZ + slope * (facade === "front" ? 0 : facade === "back" ? L.D : Math.max(0, Math.min(L.D, facade === "left" ? L.D - u : u)));
   if (slope && (facade === "left" || facade === "right")) { d.line("MN-ZEMIN", U(-2), Z(gAt(-2)), U(0), Z(gAt(0))); d.line("MN-ZEMIN", U(0), Z(gAt(0)), U(len), Z(gAt(len))); d.line("MN-ZEMIN", U(len), Z(gAt(len)), U(len + 2), Z(gAt(len + 2))); }
   else d.line("MN-ZEMIN", U(-2), Z(gAt(0)), U(len + 2), Z(gAt(0)));
-  const above = L.floors.filter((f) => f.z >= 0);
+  const above = L.floors.filter((f) => f.z >= 0 || (lv.sunken && f.z + L.H > groundZ + 0.6));
+  if (lv.sunken) d.line("MN-ZEMIN", U(-2), Z(lv.road), U(len + 2), Z(lv.road));
   if (!L.massing) {
     d.rect("MN-CEPHE", U(0), Z(groundZ), len, top - groundZ);
-    for (const f of above) if (f.z > 0) d.line("MN-CEPHE", U(0), Z(f.z), U(len), Z(f.z));
+    for (const f of above) if (f.z > groundZ + 0.5) d.line("MN-CEPHE", U(0), Z(f.z), U(len), Z(f.z));
   } else {
     // girintili kütle: her katın bu cepheye bakan yüzleri; geri çekilen yüzler ayrı katmanda
     above.forEach((f, i) => {
