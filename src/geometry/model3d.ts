@@ -3,7 +3,8 @@
 import * as THREE from "three";
 import type { BuildingLayout, FloorLayout, Opening } from "./layout";
 import { ZONE_COLORS, near, siteLevels } from "./layout";
-import { furnishFloor, type FurnitureKind } from "./furniture";
+import { furnishFloor } from "./furniture";
+import { furnitureMesh } from "./furniture3d";
 import { DEFAULT_MATERIALS, normalizeFacade, type Facade, type Materials } from "../shared/schema";
 import { texturedMaterial, worldUV } from "./materials3d";
 import { legacyStairInfo, stairGeom } from "./stair";
@@ -37,6 +38,8 @@ export interface ModelOptions {
   avoid?: { x: number; y: number; w: number; d: number }[];
   /** Havuz (bina yerel koordinatında) */
   pool?: { x: number; y: number; w: number; h: number } | null;
+  /** Tüm görünen katlarda mobilya (iç mekân gezintisi / düzenleme); kesik görünümde her zaman gösterilir */
+  furniture?: boolean;
 }
 
 const BASE = {
@@ -157,17 +160,6 @@ function addFacadeAccents(root: THREE.Group, L: BuildingLayout, visible: FloorLa
   g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   root.add(g);
 }
-
-const FURN_MATS: Partial<Record<FurnitureKind, THREE.Material>> = {
-  bed: new THREE.MeshStandardMaterial({ color: 0xe9e4f2, roughness: 0.9 }),
-  sofa: new THREE.MeshStandardMaterial({ color: 0x8a9aa8, roughness: 0.9 }),
-  armchair: new THREE.MeshStandardMaterial({ color: 0x8a9aa8, roughness: 0.9 }),
-  wc: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }),
-  basin: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }),
-  bathtub: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }),
-  shower: new THREE.MeshStandardMaterial({ color: 0xcfdde6, roughness: 0.3 }),
-  car: new THREE.MeshStandardMaterial({ color: 0x5d6b7a, roughness: 0.4, metalness: 0.4 }),
-};
 
 function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, name?: string) {
   const geo = new THREE.BoxGeometry(Math.max(w, 0.001), Math.max(h, 0.001), Math.max(d, 0.001));
@@ -295,7 +287,7 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
     const grp = new THREE.Group();
     grp.name = f.name;
     const cut = opts.cutaway && f === topVisible;
-    addFloor(grp, L, f, cut);
+    addFloor(grp, L, f, cut, !!opts.furniture, !!(opts.realistic || opts.furniture));
     root.add(grp);
   }
 
@@ -324,7 +316,7 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
   return root;
 }
 
-function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: boolean) {
+function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: boolean, furnish = false, texturedFloors = false) {
   const z0 = f.z;
   const wallH = cut ? 1.2 : L.H - L.slab;
   // Döşeme
@@ -367,20 +359,30 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
   for (const r of f.rooms) {
     if (r.void) continue;
     const color = new THREE.Color(r.type === "merdiven" ? "#e6e2db" : ZONE_COLORS[r.zone] ?? "#eeeeee");
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(r.rect.w, r.rect.h), new THREE.MeshStandardMaterial({ color, roughness: 0.9 }));
+    const pg = new THREE.PlaneGeometry(r.rect.w, r.rect.h);
+    let fm: THREE.Material = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+    if (texturedFloors) {
+      // iç mekân kaplaması: ıslak hacim / servis seramik, yaşam ve yatak mekânları ahşap parke
+      const wet = ["banyo", "wc", "camasir", "mutfak", "garaj", "teknik", "kiler", "depo", "merdiven"].includes(r.type);
+      fm = texturedMaterial(wet ? "seramik" : "wood_floor");
+      const uv = pg.getAttribute("uv") as THREE.BufferAttribute, pos = pg.getAttribute("position");
+      const tile = (fm.userData.tile as number) ?? 1;
+      for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + r.rect.x + r.rect.w / 2) / tile, (pos.getY(i) - r.rect.y - r.rect.h / 2) / tile);
+    }
+    const m = new THREE.Mesh(pg, fm);
     m.rotation.x = -Math.PI / 2;
     m.position.set(r.rect.x + r.rect.w / 2, z0 + 0.005, r.rect.y + r.rect.h / 2);
     m.receiveShadow = true;
     m.name = r.name;
     grp.add(m);
   }
-  // Mobilya (yalnızca kesik görünümde iç mekân görünür)
-  if (cut) {
-    for (const fu of furnishFloor(f)) {
-      const mat = FURN_MATS[fu.kind] ?? mats.furn;
-      const hh = Math.min(fu.height, 1.1); // kesik duvar yüksekliğini aşmasın
-      grp.add(box(fu.w, hh, fu.h, mat, fu.x + fu.w / 2, z0 + hh / 2, fu.y + fu.h / 2, fu.kind));
-    }
+  // Mobilya (kesik görünümde ve iç mekân modunda)
+  if (cut || furnish) {
+    const fg = new THREE.Group();
+    fg.name = "Mobilya";
+    fg.userData.level = f.level;
+    for (const fu of furnishFloor(f)) fg.add(furnitureMesh(fu, z0 + 0.006));
+    grp.add(fg);
   }
   // Duvarlar
   const outerMat = f.z <= 0 ? mats.wallStone : mats.wall;
@@ -390,9 +392,20 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
     const mat = w.exterior ? outerMat : mats.inner;
     if (w.orient === "h") grp.add(box(len, wallH, w.thickness, mat, mid, z0 + wallH / 2, w.line));
     else grp.add(box(w.thickness, wallH, len, mat, w.line, z0 + wallH / 2, mid));
+    // iç mekân modunda dış duvarın oda tarafına sıva yüzü (taş/tuğla doku içeride görünmesin)
+    if (furnish && w.exterior) {
+      const inRoom = (x: number, y: number) => f.rooms.some((r) => x > r.rect.x && x < r.rect.x + r.rect.w && y > r.rect.y && y < r.rect.y + r.rect.h);
+      const off = w.thickness / 2 + 0.006;
+      for (const s of [1, -1]) {
+        const px = w.orient === "h" ? mid : w.line + s * (off + 0.05), py = w.orient === "h" ? w.line + s * (off + 0.05) : mid;
+        if (!inRoom(px, py)) continue;
+        if (w.orient === "h") grp.add(box(len, wallH, 0.01, mats.inner, mid, z0 + wallH / 2, w.line + s * off));
+        else grp.add(box(0.01, wallH, len, mats.inner, w.line + s * off, z0 + wallH / 2, mid));
+      }
+    }
   }
   // Açıklıkların denizlik altı / lento üstü + cam / kapı kanadı
-  for (const o of f.openings) addOpening(grp, L, f, o, wallH);
+  for (const o of f.openings) addOpening(grp, L, f, o, wallH, furnish);
   // Merdiven
   if (L.stair && f !== L.floors[L.floors.length - 1]) addStair(grp, L, z0);
   else if (L.stair) addStairRail(grp, L, z0);
@@ -447,7 +460,7 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
   }
 }
 
-function addOpening(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, o: Opening, wallH: number) {
+function addOpening(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, o: Opening, wallH: number, lining = false) {
   const t = o.exterior ? L.extWall : L.intWall;
   const z0 = f.z;
   const mat = o.exterior ? (f.z <= 0 ? mats.wallStone : mats.wall) : mats.inner;
@@ -458,6 +471,17 @@ function addOpening(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, o: Open
   const head = Math.min(o.head, wallH);
   if (o.sill > 0 && o.sill < wallH) grp.add(place(o.width, o.sill, t, mat, z0 + o.sill / 2));
   if (wallH - head > 0.01) grp.add(place(o.width, wallH - head, t, mat, z0 + head + (wallH - head) / 2));
+  if (lining && o.exterior) {
+    // iç mekân: denizlik altı ve lento üstünün oda yüzü sıva
+    const inRoom = (x: number, y: number) => f.rooms.some((r) => x > r.rect.x && x < r.rect.x + r.rect.w && y > r.rect.y && y < r.rect.y + r.rect.h);
+    const off = t / 2 + 0.006;
+    for (const s of [1, -1]) {
+      const px = o.orient === "h" ? o.center : o.line + s * (off + 0.05), py = o.orient === "h" ? o.line + s * (off + 0.05) : o.center;
+      if (!inRoom(px, py)) continue;
+      if (o.sill > 0 && o.sill < wallH) grp.add(place(o.width, o.sill, 0.01, mats.inner, z0 + o.sill / 2, s * off));
+      if (wallH - head > 0.01) grp.add(place(o.width, wallH - head, 0.01, mats.inner, z0 + head + (wallH - head) / 2, s * off));
+    }
+  }
   if (o.sill >= wallH) return;
   const h = head - o.sill;
   if (o.kind === "window" || o.kind === "balconyDoor") {

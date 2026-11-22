@@ -7,6 +7,7 @@ import { lotBelowRoad, siteSlope, type Adjacency, type DesignOptions, type Progr
 import type { ApFloor, UnitSlot } from "./blocks";
 import { legacyStairInfo, stairCalc, type StairInfo } from "./stair";
 import { applyMassing, effectiveMassing, type CarvedKind, type MassFeature, type OpenEdge, type Side } from "./massing";
+import { furnitureKey, roomSig, type Furniture } from "./furniture";
 
 export interface Rect {
   x: number;
@@ -82,6 +83,8 @@ export interface FloorLayout {
   stairs?: Rect[];
   /** Apartman katında daireler */
   units?: { label: string; type: string; part: UnitSlot["part"]; rect: Rect; area: number }[];
+  /** Mimarın elle düzenlediği mobilya (yoksa otomatik yerleşim) */
+  furniture?: Furniture[];
 }
 
 export interface BuildingLayout {
@@ -161,6 +164,12 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
   if (s) L.siteSlope = s;
   const drop = lotBelowRoad({ site: program.site, design });
   if (drop > 0) L.lotBelowRoad = drop;
+  // iç mekân düzenlemesi: oda düzeni aynı kaldıkça mimarın mobilya listesi kullanılır
+  const fur = design.furniture;
+  if (fur) for (const f of L.floors) {
+    const e = fur[furnitureKey(program.blockIndex, f.level)];
+    if (e && e.sig === roomSig(f)) f.furniture = e.items as Furniture[];
+  }
   return L;
 }
 

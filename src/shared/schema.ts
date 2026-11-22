@@ -206,6 +206,8 @@ export interface DesignOptions {
   stylePack?: string;
   /** Güneş ayarı: bahçe (arka) cephesinin baktığı yön, ay (1-12), saat */
   sun?: { facing?: "G" | "K" | "D" | "B"; month?: number; hour?: number };
+  /** İç mekân: "<blok>:<kat>" → elle düzenlenmiş mobilya listesi (sig: oda düzeninin imzası; odalar değişince geçersiz) */
+  furniture?: Record<string, { sig: string; items: { id?: string; kind: string; x: number; y: number; w: number; h: number; height: number; facing: "n" | "s" | "e" | "w" }[] }>;
 }
 export type Requirement = z.infer<typeof ProgramSchema>["requirements"][number];
 export type Program = Omit<z.infer<typeof ProgramSchema>, "floors" | "unitTypes" | "blocks" | "blockSpacing" | "facade" | "requirements" | "imageReadings" | "massing"> & {

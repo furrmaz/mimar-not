@@ -58,7 +58,7 @@ function make(key: string, tile: number, rough: number, draw: (g: CanvasRenderin
   return t;
 }
 
-const TEX: Record<Mat | "tile" | "grass" | "paving" | "wood_floor" | "inner", () => Tex> = {
+const TEX: Record<Mat | "tile" | "grass" | "paving" | "wood_floor" | "inner" | "seramik", () => Tex> = {
   siva_beyaz: () => make("siva_beyaz", 2, 0.92, (g, s) => { g.fillStyle = "#f3f1ec"; g.fillRect(0, 0, s, s); noise(g, s, 10, 1); }),
   siva_krem: () => make("siva_krem", 2, 0.92, (g, s) => { g.fillStyle = "#ece2cf"; g.fillRect(0, 0, s, s); noise(g, s, 12, 2); }),
   siva_gri: () => make("siva_gri", 2, 0.9, (g, s) => { g.fillStyle = "#b9b8b4"; g.fillRect(0, 0, s, s); noise(g, s, 12, 3); }),
@@ -151,6 +151,16 @@ const TEX: Record<Mat | "tile" | "grass" | "paving" | "wood_floor" | "inner", ()
     const n = 10;
     for (let i = 0; i < n; i++) { g.fillStyle = ["#c79b6d", "#b98c5e", "#d1a678"][Math.floor(r() * 3)]; g.fillRect(0, (i * s) / n, s, s / n - 2); }
     noise(g, s, 12, 18);
+  }),
+  seramik: () => make("seramik", 1.2, 0.35, (g, s) => {
+    const r = rng(19);
+    g.fillStyle = "#b9b4ac"; g.fillRect(0, 0, s, s);
+    const n = 2;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      g.fillStyle = ["#e4e0d8", "#dedad1", "#e8e4dc"][Math.floor(r() * 3)];
+      g.fillRect((i * s) / n + 2, (j * s) / n + 2, s / n - 4, s / n - 4);
+    }
+    noise(g, s, 6, 20);
   }),
 };
 
