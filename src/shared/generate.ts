@@ -55,7 +55,7 @@ export function buildUserContent(body: GenerateRequest): Anthropic.Beta.BetaCont
   const notesText = notes || "(Not yazılmadı; programı ekteki görsellerden ve formdan çıkar.)";
   let text: string;
   if (revision) {
-    text = `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın düzeltme isteği:\n<duzeltme>\n${revision}\n</duzeltme>${imgText}\n\nYalnızca istenen değişikliği uygula. İstekle ilgisi olmayan her şeyi (oda adları, alanlar, katlar, imar değerleri, varsayımlar) aynen koru. Değişikliğin yan etkisi varsa (ör. oturum alanı büyümeli) onu da düzelt ve "assumptions" listesine kısa bir not ekle. "requirements" listesini güncelle: düzeltilen maddelerin durumunu yeniden değerlendir.`;
+    text = `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın düzeltme isteği:\n<duzeltme>\n${revision}\n</duzeltme>${imgText}\n\nYalnızca istenen değişikliği uygula. İstekle ilgisi olmayan her şeyi (oda adları, alanlar, katlar, imar değerleri, varsayımlar) aynen koru. Değişikliğin yan etkisi varsa (ör. oturum alanı büyümeli) onu da düzelt ve "assumptions" listesine kısa bir not ekle. İstek arsayla ilgiliyse (eğim, arsanın yol kotunun altında olması, bodrumun açık cephesi) şemadaki karşılığını (site.slope, site.lotBelowRoad, bodrum katı level -1) güncelle; istenen bir şeyi şemada karşılığı olduğu halde "karsilanmadi" diye bırakma. "requirements" listesini güncelle: düzeltilen maddelerin durumunu yeniden değerlendir.`;
   } else if (previous) {
     text = `Mevcut bina programı (JSON):\n${JSON.stringify(previous)}\n\nMimarın yeni/ek notları — programı bunlara göre güncelle:\n<notlar>\n${notesText}\n</notlar>${briefText}${imgText}${prefsText}`;
   } else {
@@ -175,6 +175,7 @@ function sanitize(p: Program): Program {
   p.footprint.depth = clamp(p.footprint.depth, 4, 80);
   p.site.width = Math.max(p.site.width || 0, p.footprint.width + 6);
   p.site.depth = Math.max(p.site.depth || 0, p.footprint.depth + 6);
+  if (p.site.lotBelowRoad != null) p.site.lotBelowRoad = clamp(Number(p.site.lotBelowRoad), 0, 15);
   p.adjacencies = Array.isArray(p.adjacencies) ? p.adjacencies.slice(0, 12) : [];
   p.requirements = Array.isArray(p.requirements) ? p.requirements.slice(0, 60) : [];
   p.unitTypes = Array.isArray(p.unitTypes) ? p.unitTypes.map((u) => ({ ...u, rooms: u.rooms.map((r) => ({ ...r, area: clamp(r.area, 1, 300) })) })) : [];

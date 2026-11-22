@@ -129,6 +129,7 @@ export const ProgramSchema = z.object({
     depth: z.number().describe("Arsa derinliği (m)"),
     orientation: z.string().describe("Cephe yönü / manzara, ör. 'Güney cephe bahçeye bakıyor'"),
     slope: z.number().nullable().optional().describe("Arsa eğimi (%), sokaktan arkaya doğru: arka taraf yükseliyorsa artı, alçalıyorsa eksi; düz ya da bilinmiyorsa 0"),
+    lotBelowRoad: z.number().nullable().optional().describe("Arsa zemini yol (sokak) kotunun kaç metre altında: arsa yoldan aşağıdaysa / çukurdaysa / kazılıp boşaltılmışsa artı (ör. 'arsa yolun 5 m altında' → 5); yolla aynı kottaysa ya da bilinmiyorsa 0"),
   }),
   zoning: z.object({
     taks: z.number().nullable().describe("İmar durumundaki TAKS (taban alanı katsayısı); notlarda yoksa null"),
@@ -197,6 +198,8 @@ export interface DesignOptions {
   massing?: Massing;
   /** Arsa eğimi (%), sokaktan arkaya: artı yükselir, eksi alçalır (programdakini geçersiz kılar) */
   slope?: number;
+  /** Arsa zemini yol kotunun kaç metre altında (programdakini geçersiz kılar) */
+  lotBelowRoad?: number;
   /** Bahçeye havuz ekle (programda havuz yoksa bile) */
   pool?: boolean;
   /** Son uygulanan üslup paketi */
@@ -302,4 +305,10 @@ export function normalizeProgram(w: ProgramWire): Program {
 export function siteSlope(p: { site?: { slope?: number | null }; design?: { slope?: number } | null }): number {
   const v = Number(p.design?.slope ?? p.site?.slope ?? 0);
   return Number.isFinite(v) ? Math.max(-30, Math.min(30, v)) / 100 : 0;
+}
+
+/** Arsa zemininin yol kotundan aşağıda kalan yüksekliği (m, 0-15). 0: arsa yolla aynı kotta. */
+export function lotBelowRoad(p: { site?: { lotBelowRoad?: number | null }; design?: { lotBelowRoad?: number } | null }): number {
+  const v = Number(p.design?.lotBelowRoad ?? p.site?.lotBelowRoad ?? 0);
+  return Number.isFinite(v) ? Math.round(Math.max(0, Math.min(15, v)) * 100) / 100 : 0;
 }
