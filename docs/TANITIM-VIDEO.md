@@ -20,7 +20,7 @@ Videoların çoğu sessiz izlendiği için her sahnede ekran yazısı tek başı
 | 5 | 0:15–0:20 | Kat planı sekmesi: ölçülü plan belirir, mobilyalar ve ölçü zincirleri görünür. Ardından 3 plan alternatifi arasında hızlı geçiş (iki tık). | **Ölçülü kat planı + 3 alternatif** | "Ölçülü kat planı, üç alternatifle." |
 | 6 | 0:20–0:24 | Hızlı kesmeler (her biri ~1 sn): Kesit → Cephe → Vaziyet → İmar kontrolü (TAKS/KAKS yeşil tikler). | **Kesit · Cephe · İmar kontrolü** | "Kesit, dört cephe ve TAKS-KAKS kontrolü aynı anda." |
 | 7 | 0:24–0:29 | 3D sekmesi: model fareyle döndürülür → "Render" düğmesi → fotogerçekçi render ekranı doldurur (videonun "vay" anı; render'ı 1,5 sn tam ekran tutun). | **Müşteriye gerçekçi render** | "Müşterinize göstereceğiniz render da hazır." |
-| 8 | 0:29–0:33 | "AutoCAD'de aç" tıklanır → DXF, katmanlarıyla AutoCAD'de açılır (MN-DUVAR, MN-OLCU katmanları görünsün). | **Tek tıkla AutoCAD'e (DXF)** | "Tek tıkla AutoCAD'de açın, üstüne çizin." |
+| 8 | 0:29–0:33 | "AutoCAD'de aç" tıklanır → DXF, katmanlarıyla AutoCAD'de açılır (A-DUVAR, A-OLCU katmanları ve paftalar görünsün). | **Tek tıkla AutoCAD'e (DXF)** | "Tek tıkla AutoCAD'de açın, üstüne çizin." |
 | 9 | 0:33–0:38 | **Kapanış kartı:** Planhane logosu, alt satırda planhane.com.tr; arka planda 3D model yavaşça dönüyor. | **planhane.com.tr**<br>7 gün ücretsiz · kart gerekmez | "Planhane. Yedi gün ücretsiz deneyin." |
 
 Toplam ≈ 38 sn. 30 sn'lik kısa sürüm için 2. ve 8. sahneleri çıkarın.
