@@ -144,7 +144,7 @@ export function AreasPanel({ program, layout }: { program: Program; layout: Buil
           </tbody>
         </table>
         <ul style={{ margin: "8px 0", paddingLeft: 18, lineHeight: 1.6, fontSize: 14 }}>{st.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
-        <div className="muted small">Kırmızı kesikli çizgiler aks, mavi şeritler kiriş, siyah dikdörtgenler kolon; turuncu kesikli çizgi üst katların oturumudur. Akslar DXF çıktısında MN-AKS ve MN-KOLON katmanlarındadır.</div>
+        <div className="muted small">Kırmızı kesikli çizgiler aks, mavi şeritler kiriş, siyah dikdörtgenler kolon; turuncu kesikli çizgi üst katların oturumudur. Akslar DXF çıktısında A-AKS ve A-KOLON katmanlarındadır.</div>
       </section>
 
       <section className={`card ${hard.length ? "bad" : "good"}`}>

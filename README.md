@@ -23,7 +23,7 @@ Sunucu kodu `cloud/` (hesap, kota, işler, yönetim API'si), tanıtım sitesi ve
 
 - İlk açılışta **Ayarlar** penceresi Claude API anahtarını ister. Anahtar Windows kullanıcı hesabınıza bağlı şifreleme (DPAPI) ile yalnızca bu bilgisayarda saklanır.
 - **AutoCAD'de aç**: planlar, A-A kesiti, 4 cephe ve vaziyet planını tek bir DXF dosyasına yazar, `Belgeler\Planhane\<proje>` klasörüne kaydeder ve DXF ile ilişkili programda (AutoCAD) açar. Birim m / cm / mm seçilebilir (varsayılan cm).
-- DXF katmanları `MN-` önekiyle ayrılır: DUVAR, DUVAR-DOLGU (poşe), PENCERE, KAPI, MERDIVEN, MAHAL, OLCU, KESIT-HATTI, DOSEME, CATI, CEPHE, ARSA, CEKME…
+- DXF AutoCAD 2010 biçimindedir (UTF-8). Katmanlar `A-` önekiyle, renk, çizgi kalınlığı ve çizgi tipiyle tanımlıdır: DUVAR, DUVAR-POSE, PENCERE, KAPI, AKS (aks çizgisi), KOLON, MAHAL, MOBILYA, OLCU, KOT, KESIT-HATTI, DOSEME, TEMEL, ZEMIN-TARAMA, CATI, CEPHE, ARSA, CEKME… Duvar/mahal/kolon kapalı polyline, poşe ve taramalar HATCH, ölçüler gerçek DIMENSION (`PLANHANE-100` ölçü stili). Kapı, pencere, mobilya, kot, kesit oku ve kuzey oku bloktur; mahal etiketi AD/ALAN/KAT nitelikli `MAHAL` bloğudur. Her çizim kendi kağıt düzeninde (A3–A0, 1/100 veya 1/200 kilitli görünüm penceresi, antet, `monochrome.ctb`, DWG To PDF) plot'a hazırdır.
 - **Çizim seti (PDF)**: A3 yatay PDF olarak kaydeder.
 - Sesle yazmak için imleç not alanındayken Windows'un yerleşik sesli yazmasını kullanın: **Win + H**.
 - Uygulama imzasız olduğu için Windows SmartScreen ilk açılışta uyarabilir: "Ek bilgi" → "Yine de çalıştır".
@@ -51,7 +51,7 @@ API anahtarı olmadan da "Örnek görüşmeyi yükle" ile bütün çizimleri ve 
 
 | Çıktı | Biçim |
 |---|---|
-| Kat planları (ölçülü, kapı/pencere, merdiven, mobilya, kesit hattı) | SVG, PNG, DXF (tüm katlar, katmanlı; mobilya MN-MOBILYA katmanında) |
+| Kat planları (ölçülü, kapı/pencere, merdiven, mobilya, kesit hattı) | SVG, PNG, DXF (tüm katlar, katmanlı; mobilya A-MOBILYA katmanında blok) |
 | A-A kesiti (kotlar, döşemeler, çatı) | SVG, PNG |
 | Ön / arka / yan cepheler | SVG, PNG |
 | Vaziyet planı + imar kontrolü | SVG, PNG |
@@ -84,7 +84,7 @@ src/geometry/layout.ts   Programdan deterministik yerleşim (bantlar, odalar, ka
 src/geometry/blocks.ts   Blok / daire tiplerini katlara açar, blok görünümleri
 src/geometry/svg.ts      Plan, kesit, cephe, vaziyet SVG üreticileri
 src/geometry/model3d.ts  Three.js modeli
-src/geometry/dxf.ts      DXF (R12) dışa aktarma
+src/geometry/dxf.ts      DXF (AutoCAD 2010) dışa aktarma; yazıcı: dxfwriter.ts
 src/geometry/zoning.ts   TAKS, KAKS, kat adedi, Hmax, çekme mesafeleri
 src/App.tsx              Arayüz
 ```
