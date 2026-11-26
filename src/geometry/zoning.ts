@@ -173,6 +173,11 @@ export function zoningCheck(p: Program, L: BuildingLayout): ZoningResult {
     const edge = Math.min(...cant.filter((c) => c.side !== "front").map((c) => (c.side === "back" ? actual.rear : actual.side)));
     if (Number.isFinite(edge)) checks.push(chk("Çıkma – parsel sınırı (md. 41)", edge, 3, " m", false));
   }
+  // Otopark Yönetmeliği: konutta her bağımsız bölüm için en az 1 araç (açık otopark ya da kapalı garaj)
+  if (!L.apartment) {
+    const cars = L.parking.reduce((t, q) => t + q.cars, 0) + L.floors.reduce((t, f) => t + f.rooms.filter((r) => r.type === "garaj").length, 0);
+    checks.push({ label: "Otopark (Otopark Yönetmeliği)", value: `${cars} araç`, limit: "≥ 1 araç", ok: cars >= 1 });
+  }
   return { siteArea, footprintArea, grossTotal, taks, kaks, setbacks, building: { x, y }, actual, height, checks };
 }
 

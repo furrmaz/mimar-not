@@ -155,15 +155,27 @@ const WET: RoomType[] = ["banyo", "wc", "camasir"];
 const viaNeighbour = (r: Room) => r.type === "giyinme" || (r.type === "banyo" && /ebeveyn/i.test(r.name));
 /** İkili sütun: ebeveyn süitinin iki hacmi (giyinme + ebeveyn banyosu) ya da biri süit, öbürü holden girilen küçük hacim (süit cephe tarafında kalır, yatak odasına komşu olmalı) */
 const STORE: RoomType[] = ["kiler", "depo", "teknik"];
-const canPair = (a: Room, b: Room) => (viaNeighbour(a) && viaNeighbour(b)) || (STORE.includes(a.type) && (STORE.includes(b.type) || b.type === "camasir")) || (STORE.includes(b.type) && a.type === "camasir");
 const SMALL_OK: RoomType[] = ["banyo", "wc", "camasir", "depo", "kiler", "teknik", "giyinme"];
+/** İkili sütun olabilecek iki küçük hacim: ikisi de ıslak / servis hacmi; biri holden, öbürü komşu mekândan girilir.
+ *  Ebeveyn süiti hacimleri yalnız birbiriyle eşleşir (yatak odasına komşu kalmalı). */
+const canPair = (a: Room, b: Room) =>
+  (viaNeighbour(a) && viaNeighbour(b)) || (STORE.includes(a.type) && (STORE.includes(b.type) || b.type === "camasir")) || (STORE.includes(b.type) && a.type === "camasir")
+  // iki ortak banyo: biri holden, öbürü komşu yatak odasından (süit) girilir
+  || (a.type === "banyo" && b.type === "banyo" && !viaNeighbour(a) && !viaNeighbour(b));
+/** İkili sütunda cephe tarafına geçme önceliği (büyük olan cephede, komşu mekândan girilir; küçük olan holden). */
+const facadeSide = (r: Room) => (viaNeighbour(r) ? 4 : r.type === "banyo" ? 3 : STORE.includes(r.type) ? 2 : r.type === "camasir" ? 1 : 0);
+/** Dar kalan küçük hacmin hol tarafına yerleşebileceği (holle teması olmadan da komşudan girilebilen) büyük mekânlar */
+const HOST_OK: RoomType[] = ["mutfak", "yemek", "salon", "calisma", "ofis", "diger", "magaza"];
 
 export function buildLayout(program: Program, design: DesignOptions = program.design ?? {}): BuildingLayout {
   const L = buildLayoutInner(program, design);
   const s = siteSlope({ site: program.site, design });
   if (s) L.siteSlope = s;
   const drop = lotBelowRoad({ site: program.site, design });
-  if (drop > 0) L.lotBelowRoad = drop;
+  if (drop > 0) {
+    L.lotBelowRoad = drop;
+    addGardenDoor(L);
+  }
   // iç mekân düzenlemesi: oda düzeni aynı kaldıkça mimarın mobilya listesi kullanılır
   const fur = design.furniture;
   if (fur) for (const f of L.floors) {
@@ -176,6 +188,29 @@ export function buildLayout(program: Program, design: DesignOptions = program.de
 /** Yol kotunun altındaki arsada önemli kotlar (zemin kat döşemesi = 0).
  *  road: yol / kaldırım kotu, lot: arsanın genel zemini, grade: binanın çevresindeki bitmiş zemin
  *  (arsa en alt kattan da aşağıdaysa bina en alt kat kotunda bir dolgu terasına oturur). */
+/** Yol kotunun altındaki arsada en alt kat bahçe kotundaysa (bodrum bahçeye açılır) arka cepheye bahçe kapısı.
+ *  Yoksa bahçeye ve havuza evin içinden çıkılamıyordu (bodrumda yalnız pencere vardı). */
+function addGardenDoor(L: BuildingLayout) {
+  const lv = siteLevels(L);
+  const f = L.floors[0];
+  if (!lv.sunken || !f || f.level >= 0 || f.z - lv.grade > 0.65) return;
+  if (f.openings.some((o) => o.exterior && (o.kind === "balconyDoor" || o.kind === "entrance") && o.orient === "h" && near(o.line, L.D))) return;
+  const WETS = ["banyo", "wc", "camasir", "teknik", "depo", "kiler", "merdiven", "hol", "koridor"];
+  const hosts = f.rooms
+    .filter((r) => near(r.rect.y + r.rect.h, L.D) && !WETS.includes(r.type) && r.rect.w >= 1.6)
+    // sinema odası karanlık kalsın: bahçe kapısı önce oyun / spor / oturma gibi mekânlara
+    .sort((a, b) => (/sinema/i.test(a.name) ? 1 : 0) - (/sinema/i.test(b.name) ? 1 : 0) || b.rect.w * b.rect.h - a.rect.w * a.rect.h);
+  const h = hosts[0] ?? f.rooms.filter((r) => near(r.rect.y + r.rect.h, L.D) && r.type === "hol" && r.rect.w >= 1.6)[0];
+  if (!h) return;
+  const w = round2(Math.min(2.0, h.rect.w - 0.6));
+  for (let i = f.openings.length - 1; i >= 0; i--) {
+    const o = f.openings[i];
+    if (o.kind === "window" && o.orient === "h" && near(o.line, L.D) && o.center > h.rect.x && o.center < h.rect.x + h.rect.w) f.openings.splice(i, 1);
+  }
+  f.openings.push({ id: `L${f.level}-bahce`, kind: "balconyDoor", orient: "h", line: L.D, center: round2(h.rect.x + h.rect.w / 2), width: w, sill: 0, head: 2.2, exterior: true, swing: -1 });
+  f.walls = subtractOpenings(f.wallLines, f.openings);
+}
+
 export function siteLevels(L: Pick<BuildingLayout, "floors" | "lotBelowRoad">) {
   const road = -0.3;
   const drop = L.lotBelowRoad ?? 0;
@@ -540,7 +575,9 @@ function placeOutdoors(outdoorRooms: Room[], placed: PlacedRoom[], openings: Ope
   if (outdoor.length && host) {
     const o0 = outdoor[0].rect;
     const lo = Math.max(host.rect.x, o0.x), hi = Math.min(host.rect.x + host.rect.w, o0.x + o0.w);
-    const cxd = hi - lo > 1.2 ? (lo + hi) / 2 : host.rect.x + host.rect.w / 2;
+    // kapı balkonun önünde kalsın (bir kısmı boşluğa açılmasın)
+    const dwB = round2(Math.max(0.9, Math.min(host.type === "salon" ? 2.4 : 1.8, host.rect.w - 0.6, hi - lo - 0.3)));
+    const cxd = hi - lo > 1.2 ? Math.min(hi - 0.15 - dwB / 2, Math.max(lo + 0.15 + dwB / 2, (lo + hi) / 2)) : host.rect.x + host.rect.w / 2;
     // aynı duvardaki pencereyi kaldır, balkon kapısı koy
     for (let i = openings.length - 1; i >= 0; i--) {
       const o = openings[i];
@@ -548,7 +585,7 @@ function placeOutdoors(outdoorRooms: Room[], placed: PlacedRoom[], openings: Ope
     }
     openings.push({
       id: id("bk"), kind: "balconyDoor", orient: "h", line: D, center: round2(cxd),
-      width: round2(Math.min(host.type === "salon" ? 2.4 : 1.8, host.rect.w - 0.6)), sill: 0, head: 2.2, exterior: true, swing: -1,
+      width: dwB, sill: 0, head: 2.2, exterior: true, swing: -1,
     });
   }
   return outdoor;
@@ -575,7 +612,7 @@ function placeBand(
   let rooms = roomsIn;
   const total = rooms.reduce((s, r) => s + r.area, 0);
   const scale = (band.w * band.h) / total;
-  type Col = { rooms: Room[]; area: number };
+  type Col = { rooms: Room[]; area: number; host?: boolean };
   const cols: Col[] = [];
   const minW = 2.2;
   // Dar kalacak küçük hacimleri ikili sütun olabilecek şekilde yan yana getir (ilkinin yerinde)
@@ -616,8 +653,54 @@ function placeBand(
     const take = Math.min(deficit, slackSum);
     widths = widths.map((w, i) => (w < mins[i] ? w + (mins[i] - w) * (take / deficit) : w - (slack[i] * take) / slackSum));
   }
-  const wsum = widths.reduce((s, w) => s + w, 0);
+  let wsum = widths.reduce((s, w) => s + w, 0);
   widths = widths.map((w) => (w * band.w) / wsum);
+  // Asgari genişliğe ulaşamayan ya da çok derin şerit kalan tek küçük hacim: komşu büyük mekânla aynı sütuna,
+  // hol tarafına alınır (büyük mekân cephede kalır, komşusundan girilir). Örn. 0.6 m'lik kiler mutfağın hol tarafına.
+  if (band.h >= 4.5 && !spec?.override) {
+    let guard = 0;
+    for (let i = 0; i < cols.length && guard++ < 40; i++) {
+      const c = cols[i];
+      if (c.rooms.length !== 1 || !SMALL_OK.includes(c.rooms[0].type)) continue;
+      const r = c.rooms[0];
+      // süit hacmi (ebeveyn banyosu / giyinme) yalnız ebeveyn odasının hol tarafına; öbürleri ortak yaşam mekânlarına
+      const canHost = (q: Room) => (viaNeighbour(r) ? q.type === "ebeveyn" : HOST_OK.includes(q.type));
+      const tooNarrow = widths[i] < (MIN_WIDTH[r.type] ?? 1.4) * 0.85;
+      const strip = band.h / Math.max(0.1, widths[i]) > 3.2;
+      if (!tooNarrow && !strip) continue;
+      const cand = [i - 1, i + 1]
+        .filter((k) => k >= 0 && k < cols.length && cols[k].rooms.length === 1 && canHost(cols[k].rooms[0]))
+        .sort((p, q) => (cols[q].rooms[0].type === "mutfak" && r.type === "kiler" ? 1 : 0) - (cols[p].rooms[0].type === "mutfak" && r.type === "kiler" ? 1 : 0) || widths[q] - widths[p]);
+      if (!cand.length) {
+        // komşusu uygun değilse en yakın uygun mekânın yanına taşı (sütun sırası değişir)
+        const j = cols.findIndex((q, k) => k !== i && q.rooms.length === 1 && canHost(q.rooms[0]));
+        if (j < 0) continue;
+        const [mc] = cols.splice(i, 1), [mw] = widths.splice(i, 1), [mm] = mins.splice(i, 1);
+        const at = j > i ? j : j + 1; // j'nin hemen ardı (i çıkarıldıktan sonra)
+        cols.splice(at, 0, mc); widths.splice(at, 0, mw); mins.splice(at, 0, mm);
+        i = -1; // baştan tara
+        continue;
+      }
+      const k = cand[0];
+      const host = cols[k].rooms[0];
+      // büyük mekâna holden bir geçiş (≥ 1 m) kalmalı; kalmıyorsa birleştirme (büyük mekân ıslak hacimden girilmesin)
+      {
+        const mw = MIN_WIDTH[r.type] ?? 1.4;
+        const hs0 = Math.min(band.h - 3.2, Math.max(1.5, Math.min(2.4, r.area / mw)));
+        const ws0 = Math.max(mw, r.area / hs0);
+        if (widths[i] + widths[k] - ws0 < 1.05) continue;
+      }
+      const merged: Col = { rooms: [r, host], area: r.area + host.area, host: true };
+      const nw = widths[i] + widths[k];
+      const lo = Math.min(i, k);
+      cols.splice(lo, 2, merged);
+      widths.splice(lo, 2, nw);
+      mins.splice(lo, 2, Math.max(mins[i], mins[k]));
+      i = lo;
+    }
+    wsum = widths.reduce((s, w) => s + w, 0);
+    widths = widths.map((w) => (w * band.w) / wsum);
+  }
   // Mimarın sürükleyerek verdiği sınırlar (sütun sayısı tutuyorsa)
   const ov = spec?.override;
   if (ov && ov.length === cols.length - 1) {
@@ -636,14 +719,30 @@ function placeBand(
       // Hole bakan tarafa kendi kapısı holden açılacak oda gelsin; süit odaları (ebeveyn banyosu, giyinme) içeride kalır
       const ensuite = (r: Room) => r.type === "giyinme" || (r.type === "banyo" && /ebeveyn/i.test(r.name));
       const [r0, r1] = c.rooms;
-      const [a, b] =
-        viaNeighbour(r0) && !viaNeighbour(r1) ? [r1, r0]
-        : viaNeighbour(r1) && !viaNeighbour(r0) ? [r0, r1]
-        : r0.type === "camasir" ? [r0, r1] : r1.type === "camasir" ? [r1, r0]
-        : ensuite(r0) && !ensuite(r1) ? [r1, r0] : [r0, r1];
+      const [a, b] = c.host
+        ? [r0, r1] // dar küçük hacim hol tarafında, büyük mekân cephede
+        : facadeSide(r0) > facadeSide(r1) ? [r1, r0]
+        : facadeSide(r1) > facadeSide(r0) ? [r0, r1]
+        : ensuite(r0) && !ensuite(r1) ? [r1, r0] : r0.area > r1.area ? [r1, r0] : [r0, r1];
+      const hallSideTop = near(hallEdgeY, band.y); // arka bant: hol kenarı üstte (y küçük)
+      if (c.host) {
+        // hol tarafı şeridi: küçük hacim + (yer kalırsa) büyük mekâna holden geçiş; büyük mekân cephe tarafında tam genişlik
+        const minW = MIN_WIDTH[a.type] ?? 1.4;
+        let hs = round2(Math.min(band.h - 3.2, Math.max(1.5, Math.min(2.4, a.area / minW))));
+        let ws = round2(Math.min(w, Math.max(minW, a.area / hs)));
+        if (w - ws < 1.0) ws = w;
+        else hs = round2(Math.min(band.h - 3.2, Math.max(1.5, a.area / ws)));
+        const sy = hallSideTop ? band.y : band.y + band.h - hs;
+        const by = hallSideTop ? band.y + hs : band.y;
+        out.push(mk(a, { x, y: sy, w: ws, h: hs }));
+        if (ws < w) out.push({ id: id("koridor"), name: `Geçiş (${b.name})`, type: "koridor", zone: "sirkulasyon", requestedArea: 0, rect: { x: round2(x + ws), y: sy, w: round2(w - ws), h: hs }, band: bandName });
+        out.push(mk(b, { x, y: by, w, h: round2(band.h - hs) }));
+        x = round2(x + w);
+        if (ci < cols.length - 1) bounds.push(x);
+        return;
+      }
       const ha = round2(Math.min(band.h - 1.2, Math.max(1.2, (band.h * a.area) / c.area)));
       // a hole bakan tarafta
-      const hallSideTop = near(hallEdgeY, band.y); // arka bant: hol kenarı üstte (y küçük)
       if (hallSideTop) {
         out.push(mk(a, { x, y: band.y, w, h: ha }));
         out.push(mk(b, { x, y: band.y + ha, w, h: band.h - ha }));
@@ -705,15 +804,21 @@ function makeOpenings(rooms: PlacedRoom[], ctx: Ctx, id: (p: string) => string):
     });
     doored.add(r.id);
   }
-  // 2) Holle teması olmayan odalar: en uygun komşuya kapı
+  // 2) Holle teması olmayan odalar: en uygun komşuya kapı. Önce ulaşılabilir (kapısı olan) komşusu olanlar,
+  //    böylece iki odanın yalnız birbirine açılıp ikisinin de kapalı kalması önlenir; en son kalanlar herhangi komşuya.
+  for (let pass = 0; pass < banded.length + 1; pass++) {
+  const last = pass === banded.length;
+  let progressed = false;
   for (const r of banded) {
     if (doored.has(r.id) || r.type === "garaj") continue;
     const neighbours = banded
-      .filter((n) => n.id !== r.id)
+      .filter((n) => n.id !== r.id && (last || doored.has(n.id)))
       .map((n) => ({ n, e: sharedEdge(r.rect, n.rect) }))
       .filter((x) => x.e && x.e.len >= doorWidth(r) + 0.2) as { n: PlacedRoom; e: SharedEdge }[];
     if (!neighbours.length) continue;
+    progressed = true;
     const pref = (n: PlacedRoom) => {
+      if (n.type === "koridor" && n.name.startsWith("Geçiş")) return -1;
       const bed = n.type === "ebeveyn" || n.type === "yatak" || n.type === "cocuk" || n.type === "misafir";
       if (r.type === "giyinme" || (r.type === "banyo" && /ebeveyn/i.test(r.name))) return n.type === "ebeveyn" ? 0 : bed ? 1 : doored.has(n.id) ? 2 : 3;
       if (WET.includes(r.type as RoomType)) return WET.includes(n.type as RoomType) ? 5 : bed ? 4 : doored.has(n.id) ? 1 : 2;
@@ -731,6 +836,9 @@ function makeOpenings(rooms: PlacedRoom[], ctx: Ctx, id: (p: string) => string):
       exterior: false, swing: e.orient === "h" ? (r.rect.y < e.line ? -1 : 1) : r.rect.x < e.line ? -1 : 1,
     });
     doored.add(r.id);
+  }
+  if (last) break;
+  if (!progressed) pass = banded.length - 1;
   }
 
   // 3) Pencereler (dış cephe kenarları)
@@ -752,6 +860,8 @@ function makeOpenings(rooms: PlacedRoom[], ctx: Ctx, id: (p: string) => string):
     const primary = edges.length;
     if (near(r.rect.x, 0)) edges.push({ orient: "v", line: 0, a: r.rect.y, b: r.rect.y + r.rect.h, swing: 1 });
     if (near(r.rect.x + r.rect.w, W)) edges.push({ orient: "v", line: W, a: r.rect.y, b: r.rect.y + r.rect.h, swing: -1 });
+    const first = ops.length;
+    const edgeLen: number[] = [];
     edges.forEach((e, i) => {
       const len = e.b - e.a;
       if (len < (r.type === "antre" ? 1.1 : 1.2)) return;
@@ -770,7 +880,20 @@ function makeOpenings(rooms: PlacedRoom[], ctx: Ctx, id: (p: string) => string):
         return;
       }
       ops.push({ id: id("p"), kind: "window", orient: e.orient, line: e.line, center: (e.a + e.b) / 2, width: round2(spec.w), sill: spec.sill, head: spec.head, exterior: true, swing: e.swing });
+      edgeLen[ops.length - 1] = len;
     });
+    // Yaşama mahallerinde pencere alanı döşeme alanının en az 1/8'i (gün ışığı ve havalandırma)
+    if (!isWet && r.type !== "koridor" && r.type !== "antre" && r.type !== "garaj") {
+      const wins = ops.slice(first).map((o, k) => ({ o, len: edgeLen[first + k] })).filter((x) => x.o.kind === "window" && x.len);
+      const need = (r.rect.w * r.rect.h) / 8;
+      const have = () => wins.reduce((t, x) => t + x.o.width * (x.o.head - x.o.sill), 0);
+      for (let it = 0; it < 6 && wins.length && have() < need - 1e-3; it++) {
+        const k = need / Math.max(0.01, have());
+        for (const x of wins) x.o.width = round2(Math.min(x.len - 0.5, x.o.width * k));
+        // genişlik yetmiyorsa denizliği indir (en çok 0.6 m'ye)
+        if (have() < need - 1e-3) for (const x of wins) if (x.o.sill > 0.6) x.o.sill = 0.6;
+      }
+    }
   }
 
   // 4) Giriş kapısı: antre yoksa hol bandının sağ cephesinden
@@ -1319,12 +1442,53 @@ function houseLayout(program: Program, design: DesignOptions): BuildingLayout | 
   const hallBand = { y: frontDepth, h: hallDepth };
   let stair: Rect | null = null;
   let stairInfo: StairInfo | undefined;
+  let stairNicheRect: Rect | null = null;
   if (sc) {
     const by = stairBand === "back" ? hallBand.y + hallBand.h : 0;
     const bh = stairBand === "back" ? round2(D - by) : frontDepth;
-    stair = { x: 0, y: by, w: sc.width, h: bh };
-    stairInfo = { axis: "y", sign: stairBand === "back" ? 1 : -1, risers: sc.risers, riser: sc.riser, tread: sc.tread, flightW: sc.flightW, landing: round2(bh - sc.run) };
+    // Merdiven yalnız kollar + sahanlık kadar yer tutar; bandın kalan derinliği (cephe tarafı) bir mekâna verilir.
+    // Eskiden merdiven odası bandın tamamını kaplıyor, sahanlık 5-6 m'ye uzuyordu (her katta 10-12 m² boşa).
+    const spare = round2(bh - sc.len);
+    // kütle oyuntusu / konsol bant derinliğini değiştiriyorsa merdiven eski düzende (bandın tamamı) kalır
+    const reshapes = mspec.features.some((f) => ["on_konsol", "arka_konsol", "kaydirilmis_kutu", "yan_konsol", "kose_oyugu", "ust_kat_teras", "cekme_kat", "galeri"].includes(f));
+    const compact = spare >= 1.8 && !reshapes;
+    const sh = compact ? sc.len : bh;
+    const sy = stairBand === "back" ? by : round2(bh - sh);
+    stair = { x: 0, y: sy, w: sc.width, h: sh };
+    stairInfo = { axis: "y", sign: stairBand === "back" ? 1 : -1, risers: sc.risers, riser: sc.riser, tread: sc.tread, flightW: sc.flightW, landing: round2(sh - sc.run) };
+    if (compact) stairNicheRect = { x: 0, y: stairBand === "back" ? round2(by + sh) : 0, w: sc.width, h: spare };
   }
+  // Merdiven arkasındaki cep: her katta cebe komşu olacak mekâna uygun küçük hacim buraya alınır
+  // (mutfak yanında kiler, ebeveyn odası yanında giyinme, ortak mekân yanında depo / WC); uygun yoksa gömme dolap / depo
+  const niches: (Room | null)[] = assignments.map((a, i) => {
+    if (!stairNicheRect) return null;
+    const band = stairBand === "back" ? a.back : a.front;
+    const other = stairBand === "back" ? a.front : a.back;
+    const na = stairNicheRect.w * stairNicheRect.h;
+    const BED: RoomType[] = ["ebeveyn", "yatak", "cocuk", "misafir"];
+    const score = (r: Room, nb: Room | undefined) => {
+      const t = nb?.type;
+      if (t && BED.includes(t)) return r.type === "giyinme" && t === "ebeveyn" ? 0 : r.type === "depo" ? 3 : 99;
+      if (viaNeighbour(r)) return 99;
+      if (t === "mutfak") return r.type === "kiler" ? 0 : STORE.includes(r.type) ? 2 : r.type === "camasir" ? 3 : 99;
+      if (t && WET.includes(t)) return STORE.includes(r.type) ? 4 : 99;
+      return r.type === "kiler" || r.type === "depo" ? 1 : r.type === "teknik" ? 2 : r.type === "wc" ? 3 : r.type === "camasir" ? 4 : 99;
+    };
+    let best: { r: Room; src: Room[]; v: number } | null = null;
+    for (const src of [band, other]) {
+      for (const r of src) {
+        if (!SMALL_OK.includes(r.type) || src.length < 2) continue;
+        const nb = (src === band ? band.filter((q) => q !== r) : band)[0];
+        const v = score(r, nb) + Math.abs(r.area - na) / Math.max(1, na) * 0.5 + (src === band ? 0 : 0.5);
+        if (v < 50 && (!best || v < best.v)) best = { r, src, v };
+      }
+    }
+    if (best) { best.src.splice(best.src.indexOf(best.r), 1); return best.r; }
+    const nb = band[0];
+    const bed = nb && BED.includes(nb.type);
+    return { name: program.floors[i].level < 0 ? "Depo" : bed ? "Gömme Dolap" : "Depo", type: "depo", zone: "servis", area: round2(na), note: "" } as Room;
+  });
+
 
   // Sütunlar asgari genişliklerine sığmıyorsa küçük hacimleri öbür banda taşı
   assignments.forEach((a, i) => {
@@ -1382,7 +1546,7 @@ function houseLayout(program: Program, design: DesignOptions): BuildingLayout | 
 
   const floors = program.floors.map((f, i) =>
     houseFloor(f.level, f.name, assignments[i], ends[i], {
-      W, D, hallBand, stair, stairBand, isGround: f.level === groundLevelOf(program), H, cols: design.cols ?? {}, windowStyle: program.facade?.windowStyle,
+      W, D, hallBand, stair, stairBand, niche: stairNicheRect && niches[i] ? { rect: stairNicheRect, room: niches[i]! } : null, isGround: f.level === groundLevelOf(program), H, cols: design.cols ?? {}, windowStyle: program.facade?.windowStyle,
       adj: adj.filter((a) => hasRoom(f.rooms, a.a) && hasRoom(f.rooms, a.b)),
     }),
   );
@@ -1397,7 +1561,7 @@ function houseLayout(program: Program, design: DesignOptions): BuildingLayout | 
   };
 }
 
-interface HouseCtx extends Ctx { stairBand: "front" | "back"; adj: Adjacency[] }
+interface HouseCtx extends Ctx { stairBand: "front" | "back"; adj: Adjacency[]; niche?: { rect: Rect; room: Room } | null }
 
 function houseFloor(level: number, name: string, asg: Assignment, end: { room: Room; w: number } | null, ctx: HouseCtx): FloorLayout {
   const { W, D, hallBand, stair, stairBand } = ctx;
@@ -1435,6 +1599,10 @@ function houseFloor(level: number, name: string, asg: Assignment, end: { room: R
   };
   placed.push(hall);
   if (stair) placed.push({ id: id("mrd"), name: "Merdiven", type: "merdiven", zone: "sirkulasyon", requestedArea: 0, rect: { ...stair }, band: "hall" });
+  if (ctx.niche) {
+    const r = ctx.niche.room;
+    placed.push({ id: id(r.type), name: r.name, type: r.type, zone: r.zone, requestedArea: r.area, rect: { ...ctx.niche.rect }, band: stairBand });
+  }
 
   const openings = makeOpenings(placed, ctx, id);
 
@@ -1443,6 +1611,14 @@ function houseFloor(level: number, name: string, asg: Assignment, end: { room: R
   if (stair) {
     const e = sharedEdge(stair, hall.rect);
     if (e) openEdges.push(e);
+  }
+  // Geçiş (dar küçük hacmin yanındaki hol tarafı şeridi) bağlı olduğu mekânla tek hacim: aradaki duvar yok
+  for (const g of placed.filter((p) => p.type === "koridor" && p.name.startsWith("Geçiş"))) {
+    for (const p of placed) {
+      if (p === g || p.band === "hall" || !g.name.includes(p.name)) continue;
+      const e = sharedEdge(g.rect, p.rect);
+      if (e) openEdges.push(e);
+    }
   }
   const salon = placed.find((p) => p.type === "salon" && p.band !== "hall");
   if (salon) {
@@ -1462,6 +1638,18 @@ function houseFloor(level: number, name: string, asg: Assignment, end: { room: R
     if (openEdges.some((e) => e.orient === o.orient && near(e.line, o.line) && o.center > e.a && o.center < e.b)) openings.splice(i, 1);
   }
   // açık mutfağın hole de kapısı yoksa (yalnız salondan giriliyor) sorun değil
+  // Mutfak ile yemek alanı komşuysa aralarında mutlaka geçiş olsun (yemek servisi holden dolaşmasın)
+  for (const k of placed.filter((p) => p.type === "mutfak")) {
+    for (const y of placed.filter((p) => p.type === "yemek")) {
+      const e = sharedEdge(k.rect, y.rect);
+      if (!e || e.len < 1.2) continue;
+      if (openEdges.some((o) => o.orient === e.orient && near(o.line, e.line) && o.a < e.b && o.b > e.a)) continue;
+      const has = openings.some((o) => !o.exterior && o.orient === e.orient && near(o.line, e.line) && o.center > e.a && o.center < e.b);
+      if (has) continue;
+      const w = round2(Math.min(1.6, e.len - 0.4));
+      openings.push({ id: id("gc"), kind: "passage", orient: e.orient, line: e.line, center: round2(e.a + 0.2 + w / 2), width: w, sill: 0, head: 2.2, exterior: false, swing: 1 });
+    }
+  }
 
   const outdoor = placeOutdoors(asg.outdoorRooms, placed, openings, W, D, id);
 

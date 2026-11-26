@@ -62,6 +62,8 @@ jobs:
         run: npm run test:cloud
       - name: Yol altındaki arsa / bodrum regresyon testi
         run: npm run test:site
+      - name: Mimari denetim testi (bahçe çıkışı, korkuluk, şerit oda, merdiven)
+        run: npm run test:villa
       - name: Web paketini derle ve Android'e aktar
         run: npm run android:sync
       # Depo sırlarında kendi imza anahtarınız yoksa, ilk derlemede bir anahtar üretilir ve

@@ -56,6 +56,14 @@ const BASE = {
   furn: new THREE.MeshStandardMaterial({ color: 0xb08a63, roughness: 0.8 }),
   rail: new THREE.MeshStandardMaterial({ color: 0x2f3033, roughness: 0.4, metalness: 0.6 }),
 };
+/** Korkuluk yüksekliği: Planlı Alanlar İmar Yönetmeliği balkon, teras, galeri ve merdiven boşluğu korkulukları için en az 1.10 m */
+export const RAIL_H = 1.1;
+/** Bitmiş döşeme dış zeminden bu kadar yüksekse düşme tehlikesi var: korkuluk ve taşıyıcı gerekir */
+const DROP = 0.6;
+/** Katın dışındaki bitmiş zemin (yol altı arsada arsa / teras kotu, düz arsada yol kotu) */
+function outsideGround(L: BuildingLayout) {
+  return siteLevels(L).grade;
+}
 let mats: typeof BASE & { gable?: THREE.Material; accent?: THREE.Material } = { ...BASE };
 let fac: Facade = normalizeFacade(undefined);
 
@@ -239,12 +247,28 @@ function addFacadeDetails(root: THREE.Group, L: BuildingLayout, visible: FloorLa
       g.add(box(w, 0.18, 0.1, wood, x0 + w / 2, top, y0 + dp - 0.08));
       g.add(box(w, 0.18, 0.1, wood, x0 + w / 2, top, y0 + 0.06));
       for (let x = x0 + 0.15; x <= x0 + w - 0.1; x += 0.45) g.add(box(0.07, 0.14, dp + 0.4, wood, x, top + 0.16, y0 + dp / 2));
-      g.add(box(w, 0.06, dp, mats.slab, x0 + w / 2, ground.z - L.slab + 0.03, y0 + dp / 2, "Veranda"));
+      const gy = outsideGround(L);
+      if (ground.z - gy > DROP) {
+        // dış zemin aşağıda (yol altı arsa): veranda havada bir teras olur; döşeme, korkuluk ve zemine inen dikmeler
+        g.add(box(w, 0.18, dp, mats.slab, x0 + w / 2, ground.z - 0.1, y0 + dp / 2, "Veranda"));
+        const ph = RAIL_H - 0.05, z1 = y0 + dp;
+        g.add(box(w, ph, 0.03, mats.glass, x0 + w / 2, ground.z + ph / 2, z1));
+        g.add(box(w, 0.05, 0.06, mats.rail, x0 + w / 2, ground.z + RAIL_H - 0.025, z1, "Korkuluk"));
+        for (const x of [x0, x0 + w]) {
+          g.add(box(0.03, ph, dp, mats.glass, x, ground.z + ph / 2, y0 + dp / 2));
+          g.add(box(0.06, 0.05, dp, mats.rail, x, ground.z + RAIL_H - 0.025, y0 + dp / 2));
+        }
+        const ch = ground.z - 0.19 - gy;
+        for (const x of [x0 + 0.08, x0 + w - 0.08]) g.add(box(0.25, ch, 0.25, mats.slab, x, gy + ch / 2, z1 - 0.15, "Veranda taşıyıcısı"));
+      } else g.add(box(w, 0.06, dp, mats.slab, x0 + w / 2, ground.z - L.slab + 0.03, y0 + dp / 2, "Veranda"));
     }
   }
   if (det.has("cati_feneri") && withRoof && L.roof === "duz" && L.stair) {
     const st = L.stair, top = L.totalHeight;
     const w = Math.min(st.w, 1.8), d = Math.min(st.h, 2.4);
+    // döşemede boşluk bırakılır (buildRoof), çevresinde 15 cm su basmanı
+    for (const [cw, cd, cx, cz] of [[w + 0.3, 0.15, st.x + st.w / 2, st.y + st.h / 2 - d / 2 - 0.075], [w + 0.3, 0.15, st.x + st.w / 2, st.y + st.h / 2 + d / 2 + 0.075], [0.15, d, st.x + st.w / 2 - w / 2 - 0.075, st.y + st.h / 2], [0.15, d, st.x + st.w / 2 + w / 2 + 0.075, st.y + st.h / 2]] as const)
+      g.add(box(cw, 0.15, cd, mats.slab, cx, top + 0.075, cz));
     g.add(box(w, 0.7, d, mats.glass, st.x + st.w / 2, top + 0.35, st.y + st.h / 2, "Çatı feneri"));
     g.add(box(w + 0.1, 0.06, d + 0.1, mats.frame, st.x + st.w / 2, top + 0.73, st.y + st.h / 2));
   }
@@ -300,8 +324,17 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
     const dy = groundAt(L, site, q.x + q.w / 2, q.y + q.h / 2) + 0.3;
     const pg = new THREE.Group();
     pg.name = "Havuz";
-    pg.add(box(q.w + 2 * dk, 0.08, q.h + 2 * dk, opts.realistic ? texturedMaterial("paving") : mats.slab, q.x + q.w / 2, -0.27 + dy, q.y + q.h / 2, "Veranda"));
-    pg.add(box(q.w, 0.1, q.h, new THREE.MeshPhysicalMaterial({ color: 0x3fa7cf, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.88 }), q.x + q.w / 2, -0.24 + dy, q.y + q.h / 2, "Su"));
+    const deck = opts.realistic ? texturedMaterial("paving") : mats.slab;
+    const gy = dy - 0.3; // havuzun çevresindeki bitmiş zemin
+    // havuz başı (deck) çerçeve olarak: ortası boş, su yüzeyi kenar taşının altında (eskiden su deck'in üstünde kalıyordu)
+    const cx = q.x + q.w / 2, cz = q.y + q.h / 2;
+    for (const [w, d, x, z] of [[q.w + 2 * dk, dk, cx, q.y - dk / 2], [q.w + 2 * dk, dk, cx, q.y + q.h + dk / 2], [dk, q.h, q.x - dk / 2, cz], [dk, q.h, q.x + q.w + dk / 2, cz]] as const)
+      pg.add(box(w, 0.08, d, deck, x, gy + 0.04, z, "Veranda"));
+    // havuz kenar taşı (30 cm) ve iç yüzeyler
+    const rim = 0.3;
+    for (const [w, d, x, z] of [[q.w, rim, cx, q.y + rim / 2], [q.w, rim, cx, q.y + q.h - rim / 2], [rim, q.h - 2 * rim, q.x + rim / 2, cz], [rim, q.h - 2 * rim, q.x + q.w - rim / 2, cz]] as const)
+      pg.add(box(w, 0.12, d, mats.slab, x, gy + 0.06, z, "Havuz kenarı"));
+    pg.add(box(q.w - 2 * rim, 0.02, q.h - 2 * rim, new THREE.MeshPhysicalMaterial({ color: 0x3fa7cf, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.88 }), cx, gy + 0.03, cz, "Su"));
     root.add(pg);
   }
 
@@ -353,8 +386,8 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
   }
   for (const rl of f.rails ?? []) {
     const len = rl.b - rl.a, mid = (rl.a + rl.b) / 2;
-    grp.add(rl.orient === "h" ? box(len, 1.0, 0.03, mats.glass, mid, z0 + 0.5, rl.line) : box(0.03, 1.0, len, mats.glass, rl.line, z0 + 0.5, mid));
-    grp.add(rl.orient === "h" ? box(len, 0.05, 0.06, mats.rail, mid, z0 + 1.03, rl.line) : box(0.06, 0.05, len, mats.rail, rl.line, z0 + 1.03, mid));
+    grp.add(rl.orient === "h" ? box(len, RAIL_H - 0.05, 0.03, mats.glass, mid, z0 + (RAIL_H - 0.05) / 2, rl.line) : box(0.03, RAIL_H - 0.05, len, mats.glass, rl.line, z0 + (RAIL_H - 0.05) / 2, mid));
+    grp.add(rl.orient === "h" ? box(len, 0.05, 0.06, mats.rail, mid, z0 + RAIL_H - 0.025, rl.line) : box(0.06, 0.05, len, mats.rail, rl.line, z0 + RAIL_H - 0.025, mid));
   }
   for (const r of f.rooms) {
     if (r.void) continue;
@@ -419,10 +452,10 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
         const at = sd === "front" ? r.y : sd === "back" ? r.y + r.h : sd === "left" ? r.x : r.x + r.w;
         const len = hz ? r.w : r.h, mid = hz ? r.x + r.w / 2 : r.y + r.h / 2;
         const put = (l: number, h: number, d: number, m: THREE.Material, y: number) => (hz ? box(l, h, d, m, mid, y, at) : box(d, h, l, m, at, y, mid));
-        if (fac.balconyRail === "dolu") grp.add(put(len, 1.05, 0.15, mats.wall, z0 + 0.52));
+        if (fac.balconyRail === "dolu") grp.add(put(len, RAIL_H, 0.15, mats.wall, z0 + RAIL_H / 2));
         else {
-          grp.add(put(len, 1.0, 0.03, mats.glass, z0 + 0.5));
-          grp.add(put(len, 0.05, 0.06, mats.rail, z0 + 1.05));
+          grp.add(put(len, RAIL_H - 0.05, 0.03, mats.glass, z0 + (RAIL_H - 0.05) / 2));
+          grp.add(put(len, 0.05, 0.06, mats.rail, z0 + RAIL_H - 0.025));
         }
       }
       continue;
@@ -432,30 +465,39 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
       grp.add(box(r.w, 0.04, r.h, mats.slab, r.x + r.w / 2, z0 + 0.02 - L.slab, r.y + r.h / 2, o.name));
       continue;
     }
-    if (f.z <= 0) {
+    // zemin kat balkonu ancak dış zemine oturuyorsa teras döşemesidir; yol altı arsada olduğu gibi zemin
+    // aşağıdaysa havada kalan bir balkondur: döşeme + korkuluk + zemine inen taşıyıcılar
+    const fall = z0 - outsideGround(L);
+    if (f.z <= 0 && fall <= DROP) {
       grp.add(box(r.w, 0.12, r.h, mats.slab, r.x + r.w / 2, z0 - 0.24, r.y + r.h / 2, o.name));
       continue;
     }
     grp.add(box(r.w, 0.18, r.h, mats.slab, r.x + r.w / 2, z0 - 0.09, r.y + r.h / 2, o.name));
     const edge = r.y < 0 ? r.y : r.y + r.h; // dış kenar
+    if (f.z <= 0) {
+      const gy = outsideGround(L), ch = z0 - 0.18 - gy;
+      for (const x of [r.x + 0.15, r.x + r.w - 0.15]) grp.add(box(0.25, ch, 0.25, mats.slab, x, gy + ch / 2, edge - Math.sign(edge - r.y - r.h / 2) * 0.15, "Balkon taşıyıcısı"));
+    }
     if (fac.balconyRail === "dolu") {
       // dolu parapet (cephe malzemesi)
-      grp.add(box(r.w, 1.05, 0.15, mats.wall, r.x + r.w / 2, z0 + 0.52, edge));
-      grp.add(box(0.15, 1.05, r.h, mats.wall, r.x, z0 + 0.52, r.y + r.h / 2));
-      grp.add(box(0.15, 1.05, r.h, mats.wall, r.x + r.w, z0 + 0.52, r.y + r.h / 2));
+      grp.add(box(r.w, RAIL_H, 0.15, mats.wall, r.x + r.w / 2, z0 + RAIL_H / 2, edge, "Korkuluk"));
+      grp.add(box(0.15, RAIL_H, r.h, mats.wall, r.x, z0 + RAIL_H / 2, r.y + r.h / 2));
+      grp.add(box(0.15, RAIL_H, r.h, mats.wall, r.x + r.w, z0 + RAIL_H / 2, r.y + r.h / 2));
     } else if (fac.balconyRail === "metal") {
       // ince metal dikmeler + küpeşte
-      for (let x = r.x + 0.06; x <= r.x + r.w; x += 0.12) grp.add(box(0.018, 1.0, 0.018, mats.rail, x, z0 + 0.5, edge));
-      for (const sx of [r.x, r.x + r.w]) for (let y = r.y + 0.12; y < r.y + r.h; y += 0.12) grp.add(box(0.018, 1.0, 0.018, mats.rail, sx, z0 + 0.5, y));
-      grp.add(box(r.w, 0.05, 0.05, mats.rail, r.x + r.w / 2, z0 + 1.03, edge));
-      grp.add(box(0.05, 0.05, r.h, mats.rail, r.x, z0 + 1.03, r.y + r.h / 2));
-      grp.add(box(0.05, 0.05, r.h, mats.rail, r.x + r.w, z0 + 1.03, r.y + r.h / 2));
+      const ph = RAIL_H - 0.05;
+      for (let x = r.x + 0.06; x <= r.x + r.w; x += 0.12) grp.add(box(0.018, ph, 0.018, mats.rail, x, z0 + ph / 2, edge));
+      for (const sx of [r.x, r.x + r.w]) for (let y = r.y + 0.12; y < r.y + r.h; y += 0.12) grp.add(box(0.018, ph, 0.018, mats.rail, sx, z0 + ph / 2, y));
+      grp.add(box(r.w, 0.05, 0.05, mats.rail, r.x + r.w / 2, z0 + RAIL_H - 0.025, edge, "Korkuluk"));
+      grp.add(box(0.05, 0.05, r.h, mats.rail, r.x, z0 + RAIL_H - 0.025, r.y + r.h / 2));
+      grp.add(box(0.05, 0.05, r.h, mats.rail, r.x + r.w, z0 + RAIL_H - 0.025, r.y + r.h / 2));
     } else {
       // cam korkuluk
-      grp.add(box(r.w, 1.0, 0.03, mats.glass, r.x + r.w / 2, z0 + 0.5, edge));
-      grp.add(box(0.03, 1.0, r.h, mats.glass, r.x, z0 + 0.5, r.y + r.h / 2));
-      grp.add(box(0.03, 1.0, r.h, mats.glass, r.x + r.w, z0 + 0.5, r.y + r.h / 2));
-      grp.add(box(r.w, 0.05, 0.06, mats.rail, r.x + r.w / 2, z0 + 1.05, edge));
+      const ph = RAIL_H - 0.05;
+      grp.add(box(r.w, ph, 0.03, mats.glass, r.x + r.w / 2, z0 + ph / 2, edge));
+      grp.add(box(0.03, ph, r.h, mats.glass, r.x, z0 + ph / 2, r.y + r.h / 2));
+      grp.add(box(0.03, ph, r.h, mats.glass, r.x + r.w, z0 + ph / 2, r.y + r.h / 2));
+      grp.add(box(r.w, 0.05, 0.06, mats.rail, r.x + r.w / 2, z0 + RAIL_H - 0.025, edge, "Korkuluk"));
     }
   }
 }
@@ -490,6 +532,13 @@ function addOpening(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, o: Open
     grp.add(place(o.width, 0.05, t * 0.6, mats.frame, z0 + o.sill + 0.025));
     grp.add(place(o.width, 0.05, t * 0.6, mats.frame, z0 + head - 0.025));
     if (o.width > 1.2) grp.add(place(0.05, h, t * 0.6, mats.frame, z0 + o.sill + h / 2));
+    // alçak denizlikli / yere kadar pencere düşme yüksekliğindeyse önünde 1.10 m cam korkuluk (Fransız balkon)
+    if (o.kind === "window" && o.exterior && o.sill < RAIL_H - 0.2 && z0 - outsideGround(L) > DROP) {
+      const out = o.orient === "h" ? (o.line < L.D / 2 ? -1 : 1) : o.line < L.W / 2 ? -1 : 1;
+      const off = out * (t / 2 + 0.04);
+      grp.add(place(o.width, RAIL_H - 0.05, 0.02, mats.glass, z0 + (RAIL_H - 0.05) / 2, off));
+      grp.add(place(o.width, 0.05, 0.05, mats.rail, z0 + RAIL_H - 0.025, off));
+    }
   } else if (o.kind === "entrance") {
     const m = place(o.width, h, 0.06, o.width > 2 ? mats.frame : mats.door, z0 + h / 2);
     grp.add(m);
@@ -513,17 +562,38 @@ function addStairRail(grp: THREE.Group, L: BuildingLayout, z0: number) {
   // en üst katta merdiven boşluğunun hole bakan kenarında cam korkuluk
   // yalnız 1. kolun (aşağı inen boşluğun) önünde; 2. koldan kata çıkılır
   const fw = info.flightW;
-  if (info.axis === "x") grp.add(box(0.04, 1.0, fw, mats.glass, st.x + (info.sign === -1 ? st.w : 0), z0 + 0.5, st.y + fw / 2));
-  else grp.add(box(fw, 1.0, 0.04, mats.glass, st.x + fw / 2, z0 + 0.5, info.sign === 1 ? st.y : st.y + st.h));
+  if (info.axis === "x") grp.add(box(0.04, RAIL_H, fw, mats.glass, st.x + (info.sign === -1 ? st.w : 0), z0 + RAIL_H / 2, st.y + fw / 2, "Korkuluk"));
+  else grp.add(box(fw, RAIL_H, 0.04, mats.glass, st.x + fw / 2, z0 + RAIL_H / 2, info.sign === 1 ? st.y : st.y + st.h, "Korkuluk"));
+}
+
+/** Düz çatıda merdiven üstündeki ışıklığın (çatı feneri) döşeme boşluğu */
+function skylightHole(L: BuildingLayout): { x: number; y: number; w: number; h: number } | null {
+  if (L.roof !== "duz" || !L.stair || !(fac.details ?? []).includes("cati_feneri")) return null;
+  const st = L.stair, w = Math.min(st.w, 1.8), d = Math.min(st.h, 2.4);
+  return { x: st.x + st.w / 2 - w / 2, y: st.y + st.h / 2 - d / 2, w, h: d };
+}
+/** Dikdörtgenden boşluğu çıkarır (en çok dört parça) */
+function minusRect(c: { x: number; y: number; w: number; h: number }, h: { x: number; y: number; w: number; h: number } | null) {
+  if (!h) return [c];
+  const x0 = Math.max(c.x, h.x), x1 = Math.min(c.x + c.w, h.x + h.w), y0 = Math.max(c.y, h.y), y1 = Math.min(c.y + c.h, h.y + h.h);
+  if (x1 - x0 < 0.01 || y1 - y0 < 0.01) return [c];
+  const out = [
+    { x: c.x, y: c.y, w: c.w, h: y0 - c.y },
+    { x: c.x, y: y1, w: c.w, h: c.y + c.h - y1 },
+    { x: c.x, y: y0, w: x0 - c.x, h: y1 - y0 },
+    { x: x1, y: y0, w: c.x + c.w - x1, h: y1 - y0 },
+  ];
+  return out.filter((r) => r.w > 0.01 && r.h > 0.01);
 }
 
 function buildRoof(L: BuildingLayout): THREE.Group {
   const g = new THREE.Group();
   g.name = "Çatı";
   const top = L.totalHeight;
+  const hole = skylightHole(L);
   if (L.massing && L.roof === "duz") {
     const tf = L.floors[L.floors.length - 1];
-    for (const c of grow(unionCells(floorRects(tf, L)), L.extWall / 2)) g.add(box(c.w, L.slab, c.h, mats.slab, c.x + c.w / 2, top - L.slab / 2, c.y + c.h / 2, "Çatı döşemesi"));
+    for (const c0 of grow(unionCells(floorRects(tf, L)), L.extWall / 2)) for (const c of minusRect(c0, hole)) g.add(box(c.w, L.slab, c.h, mats.slab, c.x + c.w / 2, top - L.slab / 2, c.y + c.h / 2, "Çatı döşemesi"));
     const ph = L.roofHeight;
     for (const w of tf.wallLines) {
       if (!w.exterior) continue;
@@ -532,7 +602,8 @@ function buildRoof(L: BuildingLayout): THREE.Group {
     }
     return g;
   }
-  g.add(box(L.W + L.extWall, L.slab, L.D + L.extWall, mats.slab, L.W / 2, top - L.slab / 2, L.D / 2, "Çatı döşemesi"));
+  for (const c of minusRect({ x: -L.extWall / 2, y: -L.extWall / 2, w: L.W + L.extWall, h: L.D + L.extWall }, hole))
+    g.add(box(c.w, L.slab, c.h, mats.slab, c.x + c.w / 2, top - L.slab / 2, c.y + c.h / 2, "Çatı döşemesi"));
   if (L.roof === "duz") {
     const ph = L.roofHeight;
     const t = L.extWall;
@@ -628,18 +699,28 @@ function sunkenSite(L: BuildingLayout, site: { width: number; depth: number; off
   const sx0 = -site.offsetX, sz0 = -site.offsetY, sx1 = sx0 + site.width, sz1 = sz0 + site.depth;
   const concrete = realistic ? texturedMaterial("beton") : mats.slab;
   const t = 0.35, top = lv.road + 0.03, h = top - lv.lot, yc = (top + lv.lot) / 2;
-  // istinat duvarları (dört yan): üstleri yol / komşu zemin kotunda
+  // İstinat duvarı yalnız sokak cephesinde ve ön bahçe boyunca iki yanda: yol altı arsa arkaya doğru alçalan
+  // bir arazidir; komşular binanın gerisinde arsa kotuna şevle iner (dört yanı duvarla çevrili çukur değil).
+  const zw = Math.min(sz1, Math.max(sz0 + 1, 0)); // yan duvarların bittiği yer: bina ön cephesi
+  const sideLen = zw - sz0;
   g.add(box(site.width + 2 * t, h, t, concrete, (sx0 + sx1) / 2, yc, sz0 - t / 2, "İstinat duvarı"));
-  g.add(box(site.width + 2 * t, h, t, concrete, (sx0 + sx1) / 2, yc, sz1 + t / 2, "İstinat duvarı"));
-  g.add(box(t, h, site.depth, concrete, sx0 - t / 2, yc, (sz0 + sz1) / 2, "İstinat duvarı"));
-  g.add(box(t, h, site.depth, concrete, sx1 + t / 2, yc, (sz0 + sz1) / 2, "İstinat duvarı"));
-  // sokak tarafında korkuluk
+  g.add(box(t, h, sideLen, concrete, sx0 - t / 2, yc, sz0 + sideLen / 2, "İstinat duvarı"));
+  g.add(box(t, h, sideLen, concrete, sx1 + t / 2, yc, sz0 + sideLen / 2, "İstinat duvarı"));
+  // duvar dibinde drenaj kanalı (ızgaralı) — çukurda yağmur suyu birikmesin
+  g.add(box(site.width, 0.04, 0.3, mats.frame, (sx0 + sx1) / 2, lv.lot + 0.02, sz0 + 0.15, "Drenaj kanalı"));
+  for (const sx of [sx0 + 0.15, sx1 - 0.15]) g.add(box(0.3, 0.04, sideLen - 0.3, mats.frame, sx, lv.lot + 0.02, sz0 + 0.3 + (sideLen - 0.3) / 2, "Drenaj kanalı"));
+  // duvarların üstünde korkuluk (1.10 m): sokak tarafında köprü aralığı dışında, yanlarda ön bahçe boyunca
   const railM = mats.rail ?? mats.frame;
   const ex = entranceX ?? L.W - 1, bw = 1.8;
+  const ph = RAIL_H - 0.05;
   for (const [a, b] of [[sx0, ex - bw / 2], [ex + bw / 2, sx1]] as const) {
     if (b - a < 0.2) continue;
-    g.add(box(b - a, 0.05, 0.05, railM, (a + b) / 2, top + 1.0, sz0 - t / 2, "Korkuluk"));
-    for (let x = a + 0.05; x <= b; x += 1.5) g.add(box(0.04, 1.0, 0.04, railM, x, top + 0.5, sz0 - t / 2));
+    g.add(box(b - a, 0.05, 0.05, railM, (a + b) / 2, top + RAIL_H - 0.025, sz0 - t / 2, "Korkuluk"));
+    for (let x = a + 0.05; x <= b; x += 1.5) g.add(box(0.04, ph, 0.04, railM, x, top + ph / 2, sz0 - t / 2));
+  }
+  for (const x of [sx0 - t / 2, sx1 + t / 2]) {
+    g.add(box(0.05, 0.05, sideLen, railM, x, top + RAIL_H - 0.025, sz0 + sideLen / 2, "Korkuluk"));
+    for (let z = sz0 + 1.5; z <= zw; z += 1.5) g.add(box(0.04, ph, 0.04, railM, x, top + ph / 2, z));
   }
   // dolgu terası (bina en alt kat kotunda; altında arsa)
   if (lv.grade - lv.lot > 0.05) {
@@ -661,8 +742,8 @@ function sunkenSite(L: BuildingLayout, site: { width: number; depth: number; off
   g.add(box(bw, 0.25, len, concrete, ex, deckY - 0.125, (sz0 - 0.3) / 2, "Köprü"));
   g.add(box(bw - 0.1, 0.03, len, realistic ? texturedMaterial("paving") : mats.slab, ex, deckY + 0.015, (sz0 - 0.3) / 2));
   for (const sx of [-1, 1]) {
-    g.add(box(0.05, 0.05, len, railM, ex + sx * (bw / 2 - 0.03), deckY + 1.05, (sz0 - 0.3) / 2, "Köprü korkuluğu"));
-    g.add(box(0.02, 1.0, len, mats.glass, ex + sx * (bw / 2 - 0.03), deckY + 0.52, (sz0 - 0.3) / 2));
+    g.add(box(0.05, 0.05, len, railM, ex + sx * (bw / 2 - 0.03), deckY + 0.03 + RAIL_H - 0.025, (sz0 - 0.3) / 2, "Köprü korkuluğu"));
+    g.add(box(0.02, RAIL_H - 0.05, len, mats.glass, ex + sx * (bw / 2 - 0.03), deckY + 0.03 + (RAIL_H - 0.05) / 2, (sz0 - 0.3) / 2));
   }
   // ara ayaklar
   for (let z = sz0 + 3; z < -0.8; z += 3.5) {
@@ -681,17 +762,36 @@ function landscape(L: BuildingLayout, site: { width: number; depth: number; offs
   const lv = siteLevels(L);
   // çevre zemin (arsadan biraz koyu); çukur arsada arsanın üstü açık kalır
   const outerMat = new THREE.MeshStandardMaterial({ map: (mats.ground as THREE.MeshStandardMaterial).map, color: 0xb9c6a8, roughness: 1 });
-  const outerRects: [number, number, number, number][] = lv.sunken
-    ? [[sx0 - 350, sz0 - 350, 350, site.depth + 700], [sx1, sz0 - 350, 350, site.depth + 700], [sx0, sz1, site.width, 350], [sx0, sz0 - 350, site.width, 350]]
-    : [[sx0 - 350, sz0 - 350, site.width + 700, site.depth + 700]];
-  for (const [x, z, w, d] of outerRects) {
+  // yol altı arsada: sokak ve ön bahçe hizasında komşular yol kotunda, bina gerisinde arsa kotuna şevle iner
+  const zw = Math.min(sz1, Math.max(sz0 + 1, 0)), slopeLen = Math.min(5, Math.max(1.5, (lv.road - lv.lot) * 1.5));
+  const outerRects: [number, number, number, number, number][] = lv.sunken
+    ? [[sx0 - 350, sz0 - 350, site.width + 700, 350, -0.33], [sx0 - 350, sz0, 350, zw - sz0, -0.33], [sx1, sz0, 350, zw - sz0, -0.33],
+      [sx0 - 350, zw + slopeLen, 350, Math.max(0.5, sz1 - zw - slopeLen), lv.lot - 0.03], [sx1, zw + slopeLen, 350, Math.max(0.5, sz1 - zw - slopeLen), lv.lot - 0.03],
+      [sx0 - 350, sz1, site.width + 700, 350, lv.lot - 0.03]]
+    : [[sx0 - 350, sz0 - 350, site.width + 700, site.depth + 700, -0.33]];
+  for (const [x, z, w, d, y] of outerRects) {
     const outer = new THREE.PlaneGeometry(w, d);
     worldUV(outer, new THREE.Vector3(), 3);
     const om = new THREE.Mesh(outer, outerMat);
     om.rotation.x = -Math.PI / 2;
-    om.position.set(x + w / 2, -0.33, z + d / 2);
+    om.position.set(x + w / 2, y, z + d / 2);
     om.receiveShadow = true;
     g.add(om);
+  }
+  if (lv.sunken) {
+    // yan komşulardaki şev: yan istinat duvarının bittiği yerden arsa kotuna
+    for (const [xa, xb] of [[sx0 - 350, sx0], [sx1, sx1 + 350]] as const) {
+      const geo = new THREE.BufferGeometry();
+      const y0 = -0.33, y1 = lv.lot - 0.03, z0 = zw, z1 = zw + slopeLen;
+      geo.setAttribute("position", new THREE.Float32BufferAttribute([xa, y0, z0, xb, y0, z0, xb, y1, z1, xa, y0, z0, xb, y1, z1, xa, y1, z1], 3));
+      geo.setAttribute("uv", new THREE.Float32BufferAttribute(new Array(12).fill(0), 2));
+      geo.computeVertexNormals();
+      worldUV(geo, new THREE.Vector3(), 3);
+      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: outerMat.map, color: 0xb9c6a8, roughness: 1, side: THREE.DoubleSide }));
+      m.name = "Şev";
+      m.receiveShadow = true;
+      g.add(m);
+    }
   }
   // sokak (asfalt) + kaldırım
   const road = new THREE.Mesh(new THREE.PlaneGeometry(site.width + 700, 9), new THREE.MeshStandardMaterial({ color: 0x45474a, roughness: 0.95 }));
