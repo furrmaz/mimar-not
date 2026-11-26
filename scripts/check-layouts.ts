@@ -52,6 +52,12 @@ const WET = new Set(["banyo", "wc", "camasir"]);
 
 function checkFloor(L: BuildingLayout, fl: FloorLayout, ctx: string, groundLevel: number) {
   checks++;
+  // hata ayıklama: DUMP="r110 C 1. Kat" npm run test:layout
+  if (process.env.DUMP && ctx.includes(process.env.DUMP)) {
+    console.log(`-- ${ctx} W ${L.W} D ${L.D} stair ${JSON.stringify(L.stair)}`);
+    for (const r of fl.rooms) console.log(`   ${r.name} [${r.type}] ${JSON.stringify(r.rect)}`);
+    for (const o of fl.openings) console.log(`   · ${o.kind} ${o.orient} ${o.line} c${o.center} w${o.width}`);
+  }
   const rooms = fl.rooms;
   for (const r of rooms) {
     const { x, y, w, h } = r.rect;

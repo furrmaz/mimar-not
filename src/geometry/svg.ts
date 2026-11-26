@@ -400,7 +400,7 @@ export function sectionSVG(L: BuildingLayout, program: Program): string {
     p.push(`<polygon points="${earth.join(" ")}" fill="url(#earth)"/>`);
     p.push(`<polyline points="${earth.slice(0, 8).join(" ")}" fill="none" stroke="${INK}" stroke-width="1.6"/>`);
     p.push(`<rect x="${X(yW - 0.35)}" y="${Z(lv.road + 0.05)}" width="${0.35 * S}" height="${(lv.road + 0.05 - lv.lot + 0.5) * S}" fill="#9a9a9a" stroke="${INK}" stroke-width="1"/>`);
-    p.push(`<line x1="${X(yW - 0.18)}" y1="${Z(lv.road)}" x2="${X(yW - 0.18)}" y2="${Z(lv.road + 1.05)}" stroke="${INK}" stroke-width="1.2"/>`);
+    p.push(`<line x1="${X(yW - 0.18)}" y1="${Z(lv.road)}" x2="${X(yW - 0.18)}" y2="${Z(lv.road + 1.1)}" stroke="${INK}" stroke-width="1.2"/>`);
     // köprü (yol kotundan zemin kat girişine)
     p.push(`<rect x="${X(yW)}" y="${Z(lv.road + 0.2)}" width="${-yW * S}" height="${0.25 * S}" fill="#b5b3ae" stroke="${INK}" stroke-width="1"/>`);
     p.push(`<line x1="${X(yW)}" y1="${Z(lv.road + 1.25)}" x2="${X(0)}" y2="${Z(lv.road + 1.25)}" stroke="${INK}" stroke-width="1"/>`);
