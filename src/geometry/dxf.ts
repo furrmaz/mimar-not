@@ -14,6 +14,7 @@ import { facadeFaces, floorRects, openingOnFacade, slabSpansAtX, spansAtX } from
 import type { Program } from "../shared/schema";
 import { parkingStalls, sitePool, zoningCheck } from "./zoning";
 import { furnishFloor, furnitureLabel, furnitureSymbol, localSize, type Furniture } from "./furniture";
+import { lightingPlan } from "./interior";
 import { DxfDoc, type LayerDef, type LtypeDef, type Pt, type Space } from "./dxfwriter";
 
 export type DxfUnit = "m" | "cm" | "mm";
@@ -40,6 +41,8 @@ const LAYERS: LayerDef[] = [
   { name: "A-BALKON", color: 6, lw: 25 },
   { name: "A-MAHAL", color: 2, lw: 18 },
   { name: "A-MOBILYA", color: 9, lw: 13 },
+  // tavan aydınlatma ön planı: katman kapalı gelir (eksi renk), tavan planı için açılır
+  { name: "A-AYDINLATMA", color: -50, lw: 13 },
   { name: "A-OLCU", color: 1, lw: 13 },
   { name: "A-KOT", color: 1, lw: 18 },
   { name: "A-KESIT-HATTI", color: 1, lw: 35, ltype: "KESIT" },
@@ -295,6 +298,23 @@ function drawPlan(d: Space, L: BuildingLayout, fl: BuildingLayout["floors"][numb
     const at: Record<Furniture["facing"], [number, number, number, number]> = { n: [f.x, f.y, 0, 1], s: [f.x, f.y + f.h, 0, -1], w: [f.x, f.y, 90, -1], e: [f.x + f.w, f.y, 90, 1] };
     const [x, y, rot, sy] = at[f.facing];
     d.insert("A-MOBILYA", name, ...P(x, y), { rot, sy });
+  }
+  // aydınlatma: spot ⊕, sarkıt ◎, tezgâh altı LED şerit
+  for (const pt of lightingPlan(fl).points) {
+    const [cx, cy] = P(pt.x, pt.y);
+    if (pt.kind === "spot") {
+      d.circle("A-AYDINLATMA", cx, cy, 0.08);
+      d.line("A-AYDINLATMA", cx - 0.12, cy, cx + 0.12, cy);
+      d.line("A-AYDINLATMA", cx, cy - 0.12, cx, cy + 0.12);
+    } else if (pt.kind === "pendant") {
+      d.circle("A-AYDINLATMA", cx, cy, 0.2);
+      d.circle("A-AYDINLATMA", cx, cy, 0.06);
+    } else {
+      const w = pt.w ?? 1, h = pt.h ?? 0.6, along = w >= h;
+      const [a1, b1] = P(pt.x + (along ? 0.05 : 0.1), pt.y + (along ? 0.1 : 0.05));
+      const [a2, b2] = P(pt.x + (along ? w - 0.05 : 0.1), pt.y + (along ? 0.1 : h - 0.05));
+      d.line("A-AYDINLATMA", a1, b1, a2, b2);
+    }
   }
   if (L.stair) {
     const g = stairGeom(L.stair, L.stairInfo ?? legacyStairInfo(L.stair, L.H), L.H);

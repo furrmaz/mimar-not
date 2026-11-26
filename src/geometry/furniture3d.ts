@@ -2,6 +2,7 @@
 // Yerel çerçeve: X sırt boyunca (-lw/2..lw/2), Z arkadan öne (-ld/2 sırt, +ld/2 ön), Y yukarı (0 = döşeme).
 import * as THREE from "three";
 import { localSize, type Furniture, type FurnitureKind } from "./furniture";
+import { interiorStyle, type LightPoint } from "./interior";
 
 const M = (color: number, roughness = 0.8, metalness = 0) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
 const MAT = {
@@ -30,6 +31,25 @@ const MAT = {
   carBody: M(0x5d6b7a, 0.35, 0.5),
   tyre: M(0x222222, 0.9),
 };
+/** İç mekân üslubunun renklerini ortak malzemelere uygular (bütün mobilyalar aynı malzemeleri paylaşır). */
+let palId = "";
+export function applyInteriorPalette(id?: string | null) {
+  const st = interiorStyle(id);
+  if (st.id === palId) return;
+  palId = st.id;
+  const p = st.palette;
+  const set: [THREE.MeshStandardMaterial, number][] = [
+    [MAT.oak, p.oak], [MAT.walnut, p.walnut], [MAT.lacquer, p.lacquer], [MAT.stone, p.stone], [MAT.black, p.metal],
+    [MAT.fabricGrey, p.sofa], [MAT.fabricBlue, p.accentFabric], [MAT.fabricSand, p.cushion], [MAT.duvet, p.duvet],
+    [MAT.rug, p.rug], [MAT.rugBorder, p.rugBorder], [MAT.pot, p.pot],
+  ];
+  for (const [m, c] of set) m.color.setHex(c);
+  // metal tonu pirinç/bakırsa parlak metal
+  const warmMetal = (p.metal >> 16) > 0x80;
+  MAT.black.metalness = warmMetal ? 0.85 : 0.2;
+  MAT.black.roughness = warmMetal ? 0.3 : 0.4;
+}
+
 const BOOKS = [0x8c3b2e, 0x2f4f6f, 0xc49a3c, 0x3f6b4a, 0x7a5c8c, 0xd8d0c0, 0x444444].map((c) => M(c, 0.9));
 
 class Kit {
@@ -292,5 +312,47 @@ export function furnitureMesh(f: Furniture, z0: number, maxH?: number): THREE.Gr
   if (maxH && f.height > maxH) g.scale.y = maxH / f.height;
   g.name = f.kind;
   g.userData.furnId = f.id;
+  return g;
+}
+
+// ---------------------------------------------------------------- ARMATÜRLER
+const LIGHT_MAT = {
+  glow: new THREE.MeshStandardMaterial({ color: 0xfff6e6, emissive: 0xffe9c4, emissiveIntensity: 1.4, roughness: 0.4 }),
+  rim: new THREE.MeshStandardMaterial({ color: 0xe8e6e2, roughness: 0.5, metalness: 0.3 }),
+  cord: new THREE.MeshStandardMaterial({ color: 0x1d1e20, roughness: 0.6 }),
+};
+/** Tavan armatürü (spot / sarkıt) ya da tezgâh altı LED şerit. ceil: tavan kotu (bitmiş), z0: döşeme kotu */
+export function lightMesh(pt: LightPoint, z0: number, ceil: number): THREE.Group {
+  const g = new THREE.Group();
+  g.name = pt.kind === "pendant" ? "Sarkıt armatür" : pt.kind === "strip" ? "LED şerit" : "Spot armatür";
+  if (pt.kind === "spot") {
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.01, 18), LIGHT_MAT.rim);
+    rim.position.set(pt.x, ceil - 0.006, pt.y);
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.012, 18), LIGHT_MAT.glow);
+    lens.position.set(pt.x, ceil - 0.012, pt.y);
+    g.add(rim, lens);
+  } else if (pt.kind === "pendant") {
+    // masadan 75 cm yukarıda; uzun masada çizgisel sarkıt
+    const y = Math.min(ceil - 0.3, z0 + 0.75 + 0.75);
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, ceil - y, 6), LIGHT_MAT.cord);
+    cord.position.set(pt.x, (ceil + y) / 2, pt.y);
+    g.add(cord);
+    const long = (pt.w ?? 0.4) > 0.6;
+    const shade = long
+      ? new THREE.Mesh(new THREE.BoxGeometry(pt.w ?? 1, 0.05, 0.08), MAT.black)
+      : new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.2, 0.22, 24, 1, true), MAT.black);
+    shade.position.set(pt.x, y - (long ? 0.025 : 0.11), pt.y);
+    const glow = long ? new THREE.Mesh(new THREE.BoxGeometry((pt.w ?? 1) - 0.04, 0.01, 0.05), LIGHT_MAT.glow) : new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), LIGHT_MAT.glow);
+    glow.position.set(pt.x, y - (long ? 0.05 : 0.15), pt.y);
+    g.add(shade, glow);
+  } else {
+    // tezgâh arka kenarı boyunca, 1,45 m'de (üst dolap altı)
+    const w = pt.w ?? 1, h = pt.h ?? 0.6;
+    const along = w >= h;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(along ? w - 0.1 : 0.02, 0.012, along ? 0.02 : h - 0.1), LIGHT_MAT.glow);
+    m.position.set(pt.x + w / 2, z0 + 1.45, pt.y + h / 2);
+    g.add(m);
+  }
+  g.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
   return g;
 }

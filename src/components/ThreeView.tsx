@@ -16,6 +16,8 @@ import { RenderDialog, type RenderCapture } from "./RenderDialog";
 import { aspectValue, nearestAspect, type CameraInfo } from "../shared/render";
 import { FACING_NAMES, MONTHS, facingFromText, sunAngles, sunVector, type Facing } from "../geometry/sun";
 import { FURNITURE_CATALOG, furnishFloor, furnitureKey, furnitureLabel, newFurniture, roomSig, rotateFurniture, type Furniture, type FurnitureKind } from "../geometry/furniture";
+import { INTERIOR_STYLES, effectiveInteriorStyle, interiorStyle } from "../geometry/interior";
+import { InteriorPanel } from "./InteriorPanel";
 import { freeNear, walkObstacles, walkSpawn, walkBlocked, type WalkWorld } from "../geometry/walk";
 
 type Mode = "dis" | "duzen" | "gezi";
@@ -28,6 +30,9 @@ export function ThreeView({ layout, program, refImages = [], onSettings, viewer 
   const [level, setLevel] = useState<number>(groundLevel);
   const floor = layout.floors.find((f) => f.level === level) ?? layout.floors[0];
   const [sel, setSel] = useState<string | null>(null);
+  /** İç mekân denetim / aydınlatma paneli */
+  const [panel, setPanel] = useState(true);
+  const styleId = effectiveInteriorStyle(program);
   const items = useMemo(() => furnishFloor(floor), [floor]);
   const selItem = items.find((f) => f.id === sel) ?? null;
   const canEdit = !viewer && !!onChange;
@@ -340,9 +345,9 @@ export function ThreeView({ layout, program, refImages = [], onSettings, viewer 
 
   /** Görünüm moduna göre model seçenekleri */
   const eff: ModelOptions =
-    mode === "duzen" ? { ...opts, maxLevel: level, cutaway: true, showRoof: false }
-    : mode === "gezi" ? { ...opts, maxLevel: null, cutaway: false, showRoof: true, furniture: true }
-    : opts;
+    mode === "duzen" ? { ...opts, maxLevel: level, cutaway: true, showRoof: false, interiorStyle: styleId }
+    : mode === "gezi" ? { ...opts, maxLevel: null, cutaway: false, showRoof: true, furniture: true, interiorStyle: styleId, lights: true }
+    : { ...opts, interiorStyle: styleId };
 
   // Modeli yeniden kur
   useEffect(() => {
@@ -530,6 +535,17 @@ export function ThreeView({ layout, program, refImages = [], onSettings, viewer 
       facades,
       frame,
     };
+    if (mode === "gezi") {
+      // içeriden görünüm: kameranın bulunduğu oda ve odadaki mobilyalar
+      const w = walk.current;
+      const room = floor.rooms.find((r) => !r.void && w.x >= r.rect.x && w.x <= r.rect.x + r.rect.w && w.z >= r.rect.y && w.z <= r.rect.y + r.rect.h);
+      const inRoom = room ? items.filter((f) => { const cx = f.x + f.w / 2, cy = f.y + f.h / 2; return cx >= room.rect.x && cx <= room.rect.x + room.rect.w && cy >= room.rect.y && cy <= room.rect.y + room.rect.h; }) : [];
+      const names = [...new Set(inRoom.map((f) => FURN_EN[f.kind] ?? f.kind))];
+      camera.height = Math.max(0, cam.position.y - floor.z);
+      camera.distance = 0;
+      camera.facades = [];
+      camera.interior = { room: room ? ROOM_EN[room.type] ?? "room" : "room", roomType: room?.type ?? "", style: interiorStyle(styleId).en, furniture: names, area: room ? room.rect.w * room.rect.h : undefined };
+    }
     return { image: cv.toDataURL("image/jpeg", 0.92), camera, aspect: a };
   };
 
@@ -568,6 +584,14 @@ export function ThreeView({ layout, program, refImages = [], onSettings, viewer 
             {li < layout.floors.length - 1 && <button className="btn ghost small" onClick={() => goLevel(layout.floors[li + 1].level)}>▲ Üst kat</button>}
           </>
         )}
+        {mode !== "dis" && (
+          <label title="Mobilya, iç duvar ve döşeme renk / malzeme paleti">İç mekân üslubu
+            <select value={styleId} disabled={!canEdit} onChange={(e) => onChange?.({ ...program, design: { ...program.design, interiorStyle: e.target.value } })}>
+              {INTERIOR_STYLES.map((st) => <option key={st.id} value={st.id} title={st.hint}>{st.name}</option>)}
+            </select>
+          </label>
+        )}
+        {mode === "duzen" && !panel && <button className="btn ghost small" onClick={() => setPanel(true)}>Denetim ve aydınlatma</button>}
         {mode === "duzen" && (
           <>
             <label>Ekle
@@ -644,7 +668,10 @@ export function ThreeView({ layout, program, refImages = [], onSettings, viewer 
         <button className="btn ghost" onClick={exportGLB}>GLB (3D model)</button>
         </>}
       </div>
-      <div ref={host} className="three-host" />
+      <div className="three-stage">
+        <div ref={host} className="three-host" />
+        {mode === "duzen" && panel && <InteriorPanel floor={floor} items={items} onPick={(id) => id && setSel(id)} onClose={() => setPanel(false)} />}
+      </div>
       <div className="hint">
         {mode === "gezi" ? "Yürü: W A S D / ok tuşları (Shift: hızlı) · Bak: sürükle · Dokunmatik: sol alttaki çubukla yürü, ekranı sürükleyerek bak"
           : mode === "duzen" ? "Mobilyayı sürükle: taşı · R: döndür · Delete: sil · Boş yere dokunup Ekle: o noktaya koyar · Boş alanı sürükle: döndür"
@@ -655,6 +682,19 @@ export function ThreeView({ layout, program, refImages = [], onSettings, viewer 
     </div>
   );
 }
+
+/** Render talimatı için oda ve mobilya adları (İngilizce) */
+const ROOM_EN: Record<string, string> = {
+  salon: "living room", yemek: "dining room", mutfak: "kitchen", ebeveyn: "master bedroom", yatak: "bedroom", cocuk: "child's bedroom", misafir: "guest bedroom",
+  calisma: "study", ofis: "home office", banyo: "bathroom", wc: "guest toilet", camasir: "laundry room", giyinme: "walk-in wardrobe", hol: "hallway", koridor: "corridor",
+  antre: "entrance hall", kiler: "pantry", depo: "storage room", garaj: "garage", merdiven: "stair hall",
+};
+const FURN_EN: Record<string, string> = {
+  bed: "bed", nightstand: "bedside tables with lamps", wardrobe: "built-in wardrobe", sofa: "sofa", armchair: "armchair", coffeeTable: "coffee table", tvUnit: "low TV unit with TV",
+  table: "dining table", chair: "chairs", counter: "kitchen worktop with base and wall cabinets", island: "kitchen island", fridge: "tall fridge", hob: "cooktop with hood", sink: "kitchen sink",
+  wc: "wall-hung toilet", basin: "washbasin with mirror", shower: "walk-in shower with glass screen", bathtub: "bathtub", desk: "desk", washer: "washing machine", car: "car",
+  shelf: "bookshelf", rug: "rug", plant: "potted plant", floorLamp: "floor lamp", dresser: "chest of drawers", bench: "bench",
+};
 
 /** Dokunmatik ekranlarda yürüme çubuğu (fareyle de sürüklenebilir) */
 function Joystick({ onMove }: { onMove: (x: number, y: number) => void }) {

@@ -59,11 +59,17 @@ export interface CameraInfo {
   facades: { name: "front" | "rear" | "left" | "right"; where: "left" | "centre" | "right" }[];
   /** Binanın kadrajda kapladığı alan (0–1, soldan/üstten) */
   frame: { x0: number; x1: number; y0: number; y1: number };
+  /** İçeride gezinti görünümü: kameranın bulunduğu oda, iç mekân üslubu (İngilizce) ve odadaki mobilyalar */
+  interior?: { room: string; roomType: string; style: string; furniture: string[]; area?: number };
 }
 
 const FACADE_EN = { front: "front (street/entrance) facade", rear: "rear (garden) facade", left: "left side facade", right: "right side facade" };
 /** Kamera bilgisini görüntü modelinin anlayacağı cümleye çevirir */
 export function cameraText(c: CameraInfo) {
+  if (c.interior) {
+    const look = c.pitch > 1 ? `looking down ${Math.round(c.pitch)}°` : c.pitch < -1 ? `looking up ${Math.round(-c.pitch)}°` : "looking level";
+    return `eye-level interior view from inside the ${c.interior.room}${c.interior.area ? ` (about ${Math.round(c.interior.area)} m²)` : ""}, camera about ${c.height.toFixed(1)} m above the floor, ${look}, ${Math.round(c.focal)} mm full-frame equivalent lens, one-point interior perspective with vertical lines straight.`;
+  }
   const kind = c.pitch > 38 ? "high aerial bird's-eye view" : c.height > Math.max(6, c.buildingHeight * 1.15) ? "elevated drone view" : c.height < 3 ? "eye-level street view" : "slightly elevated view";
   const pct = (v: number) => Math.round(v * 100);
   const facades = c.facades.length
@@ -124,6 +130,7 @@ function sunkenText(p: Program) {
 
 /** Programdan İngilizce render talimatı (modeller İngilizcede daha iyi). */
 export function renderPrompt(p: Program, extra = "", refCount = 0, camera?: CameraInfo) {
+  if (camera?.interior) return interiorRenderPrompt(p, extra, refCount, camera);
   const f = p.facade;
   const m = p.materials;
   const floors = Math.max(1, ...(p.blocks?.length ? [0] : [p.floors.filter((x) => x.level >= 0 || lotBelowRoad(p) >= 2).length]));
@@ -248,4 +255,21 @@ export async function renderWithHiggsfield(
     opts.onStatus?.(s === "in_progress" ? `Render hazırlanıyor… (${Math.round((Date.now() - t0) / 1000)} sn)` : "Sırada bekliyor…");
     if (Date.now() - t0 > 6 * 60 * 1000) throw new Error("Render 6 dakikada tamamlanmadı. Biraz sonra tekrar deneyin.");
   }
+}
+
+/** İçeriden alınan görünüm için iç mekân fotoğrafı talimatı */
+export function interiorRenderPrompt(p: Program, extra = "", refCount = 0, camera: CameraInfo) {
+  const it = camera.interior!;
+  const parts = [
+    "Turn this 3D interior model render into a photorealistic interior design photograph of exactly the same room, taken from exactly the same camera position, angle, lens and framing as the first image.",
+    `Camera: ${cameraText(camera)}`,
+    "Keep the exact room geometry, wall and ceiling positions, window and door openings, and the position, size and type of every piece of furniture; do not add or remove furniture, walls or openings, do not change the perspective.",
+    it.furniture.length ? `Furniture visible in the room (keep each in place, make it real and well designed): ${it.furniture.join(", ")}.` : "",
+    `Interior style: ${it.style}.`,
+    refCount ? `Match the materials, colours and mood of the reference photo${refCount > 1 ? "s" : ""} that follow the first image, but keep the geometry of the first image.` : "",
+    "Realistic materials with texture (wood grain, fabric weave, stone veining, matte painted plaster), soft natural daylight through the windows balanced with warm 2700–3000 K artificial light from the ceiling downlights and pendants shown, soft shadows, a few tasteful accessories (books, vase, cushions, throw) without clutter.",
+    "Professional interior photography, full-frame camera, vertical lines kept straight, high dynamic range, sharp. No text, no watermark, no people.",
+    extra ? `Additional instructions from the architect (Turkish): ${extra}` : "",
+  ];
+  return parts.filter(Boolean).join(" ");
 }

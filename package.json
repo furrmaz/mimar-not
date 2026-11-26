@@ -1,6 +1,6 @@
 {
   "name": "mimar-not",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "Mimarın müşteri görüşmesi notlarından yapay zekâ ile kat planı, kesit, cephe ve 3D model üreten uygulama",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
@@ -21,6 +21,7 @@
     "test:site": "tsx scripts/test-sunken-site.ts",
     "test:villa": "tsx scripts/test-villa.ts",
     "test:dxf": "tsx scripts/test-dxf.ts",
+    "test:interior": "tsx scripts/test-interior.ts",
     "site:images": "node scripts/fetch-site-images.mjs"
   },
   "license": "UNLICENSED",
