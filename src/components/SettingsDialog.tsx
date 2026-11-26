@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { desktop } from "../desktop";
 import { loadOffice, saveOffice, type OfficeInfo } from "../office";
 import { STANDALONE, loadKeys, saveKeys, platformName, APP_VERSION } from "../platform";
+import { UpdateSettings } from "./UpdateButton";
+import { THEMES, loadTheme, saveTheme, type ThemeChoice } from "../theme";
 import { cloudBase, cloudBaseOverride, cloudConfigured, setCloudBase } from "../cloud";
 
 /** Bulut sürümünde anahtar ayarları "Gelişmiş" altına katlanır */
@@ -67,6 +69,7 @@ export function SettingsDialog({ onClose, onOffice }: { onClose: () => void; onO
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="settings-title">
         <h2 id="settings-title">Ayarlar</h2>
+        <ThemePicker />
         <h3 className="settings-sub">Pafta anteti</h3>
         <div className="grid-fields">
           <label className="field"><span>Ofis adı</span><input value={office.office} onChange={(e) => setO("office", e.target.value)} placeholder="ör. Atölye Mimarlık" /></label>
@@ -107,12 +110,39 @@ export function SettingsDialog({ onClose, onOffice }: { onClose: () => void; onO
             <p className="muted small">Sunucu sürümünde .env dosyasına HF_API_KEY_ID ve HF_API_KEY_SECRET yazın.</p>
         )}
         </Advanced>
+        <UpdateSettings />
         {(desktop || STANDALONE) && <p className="muted small">Sürüm {APP_VERSION || "?"} · {platformName()}</p>}
         <div className="row end">
           <button className="btn ghost" onClick={onClose}>Kapat</button>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Görünüm: arayüz teması (yalnız bu cihazda saklanır). */
+function ThemePicker() {
+  const [cur, setCur] = useState<ThemeChoice>(loadTheme);
+  const pick = (c: ThemeChoice) => { setCur(c); saveTheme(c); };
+  return (
+    <>
+      <h3 className="settings-sub">Görünüm</h3>
+      <div className="theme-list" role="radiogroup" aria-label="Tema">
+        {THEMES.map((t) => (
+          <button key={t.id} type="button" role="radio" aria-checked={cur === t.id} className={"theme-opt" + (cur === t.id ? " on" : "")} onClick={() => pick(t.id)}>
+            <span className="theme-sw">{t.colors.map((c) => <i key={c} style={{ background: c }} />)}</span>
+            <b>{t.name}</b>
+            <span className="muted small">{t.note}</span>
+          </button>
+        ))}
+        <button type="button" role="radio" aria-checked={cur === "sistem"} className={"theme-opt" + (cur === "sistem" ? " on" : "")} onClick={() => pick("sistem")}>
+          <span className="theme-sw"><i style={{ background: "#f5f4f1" }} /><i style={{ background: "#b5532e" }} /><i style={{ background: "#1d1f22" }} /><i style={{ background: "#e3a04b" }} /></span>
+          <b>Sistemle aynı</b>
+          <span className="muted small">Açıkta Terrakota, koyuda Gece</span>
+        </button>
+      </div>
+      <p className="muted small">Tema yalnız bu cihazda saklanır. Paftalar, PDF ve DXF çıktıları her zaman standart renklerde kalır.</p>
+    </>
   );
 }
 
