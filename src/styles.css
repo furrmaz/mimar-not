@@ -523,3 +523,25 @@ table.takeoff td.num { white-space: nowrap; }
 .update-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--soft); }
 .update-box p { margin: 2px 0 0; }
 .field textarea { padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--field); color: var(--ink); font-size: 13px; }
+
+/* İç mekân paneli (denetim / aydınlatma / mobilya listesi) */
+.three-stage { position: relative; }
+.interior-panel { position: absolute; top: 10px; right: 10px; width: min(400px, calc(100% - 20px)); max-height: calc(100% - 50px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 3; font-size: 12.5px; }
+.interior-panel .ip-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid var(--line); }
+.interior-panel .seg-btn { padding: 5px 9px; font-size: 12px; white-space: nowrap; }
+.interior-panel .ip-count { padding: 1px 7px; font-size: 11px; margin-left: 4px; background: var(--chip); color: var(--ink, inherit); }
+.interior-panel .ip-count.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.interior-panel .ip-body { overflow: auto; padding: 8px 10px; }
+.ip-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ip-list li { border-left: 3px solid var(--line); padding: 4px 8px; border-radius: 4px; background: var(--chip); }
+.ip-list li.uyari { border-left-color: var(--warn-ink); background: var(--warn-bg); }
+.ip-list .linkish { all: unset; cursor: pointer; display: block; line-height: 1.4; }
+.ip-list .linkish:disabled { cursor: default; }
+.ip-list .ip-tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-right: 6px; opacity: .75; }
+.ip-table { width: 100%; border-collapse: collapse; }
+.ip-table th, .ip-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ip-table th { font-weight: 600; color: var(--muted); font-size: 11.5px; }
+.ip-table tfoot td { font-weight: 600; border-bottom: 0; }
+.ip-table .tiny { font-size: 10.5px; }
+.ip-table .nowrap { white-space: nowrap; }
+@media (max-width: 640px) { .interior-panel { top: auto; bottom: 34px; max-height: 45%; } }

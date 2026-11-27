@@ -4,7 +4,8 @@ import * as THREE from "three";
 import type { BuildingLayout, FloorLayout, Opening } from "./layout";
 import { ZONE_COLORS, near, siteLevels } from "./layout";
 import { furnishFloor } from "./furniture";
-import { furnitureMesh } from "./furniture3d";
+import { applyInteriorPalette, furnitureMesh, lightMesh } from "./furniture3d";
+import { interiorStyle, lightingPlan, type InteriorPalette } from "./interior";
 import { DEFAULT_MATERIALS, normalizeFacade, type Facade, type Materials } from "../shared/schema";
 import { texturedMaterial, worldUV } from "./materials3d";
 import { legacyStairInfo, stairGeom } from "./stair";
@@ -40,6 +41,10 @@ export interface ModelOptions {
   pool?: { x: number; y: number; w: number; h: number } | null;
   /** Tüm görünen katlarda mobilya (iç mekân gezintisi / düzenleme); kesik görünümde her zaman gösterilir */
   furniture?: boolean;
+  /** İç mekân üslubu (mobilya, iç duvar ve döşeme renkleri); bkz. INTERIOR_STYLES */
+  interiorStyle?: string;
+  /** Gezintide tavan armatürleri (aydınlatma planı) */
+  lights?: boolean;
 }
 
 const BASE = {
@@ -66,6 +71,8 @@ function outsideGround(L: BuildingLayout) {
 }
 let mats: typeof BASE & { gable?: THREE.Material; accent?: THREE.Material } = { ...BASE };
 let fac: Facade = normalizeFacade(undefined);
+/** İç mekân paleti (iç duvar boyası, parke ve seramik tonu) */
+let pal: InteriorPalette = interiorStyle(null).palette;
 
 const REAL_GLASS = new THREE.MeshPhysicalMaterial({ color: 0x5f7684, roughness: 0.03, metalness: 0.0, transparent: true, opacity: 0.55, envMapIntensity: 2.2, clearcoat: 1 });
 const REAL_FRAME = new THREE.MeshStandardMaterial({ color: 0x2e3033, roughness: 0.45, metalness: 0.5 });
@@ -85,7 +92,10 @@ function facadeMat(kind: Materials["wall"], color: string, side?: THREE.Side) {
 
 function useMaterials(opts: ModelOptions) {
   fac = normalizeFacade(opts.facade, opts.materials ?? DEFAULT_MATERIALS);
-  if (!opts.realistic) { mats = { ...BASE, accent: BASE.wallStone }; return; }
+  applyInteriorPalette(opts.interiorStyle);
+  pal = interiorStyle(opts.interiorStyle).palette;
+  const paint = opts.interiorStyle ? pal.wall : null;
+  if (!opts.realistic) { mats = { ...BASE, accent: BASE.wallStone, ...(paint != null ? { inner: new THREE.MeshStandardMaterial({ color: paint, roughness: 0.9 }) } : {}) }; return; }
   const m = opts.materials ?? DEFAULT_MATERIALS;
   const roof =
     m.roof === "kiremit" ? texturedMaterial("tile", { side: THREE.DoubleSide, color: opts.facade ? new THREE.Color(fac.roofColor).lerp(new THREE.Color(0xffffff), 0.55).getHex() : undefined })
@@ -99,7 +109,7 @@ function useMaterials(opts: ModelOptions) {
     // zemin kat duvarı: vurgu yeri "zemin" ise vurgu malzemesi
     wallStone: fac.accentPlacement === "zemin" ? accent : wall,
     accent,
-    inner: texturedMaterial("inner"),
+    inner: texturedMaterial("inner", paint != null && paint !== 0xfbfaf7 ? { color: paint } : {}),
     slab: REAL_SLAB,
     glass: REAL_GLASS,
     frame,
@@ -311,7 +321,7 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
     const grp = new THREE.Group();
     grp.name = f.name;
     const cut = opts.cutaway && f === topVisible;
-    addFloor(grp, L, f, cut, !!opts.furniture, !!(opts.realistic || opts.furniture));
+    addFloor(grp, L, f, cut, !!opts.furniture, !!(opts.realistic || opts.furniture), !!opts.lights && !cut);
     root.add(grp);
   }
 
@@ -349,7 +359,7 @@ export function buildModel(L: BuildingLayout, opts: ModelOptions, site?: { width
   return root;
 }
 
-function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: boolean, furnish = false, texturedFloors = false) {
+function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: boolean, furnish = false, texturedFloors = false, lights = false) {
   const z0 = f.z;
   const wallH = cut ? 1.2 : L.H - L.slab;
   // Döşeme
@@ -397,7 +407,8 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
     if (texturedFloors) {
       // iç mekân kaplaması: ıslak hacim / servis seramik, yaşam ve yatak mekânları ahşap parke
       const wet = ["banyo", "wc", "camasir", "mutfak", "garaj", "teknik", "kiler", "depo", "merdiven"].includes(r.type);
-      fm = texturedMaterial(wet ? "seramik" : "wood_floor");
+      const tint = wet ? pal.tile : pal.floor;
+      fm = texturedMaterial(wet ? "seramik" : "wood_floor", tint !== 0xffffff ? { color: tint } : {});
       const uv = pg.getAttribute("uv") as THREE.BufferAttribute, pos = pg.getAttribute("position");
       const tile = (fm.userData.tile as number) ?? 1;
       for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + r.rect.x + r.rect.w / 2) / tile, (pos.getY(i) - r.rect.y - r.rect.h / 2) / tile);
@@ -416,6 +427,14 @@ function addFloor(grp: THREE.Group, L: BuildingLayout, f: FloorLayout, cut: bool
     fg.userData.level = f.level;
     for (const fu of furnishFloor(f)) fg.add(furnitureMesh(fu, z0 + 0.006));
     grp.add(fg);
+  }
+  // Tavan armatürleri (aydınlatma ön planı): gezintide
+  if (lights) {
+    const lg = new THREE.Group();
+    lg.name = "Aydınlatma";
+    const ceil = z0 + L.H - L.slab;
+    for (const pt of lightingPlan(f).points) lg.add(lightMesh(pt, z0, ceil));
+    grp.add(lg);
   }
   // Duvarlar
   const outerMat = f.z <= 0 ? mats.wallStone : mats.wall;

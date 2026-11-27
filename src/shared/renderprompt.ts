@@ -32,6 +32,22 @@ Write ONE prompt in English that:
 
 Output only the prompt text as one paragraph, without quotes, headings, markdown or commentary. Maximum 1600 characters.`;
 
+const INTERIOR_SYSTEM = `You are an expert interior design visualiser who writes prompts for AI image-editing models (Qwen Image Edit, Grok Imagine, Ideogram).
+The first image is a screenshot taken INSIDE a simple 3D model of a room from an architect's design app (first-person walkthrough). The image model will receive this screenshot as its input image and must turn it into a photorealistic interior photograph.
+Top priority: EXACTLY the same camera position, angle, height, lens and framing; the same walls, openings and the same furniture pieces in the same places. Beautiful but faithful.
+
+Write ONE prompt in English that:
+1. Opens with a direct edit instruction: convert this 3D interior render into a photorealistic interior photograph, keeping the identical camera viewpoint, perspective, framing and composition.
+2. States the camera using the camera data given (eye-level, height, looking direction, lens).
+3. Describes the room as visible: room type, walls, windows and doors in view, ceiling lights, and every furniture piece in view with its place in the frame. Say explicitly: do not add or remove furniture, walls, windows or doors.
+4. Maps the model's flat colours to real materials using the interior style given (wood species and tone, upholstery fabric and colour, worktop stone, flooring, wall paint, metal finish). If reference photos follow the first image, take materials, colours and mood from them but never their geometry.
+5. Lighting: natural daylight from the visible windows balanced with warm artificial light from the fixtures in the model; soft realistic shadows.
+6. Adds only small styling accessories (cushions, books, a vase, a plant) that do not change the layout.
+7. Includes the architect's extra wishes (they may be written in Turkish — translate them faithfully). If a wish conflicts with the camera or layout, keep the camera and layout.
+8. Ends with: no text, no watermark, no people, no CGI or plastic look, no distorted geometry.
+
+Output only the prompt text as one paragraph, without quotes, headings, markdown or commentary. Maximum 1600 characters.`;
+
 function programSummary(p: Program) {
   const blocks = p.blocks ?? [];
   const sel = blocks[p.blockIndex ?? 0];
@@ -63,7 +79,9 @@ export async function writeRenderPrompt(client: Anthropic | null, inp: PromptInp
   const refs = (inp.refs ?? []).slice(0, 3).map(img).filter((x): x is NonNullable<typeof x> => !!x);
   const text = [
     `Camera data from the 3D app (authoritative): ${inp.camera ? cameraText(inp.camera) : "not available; infer it from the screenshot"}`,
-    `Building program (JSON, Turkish values): ${JSON.stringify(programSummary(inp.program))}`,
+    inp.camera?.interior
+      ? `Room: ${inp.camera.interior.room} (type ${inp.camera.interior.roomType}); interior style: ${inp.camera.interior.style}; furniture in the room: ${inp.camera.interior.furniture.join(", ") || "none"}.`
+      : `Building program (JSON, Turkish values): ${JSON.stringify(programSummary(inp.program))}`,
     refs.length ? `${refs.length} reference photo(s) from the architect follow the screenshot (materials and mood only).` : "No reference photos.",
     `Target image model: ${inp.modelId ?? "qwen"}.`,
     `Architect's extra wishes: ${inp.extra?.trim() ? inp.extra.trim() : "(none)"}`,
@@ -78,11 +96,11 @@ export async function writeRenderPrompt(client: Anthropic | null, inp: PromptInp
           betas: ["server-side-fallback-2026-07-01"],
           fallbacks: "default",
           output_config: { effort: "low" },
-          system: SYSTEM,
+          system: inp.camera?.interior ? INTERIOR_SYSTEM : SYSTEM,
           messages: [{
             role: "user",
             content: [
-              { type: "text", text: "Screenshot of the 3D model (the input image for the image model):" },
+              { type: "text", text: inp.camera?.interior ? "Screenshot from inside the 3D model (the input image for the image model):" : "Screenshot of the 3D model (the input image for the image model):" },
               view,
               ...refs.flatMap((r, i) => [{ type: "text" as const, text: `Reference photo ${i + 1}:` }, r]),
               { type: "text", text },

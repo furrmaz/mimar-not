@@ -118,12 +118,20 @@ export const MassingSchema = z
   .describe("Binanın kütle biçimi: modern/çağdaş üslupta girintili-çıkıntılı kütle; geleneksel/klasik üslupta ya da müşteri sade kutu istiyorsa boş liste. Uygulama planı, kesiti, cepheyi ve 3D'yi buna göre oyar");
 export type Massing = z.infer<typeof MassingSchema>;
 
+/** İç mekân üslupları (ayrıntılar geometry/interior.ts INTERIOR_STYLES) */
+export const INTERIOR_STYLE_IDS = ["dogal", "modern", "japandi", "iskandinav", "klasik", "endustriyel", "akdeniz", "turk"] as const;
+
 export const ProgramSchema = z.object({
   projectName: z.string(),
   clientName: z.string().describe("Müşteri adı; notlarda yoksa boş metin"),
   buildingType: z.string().describe("ör. 'Müstakil konut', 'Dubleks villa', 'Ofis'"),
   summary: z.string().describe("Müşteri isteklerinin 2-4 cümlelik Türkçe özeti"),
   style: z.string().describe("Mimari üslup / malzeme tercihi; yoksa 'Belirtilmedi'"),
+  interiorStyle: z
+    .enum(INTERIOR_STYLE_IDS)
+    .nullable()
+    .optional()
+    .describe("İç mekân üslubu (mobilya, renk ve malzeme paleti): dogal = sıcak doğal ahşap, modern = modern minimal, japandi, iskandinav, klasik = çağdaş klasik / neoklasik, endustriyel, akdeniz = Akdeniz / Ege, turk = çağdaş Türk (ceviz, kilim, bakır, çini). Notlarda dekorasyon / iç mekân tercihi yoksa dış üsluba en uygun olanı seç"),
   site: z.object({
     width: z.number().describe("Arsa cephe genişliği (m)"),
     depth: z.number().describe("Arsa derinliği (m)"),
@@ -204,6 +212,8 @@ export interface DesignOptions {
   pool?: boolean;
   /** Son uygulanan üslup paketi */
   stylePack?: string;
+  /** Mimarın seçtiği iç mekân üslubu (programdakini geçersiz kılar) */
+  interiorStyle?: string;
   /** Güneş ayarı: bahçe (arka) cephesinin baktığı yön, ay (1-12), saat */
   sun?: { facing?: "G" | "K" | "D" | "B"; month?: number; hour?: number };
   /** İç mekân: "<blok>:<kat>" → elle düzenlenmiş mobilya listesi (sig: oda düzeninin imzası; odalar değişince geçersiz) */
